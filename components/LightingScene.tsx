@@ -8,14 +8,70 @@ import {
 } from "@/lib/lighting";
 
 /**
- * M2: real Three.js scene, procedural mannequin, orbit + zoom, and THREE
+ * M2: real Three.js scene, Meshy mannequin, orbit + zoom, and THREE
  * controllable lights driven by React state from the page. Changing a
  * slider updates the live render; no light change requires a reload.
  */
-export function LightingScene({ lights }: { lights: LightState[] }) {
+export function LightingScene({
+  lights,
+  view,
+  viewNonce,
+}: {
+  lights: LightState[];
+  view: "face" | "full";
+  viewNonce: number;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lightsRef = useRef<LightState[]>(lights);
   lightsRef.current = lights;
+  const cameraRef = useRef<import("three").PerspectiveCamera | null>(null);
+  const controlsRef = useRef<{
+    target: {
+      x: number;
+      y: number;
+      z: number;
+      set: (x: number, y: number, z: number) => void;
+    };
+    update: () => void;
+    minDistance: number;
+  } | null>(null);
+  const pendingViewRef = useRef<"face" | "full" | null>(null);
+
+  // View buttons (page.tsx): move the existing OrbitControls target +
+  // camera without rebuilding the scene, so orbit/zoom keep working
+  // afterwards and preset switches (lights only) never move the camera.
+  useEffect(() => {
+    if (viewNonce === 0) return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) {
+      pendingViewRef.current = view;
+      return;
+    }
+    // Allow close distances; the M1 minDistance of 1.4 would otherwise
+    // clamp the face view back out.
+    controls.minDistance = 0.3;
+    if (view === "face") {
+      // Keep the user's current orbit direction, just pull in close to
+      // the head: face target at head height, camera 0.75 units out.
+      const t = controls.target as { x: number; y: number; z: number };
+      const dx = camera.position.x - t.x;
+      const dy = camera.position.y - t.y;
+      const dz = camera.position.z - t.z;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      controls.target.set(0, 1.72, 0);
+      camera.position.set(
+        (dx / len) * 0.75,
+        1.72 + (dy / len) * 0.75,
+        (dz / len) * 0.75,
+      );
+    } else {
+      controls.target.set(0, 0.95, 0);
+      camera.position.set(0.6, 1.25, 3.4);
+      cameraRef.current = camera;
+    }
+    controls.update();
+  }, [view, viewNonce]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -46,6 +102,7 @@ export function LightingScene({ lights }: { lights: LightState[] }) {
         100,
       );
       camera.position.set(0.6, 1.25, 3.4);
+      cameraRef.current = camera;
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -70,6 +127,19 @@ export function LightingScene({ lights }: { lights: LightState[] }) {
         TWO: THREE.TOUCH.DOLLY_PAN,
       };
       controls.update();
+      controlsRef.current = controls;
+      // If a view button was pressed before the scene finished loading,
+      // apply it now instead of dropping it.
+      if (pendingViewRef.current) {
+        const pending = pendingViewRef.current;
+        pendingViewRef.current = null;
+        controls.minDistance = 0.3;
+        if (pending === "face") {
+          controls.target.set(0, 1.72, 0);
+          camera.position.set(0.35, 1.85, 0.65);
+        }
+        controls.update();
+      }
 
       const skin = new THREE.MeshStandardMaterial({
         color: 0xd8d8de,
@@ -77,210 +147,49 @@ export function LightingScene({ lights }: { lights: LightState[] }) {
         metalness: 0,
       });
       const figure = new THREE.Group();
-      // Joint material: slightly darker than the skin, so the
-      // articulated joints read as discs/gaps, as on the reference.
-      const jointMat = new THREE.MeshStandardMaterial({
-        color: 0x9c9ca4,
-        roughness: 0.7,
-        metalness: 0,
-      });
 
-      function sphere(
-        x: number,
-        y: number,
-        z: number,
-        r: number,
-        sx = 1,
-        sy = 1,
-        sz = 1,
-        mat = skin,
-      ) {
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 20), mat);
-        mesh.position.set(x, y, z);
-        mesh.scale.set(sx, sy, sz);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        figure.add(mesh);
-        return mesh;
-      }
-
-      function limb(
-        from: [number, number, number],
-        to: [number, number, number],
-        radius: number,
-      ) {
-        const a = new THREE.Vector3(...from);
-        const b = new THREE.Vector3(...to);
-        const dir = new THREE.Vector3().subVectors(b, a);
-        const length = dir.length();
-        const mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(radius, length, 6, 14),
-          skin,
-        );
-        mesh.position.copy(a).add(b).multiplyScalar(0.5);
-        mesh.quaternion.setFromUnitVectors(
-          new THREE.Vector3(0, 1, 0),
-          dir.clone().normalize(),
-        );
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        figure.add(mesh);
-        return mesh;
-      }
-
-      // Tapered segment (e.g. thigh, calf, forearm): cylinder with a
-      // different radius at each end, oriented from -> to.
-      function tapered(
-        from: [number, number, number],
-        to: [number, number, number],
-        rTop: number,
-        rBottom: number,
-      ) {
-        const a = new THREE.Vector3(...from);
-        const b = new THREE.Vector3(...to);
-        const dir = new THREE.Vector3().subVectors(b, a);
-        const length = dir.length();
-        // CylinderGeometry is +Y up with radiusTop at +Y, but the
-        // quaternion below maps +Y onto (to - from), which points
-        // down for our top-to-bottom segments — so the radii are
-        // swapped here to keep rTop at the `from` end.
-        const mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(rBottom, rTop, length, 18),
-          skin,
-        );
-        mesh.position.copy(a).add(b).multiplyScalar(0.5);
-        mesh.quaternion.setFromUnitVectors(
-          new THREE.Vector3(0, 1, 0),
-          dir.clone().normalize(),
-        );
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        figure.add(mesh);
-        return mesh;
-      }
-
-      // Flat joint disc, axis along Y unless rotated by the caller.
-      function jointDisc(
-        x: number,
-        y: number,
-        z: number,
-        r: number,
-        tiltX = 0,
-        tiltZ = 0,
-      ) {
-        const mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(r, r, 0.022, 18),
-          jointMat,
-        );
-        mesh.position.set(x, y, z);
-        mesh.rotation.x = tiltX;
-        mesh.rotation.z = tiltZ;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        figure.add(mesh);
-        return mesh;
-      }
-
-      // ---- Proportions: total ~1.84 units, head ~0.24, so ~7.5 heads.
-      // ---- Head: ovoid, slightly elongated, with a face plane.
-      // Cranium + a smaller, forward jaw sphere gives the face a
-      // flattened front plane instead of one round ball.
-      sphere(0, 1.76, 0, 0.115, 0.92, 1.12, 0.98);
-      // Jaw / lower face, slightly forward.
-      sphere(0, 1.675, 0.022, 0.088, 0.88, 0.95, 0.9);
-      // Nose ridge: a small vertical capsule protruding forward.
-      // This is what throws the Butterfly nose shadow and breaks
-      // up the Rembrandt cheek shading.
+      // ---- Figure: a SINGLE Meshy model (from-scratch generation),
+      // loaded as-is — no procedural body, no grafted box head.
+      // The model is Y-up, 1.903 units tall, centred at the origin,
+      // facing +Z, with its own real face (nose bridge, cheek
+      // planes, brow ridge, jaw). Scale to ~1.88 units tall and
+      // stand it on the ground plane (feet at y = 0).
       {
-        const nose = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.011, 0.05, 4, 10),
-          skin,
+        const { GLTFLoader } = await import(
+          "three/examples/jsm/loaders/GLTFLoader.js"
         );
-        nose.position.set(0, 1.72, 0.108);
-        nose.rotation.x = 0.25;
-        nose.castShadow = true;
-        nose.receiveShadow = true;
-        figure.add(nose);
-      }
-      // Brow ridge: a shallow flattened bar across the forehead.
-      sphere(0, 1.765, 0.088, 0.05, 1.35, 0.32, 0.45);
-      // Neck: distinct cylinder, not merged into the torso.
-      tapered([0, 1.66, 0], [0, 1.57, 0], 0.048, 0.055);
-
-      // ---- Torso: chest plate wider at the shoulders, tapering
-      // to the waist, then a separate abdomen with a waist break.
-      {
-        const chest = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.148, 0.06, 6, 20),
-          skin,
+        const loader = new GLTFLoader();
+        loader.load(
+          "/meshy-body.glb",
+          (gltf) => {
+            const model = gltf.scene;
+            const box = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            const s = 1.88 / size.y;
+            model.scale.setScalar(s);
+            // After scaling, shift so feet sit at y = 0 and the
+            // figure is centred on x/z.
+            model.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+            model.traverse((obj) => {
+              const mesh = obj as import("three").Mesh;
+              if (mesh.isMesh) {
+                mesh.material = skin;
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+              }
+            });
+            figure.add(model);
+          },
+          undefined,
+          () => {
+            // If the model fails to load, the canvas stays blank
+            // rather than showing a wrong figure — the GLB is the
+            // figure now, there is no procedural fallback.
+          },
         );
-        chest.position.set(0, 1.43, 0);
-        chest.scale.set(1.18, 1, 0.72);
-        chest.castShadow = true;
-        chest.receiveShadow = true;
-        figure.add(chest);
-      }
-      // No separate pectoral lumps: additive spheres against the chest
-      // shell read as two balls (intersection seam). The reference
-      // chest is a single smooth plate, so the chest capsule alone
-      // carries it, with the waist/abdomen breaks below for detail.
-      // Abdomen: three short stacked segments with small gaps,
-      // giving 3-4 shallow horizontal breaks.
-      tapered([0, 1.25, 0], [0, 1.20, 0], 0.098, 0.094);
-      tapered([0, 1.19, 0], [0, 1.14, 0], 0.094, 0.09);
-      // Dark discs at the segment breaks, so the abdomen reads
-      // as segmented instead of one smooth bulge.
-      jointDisc(0, 1.195, 0, 0.092);
-      jointDisc(0, 1.135, 0, 0.09);
-
-      // ---- Pelvis: brief-like form, distinct from the thighs.
-      sphere(0, 1.05, 0, 0.12, 1.05, 0.9, 0.8);
-      sphere(0, 1.02, 0.05, 0.09, 1.0, 0.8, 0.55);
-
-      // ---- Arms (neutral, at the sides, hands reaching mid-thigh).
-      for (const side of [-1, 1]) {
-        const sx = side;
-        // Shoulder ball + joint disc.
-        sphere(sx * 0.195, 1.50, 0, 0.062);
-        jointDisc(sx * 0.205, 1.46, 0, 0.055, 0, sx * 0.35);
-        // Upper arm, tapering to the elbow.
-        tapered([sx * 0.215, 1.45, 0], [sx * 0.245, 1.16, 0], 0.052, 0.042);
-        // Elbow joint.
-        sphere(sx * 0.25, 1.14, 0, 0.045);
-        jointDisc(sx * 0.25, 1.14, 0, 0.042, 0, sx * 0.15);
-        // Forearm, tapering to the wrist.
-        tapered([sx * 0.25, 1.12, 0], [sx * 0.26, 0.88, 0], 0.042, 0.033);
-        // Wrist joint.
-        jointDisc(sx * 0.262, 0.87, 0, 0.034, 0, sx * 0.1);
-        // Hand: flattened rounded form + a thumb suggestion.
-        sphere(sx * 0.262, 0.80, 0.01, 0.045, 0.75, 1.25, 0.5);
-        limb(
-          [sx * 0.285, 0.84, 0.01],
-          [sx * 0.29, 0.76, 0.03],
-          0.014,
-        );
-      }
-
-      // ---- Legs: thigh tapering to the knee, calf to the ankle,
-      // feet slightly apart, forward-facing feet with a forefoot.
-      for (const side of [-1, 1]) {
-        const sx = side;
-        const hipX = sx * 0.105;
-        const footX = sx * 0.13;
-        // Hip joint disc.
-        jointDisc(hipX, 0.99, 0, 0.075);
-        // Thigh.
-        tapered([hipX, 0.98, 0], [footX, 0.54, 0], 0.078, 0.058);
-        // Knee joint.
-        sphere(footX, 0.51, 0.01, 0.055, 1, 0.9, 0.95);
-        jointDisc(footX, 0.50, 0, 0.052);
-        // Calf.
-        tapered([footX, 0.48, 0], [footX, 0.12, 0], 0.055, 0.036);
-        // Ankle joint.
-        jointDisc(footX, 0.11, 0, 0.036);
-        // Foot: elongated, slightly flattened, toe end forward.
-        sphere(footX, 0.055, 0.075, 0.05, 0.85, 0.55, 1.9);
-        sphere(footX, 0.045, 0.155, 0.035, 0.9, 0.5, 1.0);
       }
       scene.add(figure);
 

@@ -59,6 +59,14 @@ export default function Home() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  // Face close-up view: drives LightingScene's OrbitControls target +
+  // camera only; lights/presets/share are untouched by view changes.
+  const [view, setView] = useState<"face" | "full">("full");
+  const [viewNonce, setViewNonce] = useState(0);
+  function setViewMode(v: "face" | "full") {
+    setView(v);
+    setViewNonce((n) => n + 1);
+  }
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // M3: on first load, restore a shared setup from ?s= if it is valid.
@@ -200,10 +208,45 @@ export default function Home() {
         ))}
       </div>
 
+      {/* View buttons: face close-up vs full body, phone-friendly,
+          no horizontal scroll. Camera only — lights/share untouched. */}
+      <div
+        className="flex flex-wrap gap-2 px-4 pb-3 sm:px-6"
+        role="group"
+        aria-label="Camera view"
+      >
+        <button
+          type="button"
+          data-testid="view-face"
+          onClick={() => setViewMode("face")}
+          aria-pressed={view === "face"}
+          className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${
+            view === "face"
+              ? "bg-zinc-100 text-zinc-950"
+              : "bg-zinc-800 text-zinc-200"
+          }`}
+        >
+          Face close-up
+        </button>
+        <button
+          type="button"
+          data-testid="view-full"
+          onClick={() => setViewMode("full")}
+          aria-pressed={view === "full"}
+          className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${
+            view === "full"
+              ? "bg-zinc-100 text-zinc-950"
+              : "bg-zinc-800 text-zinc-200"
+          }`}
+        >
+          Full body
+        </button>
+      </div>
+
       {/* M3: canvas sized to leave the controls reachable on a phone
           screen, instead of pushing them far below the fold. */}
       <div className="h-[42dvh] shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
-        <LightingScene lights={lights} />
+        <LightingScene lights={lights} view={view} viewNonce={viewNonce} />
       </div>
 
       {/* Active preset note, under the canvas. Fixed minimum height so
