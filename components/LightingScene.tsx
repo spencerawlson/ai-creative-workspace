@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import {
+  kelvinToRgb,
+  lightPosition,
+  type LightState,
+} from "@/lib/lighting";
 
 /**
- * M1 only: real Three.js scene, one procedural mannequin, one key light,
- * ambient light, orbit + zoom. No light controls or presets yet (M2).
+ * M2: real Three.js scene, procedural mannequin, orbit + zoom, and THREE
+ * controllable lights driven by React state from the page. Changing a
+ * slider updates the live render; no light change requires a reload.
  */
-export function LightingScene() {
+export function LightingScene({ lights }: { lights: LightState[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const lightsRef = useRef<LightState[]>(lights);
+  lightsRef.current = lights;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -15,6 +23,10 @@ export function LightingScene() {
     let renderer: import("three").WebGLRenderer | null = null;
     let animationId = 0;
     let disposed = false;
+    let threeLights: Record<
+      string,
+      import("three").DirectionalLight
+    > = {};
 
     async function init() {
       const THREE = await import("three");
@@ -52,7 +64,6 @@ export function LightingScene() {
       controls.minDistance = 1.4;
       controls.maxDistance = 6;
       controls.minPolarAngle = 0.15;
-      // Keep the camera above the floor.
       controls.maxPolarAngle = Math.PI / 2 - 0.05;
       controls.touches = {
         ONE: THREE.TOUCH.ROTATE,
@@ -60,7 +71,6 @@ export function LightingScene() {
       };
       controls.update();
 
-      // --- Mannequin: stylized, correct ~7.5-head proportions, 1.8 units tall.
       const skin = new THREE.MeshStandardMaterial({
         color: 0xd8d8de,
         roughness: 0.65,
@@ -110,7 +120,6 @@ export function LightingScene() {
         return mesh;
       }
 
-      // Head, neck, torso, pelvis.
       sphere(0, 1.68, 0, 0.115);
       limb([0, 1.62, 0], [0, 1.5, 0], 0.05);
       const torso = new THREE.Mesh(
@@ -123,8 +132,6 @@ export function LightingScene() {
       torso.receiveShadow = true;
       figure.add(torso);
       sphere(0, 0.96, 0, 0.14, 1.25, 0.8, 0.85);
-
-      // Arms (slightly away from the body) and legs.
       for (const side of [-1, 1]) {
         limb([side * 0.24, 1.44, 0], [side * 0.31, 1.12, 0], 0.055);
         limb([side * 0.31, 1.12, 0], [side * 0.33, 0.86, 0], 0.048);
@@ -135,7 +142,6 @@ export function LightingScene() {
       }
       scene.add(figure);
 
-      // Ground shadow catcher.
       const ground = new THREE.Mesh(
         new THREE.CircleGeometry(6, 48),
         new THREE.ShadowMaterial({ opacity: 0.4 }),
@@ -144,19 +150,46 @@ export function LightingScene() {
       ground.receiveShadow = true;
       scene.add(ground);
 
-      // M1 lights: one key light with a soft shadow + low ambient.
-      const key = new THREE.DirectionalLight(0xffffff, 2.2);
-      key.position.set(2.5, 3.5, 2.5);
-      key.castShadow = true;
-      key.shadow.mapSize.set(1024, 1024);
-      key.shadow.radius = 4;
-      key.shadow.bias = -0.0005;
-      key.shadow.camera.left = -2;
-      key.shadow.camera.right = 2;
-      key.shadow.camera.top = 3;
-      key.shadow.camera.bottom = -1;
-      scene.add(key);
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      // Low ambient so Low-key stays dark and High-key is carried by fill.
+      scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+      function applyLights() {
+        for (const state of lightsRef.current) {
+          let l = threeLights[state.id];
+          if (!l) {
+            l = new THREE.DirectionalLight(0xffffff, 1);
+            l.castShadow = false;
+            l.shadow.mapSize.set(1024, 1024);
+            l.shadow.bias = -0.0005;
+            l.shadow.camera.left = -2;
+            l.shadow.camera.right = 2;
+            l.shadow.camera.top = 3;
+            l.shadow.camera.bottom = -1;
+            l.target.position.set(0, 0.95, 0);
+            scene.add(l.target);
+            scene.add(l);
+            threeLights[state.id] = l;
+          }
+          const [x, y, z] = lightPosition(state);
+          l.position.set(x, y, z);
+          const [r, g, b] = kelvinToRgb(state.temperature);
+          l.color.setRGB(r, g, b);
+          l.intensity = state.on ? state.intensity : 0;
+          l.visible = state.on;
+          l.castShadow = state.on && state.shadows;
+          l.shadow.radius = state.softness;
+        }
+      }
+      applyLights();
+      // Re-apply on every frame: cheap, and guarantees slider changes
+      // show up immediately even if React re-renders mid-gesture.
+      const prevTick = () => {
+        if (disposed) return;
+        animationId = requestAnimationFrame(prevTick);
+        applyLights();
+        controls.update();
+        if (renderer) renderer.render(scene, camera);
+      };
 
       function onResize() {
         if (!renderer) return;
@@ -167,16 +200,8 @@ export function LightingScene() {
         renderer.setSize(w, h);
       }
       window.addEventListener("resize", onResize);
+      prevTick();
 
-      function tick() {
-        if (disposed) return;
-        animationId = requestAnimationFrame(tick);
-        controls.update();
-        if (renderer) renderer.render(scene, camera);
-      }
-      tick();
-
-      // Store cleanup on the container for the effect teardown below.
       (container as unknown as { __cleanup?: () => void }).__cleanup = () => {
         window.removeEventListener("resize", onResize);
         controls.dispose();
