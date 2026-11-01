@@ -164,6 +164,11 @@ export default function Home() {
         <p className="mt-1 text-sm leading-snug text-zinc-400">
           M3: share any setup as a link, plus mobile polish.
         </p>
+        <p className="mt-2 text-sm">
+          <a href="/photography" className="font-medium text-zinc-300 underline">
+            Photography — Camera Basics →
+          </a>
+        </p>
         <p className="mt-2 inline-block rounded-full bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200">
           Drag to rotate · Pinch to zoom
         </p>

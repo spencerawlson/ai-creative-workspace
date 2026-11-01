@@ -24,11 +24,20 @@ export function LightingScene({
   view,
   viewNonce,
   model,
+  fov,
+  exposure,
 }: {
   lights: LightState[];
   view: "face" | "full";
   viewNonce: number;
   model: MannequinModel;
+  /** Optional Photography M1 camera override: vertical field of
+   * view in degrees. Undefined keeps the Lighting Studio default 40. */
+  fov?: number;
+  /** Optional Photography M1 preview brightness multiplier.
+   * Undefined keeps the Lighting Studio default 1.1. This is a
+   * preview brightness aid, not a camera sensor simulation. */
+  exposure?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lightsRef = useRef<LightState[]>(lights);
@@ -44,6 +53,11 @@ export function LightingScene({
   const headHeightRef = useRef(1.72);
   const loadModelRef = useRef<((url: string) => void) | null>(null);
   const cameraRef = useRef<import("three").PerspectiveCamera | null>(null);
+  const rendererRef = useRef<import("three").WebGLRenderer | null>(null);
+  const fovRef = useRef<number | undefined>(fov);
+  fovRef.current = fov;
+  const exposureRef = useRef<number | undefined>(exposure);
+  exposureRef.current = exposure;
   const controlsRef = useRef<{
     target: {
       x: number;
@@ -134,6 +148,7 @@ export function LightingScene({
       cameraRef.current = camera;
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      rendererRef.current = renderer;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(container.clientWidth, container.clientHeight);
       renderer.shadowMap.enabled = true;
@@ -318,6 +333,15 @@ export function LightingScene({
       const prevTick = () => {
         if (disposed) return;
         animationId = requestAnimationFrame(prevTick);
+        // Photography M1 overrides, applied per frame so slider
+        // changes show immediately. No override = defaults untouched.
+        if (fovRef.current !== undefined && camera.fov !== fovRef.current) {
+          camera.fov = fovRef.current;
+          camera.updateProjectionMatrix();
+        }
+        if (exposureRef.current !== undefined && renderer) {
+          renderer.toneMappingExposure = exposureRef.current;
+        }
         applyLights();
         controls.update();
         if (renderer) renderer.render(scene, camera);
