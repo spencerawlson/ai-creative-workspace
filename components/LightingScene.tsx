@@ -12,18 +12,37 @@ import {
  * controllable lights driven by React state from the page. Changing a
  * slider updates the live render; no light change requires a reload.
  */
+export type MannequinModel = "male" | "female";
+
+const MODEL_URL: Record<MannequinModel, string> = {
+  male: "/meshy-body.glb",
+  female: "/meshy-body-female.glb",
+};
+
 export function LightingScene({
   lights,
   view,
   viewNonce,
+  model,
 }: {
   lights: LightState[];
   view: "face" | "full";
   viewNonce: number;
+  model: MannequinModel;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lightsRef = useRef<LightState[]>(lights);
   lightsRef.current = lights;
+  const viewRef = useRef<"face" | "full">(view);
+  viewRef.current = view;
+  const modelRef = useRef<MannequinModel>(model);
+  modelRef.current = model;
+  // Head height of the ACTIVE model, computed from its geometry on
+  // load (average Y of vertices in the top 0.25 units of the scaled
+  // figure) — never hard-coded to the male figure's head height, so
+  // Face close-up lands on the female head too.
+  const headHeightRef = useRef(1.72);
+  const loadModelRef = useRef<((url: string) => void) | null>(null);
   const cameraRef = useRef<import("three").PerspectiveCamera | null>(null);
   const controlsRef = useRef<{
     target: {
@@ -53,16 +72,18 @@ export function LightingScene({
     controls.minDistance = 0.3;
     if (view === "face") {
       // Keep the user's current orbit direction, just pull in close to
-      // the head: face target at head height, camera 0.75 units out.
+      // the head: face target at the ACTIVE model's computed head
+      // height, camera 0.75 units out.
+      const hh = headHeightRef.current;
       const t = controls.target as { x: number; y: number; z: number };
       const dx = camera.position.x - t.x;
       const dy = camera.position.y - t.y;
       const dz = camera.position.z - t.z;
       const len = Math.hypot(dx, dy, dz) || 1;
-      controls.target.set(0, 1.72, 0);
+      controls.target.set(0, hh, 0);
       camera.position.set(
         (dx / len) * 0.75,
-        1.72 + (dy / len) * 0.75,
+        hh + (dy / len) * 0.75,
         (dz / len) * 0.75,
       );
     } else {
@@ -72,6 +93,14 @@ export function LightingScene({
     }
     controls.update();
   }, [view, viewNonce]);
+
+  // Mannequin switch (page.tsx): swap the loaded GLB in place.
+  // Lights, preset, and camera survive; the loader re-computes the
+  // head height from the new model and re-aims Face close-up if set.
+  useEffect(() => {
+    const load = loadModelRef.current;
+    if (load) load(MODEL_URL[model]);
+  }, [model]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -135,8 +164,9 @@ export function LightingScene({
         pendingViewRef.current = null;
         controls.minDistance = 0.3;
         if (pending === "face") {
-          controls.target.set(0, 1.72, 0);
-          camera.position.set(0.35, 1.85, 0.65);
+          const hh = headHeightRef.current;
+          controls.target.set(0, hh, 0);
+          camera.position.set(0.35, hh + 0.13, 0.65);
         }
         controls.update();
       }
@@ -148,20 +178,33 @@ export function LightingScene({
       });
       const figure = new THREE.Group();
 
-      // ---- Figure: a SINGLE Meshy model (from-scratch generation),
-      // loaded as-is — no procedural body, no grafted box head.
-      // The model is Y-up, 1.903 units tall, centred at the origin,
-      // facing +Z, with its own real face (nose bridge, cheek
-      // planes, brow ridge, jaw). Scale to ~1.88 units tall and
-      // stand it on the ground plane (feet at y = 0).
-      {
+      // ---- Figure: a Meshy model loaded as-is — no procedural body,
+      // no grafted box head. Male and female are both Y-up, ~1.90
+      // units tall, centred at the origin, facing +Z, each with its
+      // own real face. Scale to ~1.88 units tall and stand it on
+      // the ground plane (feet at y = 0). Switching models swaps
+      // the figure in place; lights, camera, and controls survive.
+      let loadToken = 0;
+      const loadModel = async (url: string) => {
+        const token = ++loadToken;
         const { GLTFLoader } = await import(
           "three/examples/jsm/loaders/GLTFLoader.js"
         );
+        if (disposed || token !== loadToken) return;
         const loader = new GLTFLoader();
         loader.load(
-          "/meshy-body.glb",
+          url,
           (gltf) => {
+            if (disposed || token !== loadToken) return;
+            // Remove the previous figure (if any) before adding the new one.
+            while (figure.children.length > 0) {
+              const old = figure.children[0];
+              figure.remove(old);
+              old.traverse((obj) => {
+                const mesh = obj as import("three").Mesh;
+                if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
+              });
+            }
             const model = gltf.scene;
             const box = new THREE.Box3().setFromObject(model);
             const size = new THREE.Vector3();
@@ -182,15 +225,53 @@ export function LightingScene({
               }
             });
             figure.add(model);
+            // Head height from THIS model's geometry: average Y of
+            // vertices in the top 0.25 units of the scaled figure
+            // (head + neck band), clamped inside the figure.
+            figure.updateMatrixWorld(true);
+            const topY = size.y * s;
+            let sum = 0;
+            let count = 0;
+            const v = new THREE.Vector3();
+            model.traverse((obj) => {
+              const mesh = obj as import("three").Mesh;
+              if (!mesh.isMesh) return;
+              const pos = mesh.geometry.attributes.position;
+              if (!pos) return;
+              for (let i = 0; i < pos.count; i++) {
+                v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+                if (v.y >= topY - 0.25) {
+                  sum += v.y;
+                  count += 1;
+                }
+              }
+            });
+            if (count > 0) {
+              const hh = sum / count;
+              headHeightRef.current = Math.min(
+                Math.max(hh, topY - 0.3),
+                topY - 0.05,
+              );
+            }
+            // If the user is in Face close-up, re-aim at the new
+            // model's head instead of leaving the old target.
+            if (viewRef.current === "face") {
+              const hh = headHeightRef.current;
+              controls.target.set(0, hh, 0);
+              camera.position.set(0.35, hh + 0.13, 0.65);
+              controls.update();
+            }
           },
           undefined,
           () => {
-            // If the model fails to load, the canvas stays blank
-            // rather than showing a wrong figure — the GLB is the
-            // figure now, there is no procedural fallback.
+            // If the model fails to load, the canvas keeps the
+            // previous figure (or stays blank on first load) rather
+            // than showing a wrong figure.
           },
         );
-      }
+      };
+      loadModelRef.current = loadModel;
+      loadModel(MODEL_URL[modelRef.current]);
       scene.add(figure);
 
       const ground = new THREE.Mesh(

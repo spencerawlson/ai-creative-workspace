@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LightingScene } from "@/components/LightingScene";
+import {
+  LightingScene,
+  type MannequinModel,
+} from "@/components/LightingScene";
 import {
   CUSTOM_NOTE,
   PRESETS,
@@ -63,6 +66,10 @@ export default function Home() {
   // camera only; lights/presets/share are untouched by view changes.
   const [view, setView] = useState<"face" | "full">("full");
   const [viewNonce, setViewNonce] = useState(0);
+  // Mannequin choice: male (from-scratch Meshy) or female (Meshy).
+  // Lights/preset/share are untouched by switching; the choice is
+  // NOT encoded in share links (lights only, as in M3).
+  const [model, setModel] = useState<MannequinModel>("male");
   function setViewMode(v: "face" | "full") {
     setView(v);
     setViewNonce((n) => n + 1);
@@ -243,10 +250,50 @@ export default function Home() {
         </button>
       </div>
 
+      {/* Mannequin switcher: male / female, phone-friendly,
+          no horizontal scroll. Model only — lights/share untouched. */}
+      <div
+        className="flex flex-wrap gap-2 px-4 pb-3 sm:px-6"
+        role="group"
+        aria-label="Mannequin"
+      >
+        <button
+          type="button"
+          data-testid="model-male"
+          onClick={() => setModel("male")}
+          aria-pressed={model === "male"}
+          className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${
+            model === "male"
+              ? "bg-zinc-100 text-zinc-950"
+              : "bg-zinc-800 text-zinc-200"
+          }`}
+        >
+          Male mannequin
+        </button>
+        <button
+          type="button"
+          data-testid="model-female"
+          onClick={() => setModel("female")}
+          aria-pressed={model === "female"}
+          className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${
+            model === "female"
+              ? "bg-zinc-100 text-zinc-950"
+              : "bg-zinc-800 text-zinc-200"
+          }`}
+        >
+          Female mannequin
+        </button>
+      </div>
+
       {/* M3: canvas sized to leave the controls reachable on a phone
           screen, instead of pushing them far below the fold. */}
       <div className="h-[42dvh] shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
-        <LightingScene lights={lights} view={view} viewNonce={viewNonce} />
+        <LightingScene
+          lights={lights}
+          view={view}
+          viewNonce={viewNonce}
+          model={model}
+        />
       </div>
 
       {/* Active preset note, under the canvas. Fixed minimum height so
