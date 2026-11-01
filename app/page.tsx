@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LightingScene } from "@/components/LightingScene";
 import {
   CUSTOM_NOTE,
@@ -8,6 +8,7 @@ import {
   cloneLights,
   type LightState,
 } from "@/lib/lighting";
+import { decodeSetup, encodeSetup } from "@/lib/share";
 
 function Slider({
   label,
@@ -54,6 +55,73 @@ export default function Home() {
     cloneLights(PRESETS[0].lights),
   );
   const [openLight, setOpenLight] = useState<string>("key");
+  const [hydrated, setHydrated] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // M3: on first load, restore a shared setup from ?s= if it is valid.
+  // Invalid params fall back to the default Three-point setup.
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("s");
+    const shared = decodeSetup(param);
+    if (shared) {
+      setActivePreset(shared.preset);
+      setLights(shared.lights);
+    }
+    setHydrated(true);
+  }, []);
+
+  // M3: keep the URL in sync with the current setup, without reloading.
+  useEffect(() => {
+    if (!hydrated) return;
+    const param = encodeSetup(activePreset, lights);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("s") !== param) {
+      url.searchParams.set("s", param);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [hydrated, activePreset, lights]);
+
+  async function copyLink() {
+    // Build the URL from current state directly, so the copied link is
+    // always the setup on screen even if the sync effect has not run yet.
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", encodeSetup(activePreset, lights));
+    window.history.replaceState(null, "", url.toString());
+    const link = url.toString();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(link);
+      ok = true;
+    } catch {
+      // Fallback for browsers that block the async clipboard API.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
+    }
+    setCopyState(ok ? "copied" : "failed");
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopyState("idle"), 2500);
+  }
+
+  function resetSetup() {
+    setActivePreset("three-point");
+    setLights(cloneLights(PRESETS[0].lights));
+    const url = new URL(window.location.href);
+    url.searchParams.delete("s");
+    window.history.replaceState(null, "", url.toString());
+  }
 
   const preset = PRESETS.find((p) => p.id === activePreset);
   const note = preset ? preset.note : CUSTOM_NOTE;
@@ -79,11 +147,33 @@ export default function Home() {
           Lighting Studio — Pilot
         </h1>
         <p className="mt-1 text-sm leading-snug text-zinc-400">
-          M2: three lights, six presets, and notes on what each setup does.
+          M3: share any setup as a link, plus mobile polish.
         </p>
         <p className="mt-2 inline-block rounded-full bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200">
           Drag to rotate · Pinch to zoom
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={copyLink}
+            data-testid="copy-link"
+            className="min-h-11 rounded-full bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950"
+          >
+            {copyState === "copied"
+              ? "Copied"
+              : copyState === "failed"
+                ? "Copy failed — copy the URL from the address bar"
+                : "Copy link"}
+          </button>
+          <button
+            type="button"
+            onClick={resetSetup}
+            data-testid="reset-setup"
+            className="min-h-11 rounded-full bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200"
+          >
+            Reset
+          </button>
+        </div>
       </header>
 
       {/* Preset chips above the canvas, wrapping — no horizontal scroll. */}
@@ -96,6 +186,7 @@ export default function Home() {
           <button
             key={p.id}
             type="button"
+            data-testid={`preset-${p.id}`}
             onClick={() => applyPreset(p.id)}
             aria-pressed={activePreset === p.id}
             className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${
@@ -109,12 +200,18 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="h-[45dvh] shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
+      {/* M3: canvas sized to leave the controls reachable on a phone
+          screen, instead of pushing them far below the fold. */}
+      <div className="h-[42dvh] shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
         <LightingScene lights={lights} />
       </div>
 
-      {/* Active preset note, under the canvas. */}
-      <section className="px-4 pb-4 sm:px-6" aria-live="polite">
+      {/* Active preset note, under the canvas. Fixed minimum height so
+          switching presets does not jump the controls below. */}
+      <section
+        className="min-h-[11rem] px-4 pb-4 sm:min-h-[9rem] sm:px-6"
+        aria-live="polite"
+      >
         <h2 className="text-sm font-semibold text-zinc-300">
           {preset ? `${preset.name} — what to watch` : "Custom setup"}
         </h2>
