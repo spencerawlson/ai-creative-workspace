@@ -21,6 +21,10 @@ test("studio has no automatically detectable WCAG A/AA violations", async ({
   await showPanel(page, "scene");
   await page.getByTestId("node-light-key").click();
   expect(await axe(page)).toEqual([]);
+  await showPanel(page, "scene");
+  await page.getByTestId("node-pose").click();
+  await expect(page.getByTestId("pose-preset-neutral")).toBeVisible();
+  expect(await axe(page)).toEqual([]);
 });
 
 test("dialogs are accessible", async ({ page }) => {

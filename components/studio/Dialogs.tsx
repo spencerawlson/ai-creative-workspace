@@ -206,6 +206,7 @@ export const SHORTCUTS: Array<[string, string[]]> = [
   ["Duplicate selected light", ["Ctrl", "D"]],
   ["Delete selected light", ["Del"]],
   ["Switch mannequin", ["M"]],
+  ["Pose the mannequin", ["P"]],
   ["Show/hide light handles", ["H"]],
   ["Toggle side panel", ["["]],
   ["Deselect", ["Esc"]],

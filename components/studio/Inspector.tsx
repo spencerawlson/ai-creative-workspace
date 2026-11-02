@@ -21,6 +21,7 @@ import {
   type StudioLight,
 } from "@/lib/studio/schema";
 import type { Studio } from "./useStudio";
+import { PoseInspector, isPoseSelection } from "./PoseInspector";
 import type { ViewportHandle } from "./StudioViewport";
 import {
   Button,
@@ -52,6 +53,8 @@ export function Inspector(props: Props) {
     <div className="flex min-h-full flex-col" data-testid="inspector">
       {light ? (
         <LightInspector light={light} {...props} />
+      ) : isPoseSelection(selection) ? (
+        <PoseInspector {...props} />
       ) : selection === "model" ? (
         <ModelInspector {...props} />
       ) : selection === "camera" ? (
