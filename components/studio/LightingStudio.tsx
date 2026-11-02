@@ -24,6 +24,7 @@ import {
   Save,
   Sparkles,
   Undo2,
+  X,
 } from "lucide-react";
 import { PRESETS } from "@/lib/lighting";
 import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
@@ -667,12 +668,15 @@ function ViewportOverlay({
 function Notices({ studio }: { studio: Studio }) {
   const { notice } = studio;
   const [visible, setVisible] = useState<typeof notice>(null);
+  // Info notices fade on their own; errors stay until dismissed, so a
+  // message raised while the 3D view is still loading isn't missed.
   useEffect(() => {
     if (!notice) return;
     setVisible(notice);
+    if (notice.tone === "error") return;
     const t = setTimeout(
       () => setVisible((v) => (v?.id === notice.id ? null : v)),
-      notice.tone === "error" ? 6000 : 3500,
+      3500,
     );
     return () => clearTimeout(t);
   }, [notice]);
@@ -692,7 +696,18 @@ function Notices({ studio }: { studio: Studio }) {
               : "border-ink-700 bg-ink-850 text-ink-100",
           )}
         >
-          {visible.text}
+          <span className="flex items-start gap-2">
+            <span>{visible.text}</span>
+            {visible.tone === "error" && (
+              <IconButton
+                icon={X}
+                size="sm"
+                label="Dismiss"
+                className="-my-1 -mr-1"
+                onClick={() => setVisible(null)}
+              />
+            )}
+          </span>
         </div>
       )}
     </div>

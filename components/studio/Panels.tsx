@@ -296,7 +296,7 @@ export function PresetsPanel({ studio }: { studio: Studio }) {
           A preset replaces the lights only — mannequin, material, camera and
           backdrop stay. Undo with Ctrl+Z.
         </p>
-        <ul className="space-y-1" role="group" aria-label="Lighting presets">
+        <ul className="space-y-1" aria-label="Lighting presets">
           {PRESETS.map((p, i) => {
             const active = scene.preset === p.id;
             return (
@@ -330,7 +330,12 @@ export function PresetsPanel({ studio }: { studio: Studio }) {
                     <span className="block text-sm font-medium text-ink-100">
                       {p.name}
                     </span>
-                    <span className="block text-2xs text-ink-400">
+                    <span
+                      className={cx(
+                        "block text-2xs",
+                        active ? "text-ink-200" : "text-ink-400",
+                      )}
+                    >
                       {PRESET_BLURBS[p.id]}
                     </span>
                   </span>
