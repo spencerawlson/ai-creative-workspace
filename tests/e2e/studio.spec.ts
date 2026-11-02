@@ -82,8 +82,11 @@ test.describe("Lighting Studio — critical journeys", () => {
     await openStudio(
       page,
       `/?s=${encodeSetup("rembrandt", cloneLights(rembrandt.lights))}`,
-      () => expect(page.getByTestId("notice")).toContainText("shared"),
     );
+    // The link is upgraded in place to a v2 link ({"v":2,... in base64).
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("s"))
+      .toMatch(/^eyJ2Ijoy/);
     await showPanel(page, "presets");
     await expect(page.getByTestId("preset-rembrandt")).toHaveAttribute(
       "aria-pressed",

@@ -20,7 +20,7 @@ export async function openStudio(
   await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
     "data-status",
     "ready",
-    { timeout: 45_000 },
+    { timeout: 90_000 },
   );
   return errors;
 }

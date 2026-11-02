@@ -7,9 +7,13 @@ const PORT = Number(process.env.E2E_PORT ?? 3100);
  * real pixels, not GPU performance. */
 export default defineConfig({
   testDir: "tests/e2e",
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: true,
+  // Each worker runs WebGL in software (SwiftShader) at ~1 fps for this
+  // 481k-triangle scene. Parallel workers starve each other: contexts
+  // fail to create and models time out. One worker is slow but stable.
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
