@@ -2,3 +2,9 @@ node_modules/
 .next/
 out/
 .env*.local
+.env
+next-env.d.ts
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
