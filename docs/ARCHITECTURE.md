@@ -18,14 +18,18 @@ lib/studio/             Framework-free scene model (pure TS, unit-tested)
   actions.ts            SceneAction union, reducer, labels, coalescing
   history.ts            Undo/redo over SceneDocs
   presets.ts            Lighting, material, backdrop presets; defaults
+  pose.ts               Mannequin joints, limits, pose presets, mirror
   share.ts              ?s= link codec v2 (reads M3 v1 links)
   persistence.ts        Local autosave + .lighting.json project files
 lib/engine/StudioEngine.ts
                         Imperative Three.js renderer: render-on-demand,
                         handles/picking/drag, export, benchmark, disposal
+lib/engine/posing.ts    Pose angles -> bone rotations (unit-tested)
 lib/lighting.ts         Six curated presets, Kelvin→RGB, light geometry
 scripts/optimize-models.mjs
-                        Source scans → compressed public/models/*.glb
+                        Source scans → rigged, compressed public/models/*.glb
+scripts/rig-mannequin.mjs
+                        Fits a skeleton to each scan and bakes skin weights
 ```
 
 **Single mutation path.** All scene changes go through
@@ -41,6 +45,16 @@ it. Viewport gestures (select, drag a handle) are reported back as
 callbacks and come back in as validated actions. The engine renders on
 demand, caches models per URL, token-guards loads, and `dispose()`
 frees every GPU resource it created.
+
+**Posing.** The scans have no skeleton, so the model build fits one
+(13 bones, world-aligned in the bind pose) and bakes smoothed skin
+weights; see the header of `scripts/rig-mannequin.mjs`. A pose is plain
+data in the scene (`pose.joints`, degrees relative to the A-pose) and
+goes through the same actions, history, autosave and share links as
+lighting. The engine turns angles into bone rotations
+(`lib/engine/posing.ts`). Taps on the figure hit invisible per-bone
+capsules, not the 481k-triangle skinned mesh, and select
+`pose:<joint>`.
 
 ## 2. Persistent workspace (Designed — not built)
 

@@ -32,10 +32,16 @@ jobs:
       - run: npm audit --audit-level=high
 
   e2e:
-    name: E2E + accessibility (desktop, tablet, phone)
+    # One job per viewport: WebGL runs in software on CI runners, so the
+    # suite is slow but trivially parallel across projects.
+    name: E2E + accessibility (${{ matrix.project }})
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, tablet, mobile]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,11 +51,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/

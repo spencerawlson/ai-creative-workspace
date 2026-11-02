@@ -11,6 +11,10 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Butterfly, Low-key, High-key.
 - Male and female mannequins, eight material presets plus custom colour,
   roughness and metalness.
+- Pose the mannequin: head, torso, shoulders, elbows, wrists, hips and
+  knees, each with named movements (raise, bend, lift, twist…) and
+  anatomical limits. Seven pose presets (Hand raised, Hand to chin,
+  Hand on hip…), mirror, and tap a body part to jump to its controls.
 - Six backdrops (shadow catcher or seamless sweep), camera focal length,
   exposure in EV, Filmic/AgX/Neutral tone mapping.
 - Undo/redo with a history panel, keyboard shortcuts (press `?`).
@@ -33,15 +37,15 @@ npm install
 npm run dev            # http://localhost:3000
 ```
 
-| Command             | What it does                                           |
-| ------------------- | ------------------------------------------------------ |
-| `npm run build`     | Production build                                       |
-| `npm test`          | Unit tests (Vitest)                                    |
-| `npm run test:e2e`  | E2E + accessibility (Playwright: desktop/tablet/phone) |
-| `npm run lint`      | ESLint                                                 |
-| `npm run typecheck` | TypeScript                                             |
-| `npm run format`    | Prettier                                               |
-| `npm run models`    | Rebuild `public/models/*.glb` from `assets/source/`    |
+| Command             | What it does                                              |
+| ------------------- | --------------------------------------------------------- |
+| `npm run build`     | Production build                                          |
+| `npm test`          | Unit tests (Vitest)                                       |
+| `npm run test:e2e`  | E2E + accessibility (Playwright: desktop/tablet/phone)    |
+| `npm run lint`      | ESLint                                                    |
+| `npm run typecheck` | TypeScript                                                |
+| `npm run format`    | Prettier                                                  |
+| `npm run models`    | Rig + rebuild `public/models/*.glb` from `assets/source/` |
 
 Run `npx playwright install chromium` once before the E2E tests.
 
