@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  kelvinToRgb,
-  lightPosition,
-  type LightState,
-} from "@/lib/lighting";
+import { kelvinToRgb, lightPosition, type LightState } from "@/lib/lighting";
 
 /**
  * M2: real Three.js scene, Meshy mannequin, orbit + zoom, and THREE
@@ -122,16 +118,12 @@ export function LightingScene({
     let renderer: import("three").WebGLRenderer | null = null;
     let animationId = 0;
     let disposed = false;
-    let threeLights: Record<
-      string,
-      import("three").DirectionalLight
-    > = {};
+    const threeLights: Record<string, import("three").DirectionalLight> = {};
 
     async function init() {
       const THREE = await import("three");
-      const { OrbitControls } = await import(
-        "three/examples/jsm/controls/OrbitControls.js"
-      );
+      const { OrbitControls } =
+        await import("three/examples/jsm/controls/OrbitControls.js");
       if (disposed || !container) return;
       const el = container;
 
@@ -202,9 +194,8 @@ export function LightingScene({
       let loadToken = 0;
       const loadModel = async (url: string) => {
         const token = ++loadToken;
-        const { GLTFLoader } = await import(
-          "three/examples/jsm/loaders/GLTFLoader.js"
-        );
+        const { GLTFLoader } =
+          await import("three/examples/jsm/loaders/GLTFLoader.js");
         if (disposed || token !== loadToken) return;
         const loader = new GLTFLoader();
         loader.load(

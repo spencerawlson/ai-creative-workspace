@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  LightingScene,
-  type MannequinModel,
-} from "@/components/LightingScene";
+import { LightingScene, type MannequinModel } from "@/components/LightingScene";
 import {
   CUSTOM_NOTE,
   PRESETS,
@@ -165,7 +162,10 @@ export default function Home() {
           M3: share any setup as a link, plus mobile polish.
         </p>
         <p className="mt-2 text-sm">
-          <a href="/photography" className="font-medium text-zinc-300 underline">
+          <a
+            href="/photography"
+            className="font-medium text-zinc-300 underline"
+          >
             Photography — Camera Basics →
           </a>
         </p>

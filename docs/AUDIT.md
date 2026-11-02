@@ -5,12 +5,12 @@ below was checked against the code and git history, not the README.
 
 ## 1. Git state
 
-| Finding | Evidence | Severity |
-| --- | --- | --- |
-| Merge commit `c18cd3c` committed **unresolved conflict markers** in `app/page.tsx` and `components/LightingScene.tsx` | `git grep '^<<<<<<<' origin/main` → 6 markers | P0 — app does not build |
-| `d96f77a` "Last Pull" rewrote 13 files with CRLF line endings; it has **no content changes** | `git diff --ignore-cr-at-eol 56422ff d96f77a` is empty | P1 — caused the conflict |
-| No `.gitattributes`; `core.autocrlf=true` on the dev machine | — | P1 — will recur |
-| Open Dependabot PR #1: `postcss` 8.4.49 → 8.5.23 | `origin/dependabot/...` | P1 — security |
+| Finding                                                                                                               | Evidence                                               | Severity                 |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------ |
+| Merge commit `c18cd3c` committed **unresolved conflict markers** in `app/page.tsx` and `components/LightingScene.tsx` | `git grep '^<<<<<<<' origin/main` → 6 markers          | P0 — app does not build  |
+| `d96f77a` "Last Pull" rewrote 13 files with CRLF line endings; it has **no content changes**                          | `git diff --ignore-cr-at-eol 56422ff d96f77a` is empty | P1 — caused the conflict |
+| No `.gitattributes`; `core.autocrlf=true` on the dev machine                                                          | —                                                      | P1 — will recur          |
+| Open Dependabot PR #1: `postcss` 8.4.49 → 8.5.23                                                                      | `origin/dependabot/...`                                | P1 — security            |
 
 **Conflict analysis.** The HEAD side of both conflicts is the unchanged
 `56422ff` code with CRLF endings. The incoming side (`059bf1c`) is a strict
@@ -20,13 +20,13 @@ needs. The correct resolution is the `059bf1c` side, normalised to LF.
 
 ## 2. Baseline commands (before any fix)
 
-| Command | Result |
-| --- | --- |
-| `npx tsc --noEmit` | **FAIL** — 6 × TS1185 "Merge conflict marker encountered" |
-| `npm run build` | **FAIL** — webpack syntax error in `app/page.tsx` |
-| `npm run lint` | not configured |
-| `npm test` | not configured — no tests exist |
-| `npm audit` | 3 vulnerabilities: `postcss` ≤8.5.22 (high), `sharp` ≤0.35.5-rc.1 (high, libvips/libheif/librsvg CVEs, optional dep of `next`), 1 moderate |
+| Command            | Result                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npx tsc --noEmit` | **FAIL** — 6 × TS1185 "Merge conflict marker encountered"                                                                                  |
+| `npm run build`    | **FAIL** — webpack syntax error in `app/page.tsx`                                                                                          |
+| `npm run lint`     | not configured                                                                                                                             |
+| `npm test`         | not configured — no tests exist                                                                                                            |
+| `npm audit`        | 3 vulnerabilities: `postcss` ≤8.5.22 (high), `sharp` ≤0.35.5-rc.1 (high, libvips/libheif/librsvg CVEs, optional dep of `next`), 1 moderate |
 
 ## 3. Existing features (verified in code)
 
@@ -45,12 +45,12 @@ needs. The correct resolution is the `059bf1c` side, normalised to LF.
 
 ## 4. Broken or misleading features
 
-| # | Issue | Detail |
-| --- | --- | --- |
-| B1 | **Shadow softness slider does nothing** | Renderer uses `PCFSoftShadowMap`; three r170's `SHADOWMAP_TYPE_PCF_SOFT` shader branch never reads `shadowRadius`. Only `PCFShadowMap`/`VSMShadowMap` honour `light.shadow.radius`. |
-| B2 | Resizing only listens to `window.resize` | A container resize (panels, orientation on some browsers) leaves a stretched canvas. |
-| B3 | README / layout metadata describe M1 ("Lights and presets come in M2") | Stale; README lists files that have changed. |
-| B4 | Face view applied before load uses a hard-coded 1.72 head height | Corrected after load only if the view is still "face". Minor. |
+| #   | Issue                                                                  | Detail                                                                                                                                                                              |
+| --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1  | **Shadow softness slider does nothing**                                | Renderer uses `PCFSoftShadowMap`; three r170's `SHADOWMAP_TYPE_PCF_SOFT` shader branch never reads `shadowRadius`. Only `PCFShadowMap`/`VSMShadowMap` honour `light.shadow.radius`. |
+| B2  | Resizing only listens to `window.resize`                               | A container resize (panels, orientation on some browsers) leaves a stretched canvas.                                                                                                |
+| B3  | README / layout metadata describe M1 ("Lights and presets come in M2") | Stale; README lists files that have changed.                                                                                                                                        |
+| B4  | Face view applied before load uses a hard-coded 1.72 head height       | Corrected after load only if the view is still "face". Minor.                                                                                                                       |
 
 ## 5. Rendering lifecycle & assets
 

@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  LightingScene,
-  type MannequinModel,
-} from "@/components/LightingScene";
+import { LightingScene, type MannequinModel } from "@/components/LightingScene";
 import { PRESETS, cloneLights } from "@/lib/lighting";
 import {
   EXPOSURES,
@@ -30,8 +27,7 @@ export default function Photography() {
   const [model, setModel] = useState<MannequinModel>("male");
   const [viewNonce, setViewNonce] = useState(0);
 
-  const framingPreset =
-    FRAMINGS.find((f) => f.id === framing) ?? FRAMINGS[1];
+  const framingPreset = FRAMINGS.find((f) => f.id === framing) ?? FRAMINGS[1];
   const exposurePreset =
     EXPOSURES.find((e) => e.id === exposureId) ?? EXPOSURES[0];
   // Lighting stays at the default Three-point setup for M1; the
@@ -51,19 +47,15 @@ export default function Photography() {
   return (
     <main className="flex min-h-dvh flex-col bg-zinc-950 text-zinc-100">
       <header className="shrink-0 px-4 pb-3 pt-4 sm:px-6">
-        <Link
-          href="/"
-          className="text-sm font-medium text-zinc-300 underline"
-        >
+        <Link href="/" className="text-sm font-medium text-zinc-300 underline">
           ← Lighting Studio
         </Link>
         <h1 className="mt-2 text-xl font-semibold leading-tight sm:text-2xl">
           Photography — Camera Basics
         </h1>
         <p className="mt-1 text-sm leading-snug text-zinc-400">
-          M1: the same mannequin, the same lights — now the camera
-          is the lesson. Framing, focal length, composition, and
-          exposure.
+          M1: the same mannequin, the same lights — now the camera is the
+          lesson. Framing, focal length, composition, and exposure.
         </p>
         <p className="mt-2 inline-block rounded-full bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200">
           Drag to rotate · Pinch to zoom
@@ -149,10 +141,7 @@ export default function Photography() {
         )}
       </div>
 
-      <section
-        className="min-h-[9rem] px-4 pb-4 sm:px-6"
-        aria-live="polite"
-      >
+      <section className="min-h-[9rem] px-4 pb-4 sm:px-6" aria-live="polite">
         <h2 className="text-sm font-semibold text-zinc-300">
           {framingPreset.name} — what to watch
         </h2>
@@ -179,10 +168,9 @@ export default function Photography() {
             className="mt-1 w-full accent-zinc-100"
           />
           <span className="text-sm text-zinc-400">
-            Shorter (24 mm) sees wider; longer (85 mm) sees narrower
-            and flattens a face gently. This changes the angle of
-            view only — it does not simulate a real lens, depth of
-            field, or distortion.
+            Shorter (24 mm) sees wider; longer (85 mm) sees narrower and
+            flattens a face gently. This changes the angle of view only — it
+            does not simulate a real lens, depth of field, or distortion.
           </span>
         </label>
 
@@ -196,16 +184,19 @@ export default function Photography() {
           Rule-of-thirds guide
         </label>
         <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-          Put the eyes or the main subject near where the lines
-          cross, not dead centre — unless centre is the point.
-          The guide is an overlay on the preview, not part of any
-          picture.
+          Put the eyes or the main subject near where the lines cross, not dead
+          centre — unless centre is the point. The guide is an overlay on the
+          preview, not part of any picture.
         </p>
 
         <h2 className="mt-5 text-sm font-semibold text-zinc-300">
           Exposure — aperture / ISO / shutter
         </h2>
-        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Exposure">
+        <div
+          className="mt-2 flex flex-wrap gap-2"
+          role="group"
+          aria-label="Exposure"
+        >
           {EXPOSURES.map((e) => (
             <button
               key={e.id}
@@ -234,8 +225,8 @@ export default function Photography() {
           {EXPOSURE_HONEST_NOTE}
         </p>
         <p className="mt-3 text-sm leading-relaxed text-zinc-500">
-          M1 has no photo export. A scene capture, if added later,
-          will be labelled as a scene capture, not a photograph.
+          M1 has no photo export. A scene capture, if added later, will be
+          labelled as a scene capture, not a photograph.
         </p>
       </section>
     </main>

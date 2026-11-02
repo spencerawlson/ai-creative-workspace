@@ -32,6 +32,7 @@ per choice, and a result you can see immediately on the figure.
 ## What it reuses vs what is new
 
 Reuses:
+
 - The mannequins as starting figures (male and female Meshy GLBs,
   already in `public/`, not duplicated).
 - The Three.js scene and orbit/zoom controls as a viewer.
@@ -44,6 +45,7 @@ Reuses:
   the canvas.
 
 Genuinely new:
+
 - Character state: proportions, silhouette, posture, and feature
   choices, as data — not as free-form mesh editing.
 - Character presets: a small set of readable starting characters
