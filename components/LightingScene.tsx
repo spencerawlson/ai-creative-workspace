@@ -11,8 +11,8 @@ import { kelvinToRgb, lightPosition, type LightState } from "@/lib/lighting";
 export type MannequinModel = "male" | "female";
 
 const MODEL_URL: Record<MannequinModel, string> = {
-  male: "/meshy-body.glb",
-  female: "/meshy-body-female.glb",
+  male: "/models/mannequin-male.glb",
+  female: "/models/mannequin-female.glb",
 };
 
 export function LightingScene({
@@ -194,10 +194,12 @@ export function LightingScene({
       let loadToken = 0;
       const loadModel = async (url: string) => {
         const token = ++loadToken;
-        const { GLTFLoader } =
-          await import("three/examples/jsm/loaders/GLTFLoader.js");
+        const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
+          import("three/examples/jsm/loaders/GLTFLoader.js"),
+          import("three/examples/jsm/libs/meshopt_decoder.module.js"),
+        ]);
         if (disposed || token !== loadToken) return;
-        const loader = new GLTFLoader();
+        const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
         loader.load(
           url,
           (gltf) => {
