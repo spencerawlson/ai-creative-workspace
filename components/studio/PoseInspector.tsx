@@ -122,8 +122,8 @@ export function PoseInspector({
           ))}
         </div>
         <p className="mt-1.5 text-2xs text-ink-400">
-          Left and right are the mannequin&apos;s own. Tip: tap a body part in
-          the viewport to jump to it.
+          Left and right are the mannequin&apos;s own. In the viewport, drag a
+          body part to pose it; grab a hand to move the whole arm.
         </p>
 
         {group.joints.map((id) => (

@@ -159,3 +159,222 @@ export function applyPose(
     bones[JOINT_BONE[id]].quaternion.copy(jointQuaternion(id, values, dirs));
   }
 }
+
+// ------------------------------------------------------------ drag to pose
+
+/** One angle a viewport drag may change. */
+export interface DragVar {
+  joint: JointId;
+  dof: string;
+  min: number;
+  max: number;
+}
+
+/** What dragging each body part moves: the joint above it, except the
+ * hand, which carries the whole arm (shoulder + elbow) like a puppet's.
+ * Twists are left to the sliders — a drag can't express them well. The
+ * pelvis has no entry: dragging it orbits the camera. */
+const DRAG_CHAINS: Partial<Record<BoneName, Array<[JointId, string[]]>>> = {
+  spine: [["spine", ["bend", "side"]]],
+  neck: [["head", ["nod", "turn"]]],
+  shoulderL: [["shoulderL", ["raise", "forward"]]],
+  elbowL: [["elbowL", ["bend"]]],
+  wristL: [
+    ["shoulderL", ["raise", "forward"]],
+    ["elbowL", ["bend"]],
+  ],
+  shoulderR: [["shoulderR", ["raise", "forward"]]],
+  elbowR: [["elbowR", ["bend"]]],
+  wristR: [
+    ["shoulderR", ["raise", "forward"]],
+    ["elbowR", ["bend"]],
+  ],
+  hipL: [["hipL", ["forward", "out"]]],
+  kneeL: [["kneeL", ["bend"]]],
+  hipR: [["hipR", ["forward", "out"]]],
+  kneeR: [["kneeR", ["bend"]]],
+};
+
+/** The angles a drag on `bone` changes, root-most joint first; empty if
+ * that part isn't draggable. */
+export function dragVariables(bone: BoneName): DragVar[] {
+  return toVars(DRAG_CHAINS[bone] ?? []);
+}
+
+/** A dot drawn on a joint in pose mode. Dragging it turns that joint so
+ * the part below follows the pointer, measured at `effector`: the next
+ * joint down, or the limb's tip (crown, fingertips, sole). */
+export interface JointDot {
+  bone: BoneName;
+  joint: JointId;
+  effector: BoneName | "tip";
+  vars: DragVar[];
+}
+
+export const JOINT_DOTS: JointDot[] = (
+  [
+    // The crown doesn't move when the head turns, so the dot nods/tilts.
+    ["neck", "head", "tip", ["nod", "tilt"]],
+    ["spine", "spine", "neck", ["bend", "side"]],
+    ["shoulderL", "shoulderL", "elbowL", ["raise", "forward"]],
+    ["elbowL", "elbowL", "wristL", ["bend"]],
+    ["wristL", "wristL", "tip", ["bend", "lift"]],
+    ["shoulderR", "shoulderR", "elbowR", ["raise", "forward"]],
+    ["elbowR", "elbowR", "wristR", ["bend"]],
+    ["wristR", "wristR", "tip", ["bend", "lift"]],
+    ["hipL", "hipL", "kneeL", ["forward", "out"]],
+    ["kneeL", "kneeL", "tip", ["bend"]],
+    ["hipR", "hipR", "kneeR", ["forward", "out"]],
+    ["kneeR", "kneeR", "tip", ["bend"]],
+  ] as Array<[BoneName, JointId, BoneName | "tip", string[]]>
+).map(([bone, joint, effector, dofs]) => ({
+  bone,
+  joint,
+  effector,
+  vars: toVars([[joint, dofs]]),
+}));
+
+function toVars(chain: Array<[JointId, string[]]>): DragVar[] {
+  return chain.flatMap(([joint, dofs]) =>
+    dofs.map((dof) => {
+      const d = (
+        JOINTS[joint].dofs as Record<string, { min: number; max: number }>
+      )[dof];
+      return { joint, dof, min: d.min, max: d.max };
+    }),
+  );
+}
+
+/** Returns a function that poses `bones` with the drag variables set to
+ * `x` (degrees; other angles from `joints`) and reports where the grabbed
+ * point — `local`, in the frame of `grabbed` — ends up in world space.
+ * Parents of the first variable's bone must have current world matrices. */
+export function makeReach(
+  bones: Record<BoneName, THREE.Bone>,
+  dirs: RigDirections,
+  joints: PoseJoints,
+  vars: DragVar[],
+  grabbed: THREE.Object3D,
+  local: THREE.Vector3,
+): (x: number[]) => THREE.Vector3 {
+  const top = bones[JOINT_BONE[vars[0].joint]];
+  const all = joints as Record<string, Record<string, number>>;
+  return (x) => {
+    const values: Partial<Record<JointId, Record<string, number>>> = {};
+    vars.forEach((v, i) => {
+      (values[v.joint] ??= { ...all[v.joint] })[v.dof] = x[i];
+    });
+    for (const [id, vals] of Object.entries(values) as [
+      JointId,
+      Record<string, number>,
+    ][]) {
+      bones[JOINT_BONE[id]].quaternion.copy(jointQuaternion(id, vals, dirs));
+    }
+    top.updateWorldMatrix(false, true);
+    return grabbed.localToWorld(local.clone());
+  };
+}
+
+/** Finite-difference step (degrees), damping (metres) and the largest
+ * change per iteration (degrees) for `solveReach`. */
+const FD_STEP = 0.5;
+const DAMPING = 0.08;
+const MAX_STEP = 12;
+
+/** Damped least squares: move the angles `start` (degrees, clamped to
+ * each variable's limits) so that `reach(x)` gets as close as it can to
+ * `target`. Starting from the current pose keeps a drag continuous, and
+ * the damping makes small pointer moves give small, smooth changes. */
+export function solveReach(
+  vars: DragVar[],
+  start: number[],
+  reach: (x: number[]) => THREE.Vector3,
+  target: THREE.Vector3,
+  iterations = 8,
+): number[] {
+  const clamp = (x: number[]) =>
+    x.map((v, i) => THREE.MathUtils.clamp(v, vars[i].min, vars[i].max));
+  let x = clamp(start);
+  let p = reach(x);
+  let err = p.distanceToSquared(target);
+  for (let it = 0; it < iterations && err > 1e-8; it++) {
+    // Jacobian columns, metres per radian (step inwards at a limit).
+    const cols = vars.map((v, i) => {
+      const xi = x.slice();
+      const s = xi[i] + FD_STEP > v.max ? -FD_STEP : FD_STEP;
+      xi[i] += s;
+      return reach(xi)
+        .sub(p)
+        .divideScalar(s * DEG);
+    });
+    const e = target.clone().sub(p);
+    // (JᵀJ + λ²I) d = Jᵀe
+    const A = cols.map((ci, i) =>
+      cols.map((cj, j) => ci.dot(cj) + (i === j ? DAMPING * DAMPING : 0)),
+    );
+    const b = cols.map((c) => c.dot(e));
+    const d = solveLinear(A, b);
+    let step = d.map((r) =>
+      THREE.MathUtils.clamp(r / DEG, -MAX_STEP, MAX_STEP),
+    );
+    let improved = false;
+    for (let tries = 0; tries < 3 && !improved; tries++) {
+      const cand = clamp(x.map((v, i) => v + step[i]));
+      const pc = reach(cand);
+      const ec = pc.distanceToSquared(target);
+      if (ec < err) {
+        x = cand;
+        p = pc;
+        err = ec;
+        improved = true;
+      } else {
+        step = step.map((s) => s / 2);
+      }
+    }
+    if (!improved) {
+      // Stuck where the gradient vanishes, e.g. a hanging hand pulled
+      // straight up: nudge each angle both ways and keep the best.
+      let best: number[] | null = null;
+      for (let i = 0; i < x.length; i++) {
+        for (const s of [MAX_STEP, -MAX_STEP]) {
+          const cand = clamp(x.map((v, j) => (j === i ? v + s : v)));
+          const pc = reach(cand);
+          const ec = pc.distanceToSquared(target);
+          if (ec < err) {
+            best = cand;
+            p = pc;
+            err = ec;
+          }
+        }
+      }
+      if (!best) break;
+      x = best;
+    }
+  }
+  reach(x); // leave the bones at the answer
+  return x;
+}
+
+/** Gaussian elimination with partial pivoting, for the tiny (≤ 3×3)
+ * systems above. The damping keeps them well conditioned. */
+function solveLinear(A: number[][], b: number[]): number[] {
+  const n = b.length;
+  const m = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let pivot = c;
+    for (let r = c + 1; r < n; r++)
+      if (Math.abs(m[r][c]) > Math.abs(m[pivot][c])) pivot = r;
+    [m[c], m[pivot]] = [m[pivot], m[c]];
+    for (let r = c + 1; r < n; r++) {
+      const f = m[r][c] / m[c][c];
+      for (let k = c; k <= n; k++) m[r][k] -= f * m[c][k];
+    }
+  }
+  const x = new Array<number>(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = m[r][n];
+    for (let k = r + 1; k < n; k++) s -= m[r][k] * x[k];
+    x[r] = s / m[r][r];
+  }
+  return x;
+}

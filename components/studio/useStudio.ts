@@ -43,9 +43,18 @@ export function useStudio() {
     setNotice({ id: ++noticeId.current, tone, text });
   }, []);
 
-  const dispatch = useCallback((action: SceneAction) => {
-    send({ type: "commit", action, now: performance.now() });
-  }, []);
+  /** `gesture`: part of a viewport drag; merges until `seal`. */
+  const dispatch = useCallback(
+    (action: SceneAction, opts?: { gesture?: boolean }) => {
+      send({
+        type: "commit",
+        action,
+        now: performance.now(),
+        gesture: opts?.gesture,
+      });
+    },
+    [],
+  );
   const seal = useCallback(() => send({ type: "seal" }), []);
   const undo = useCallback(() => send({ type: "undo" }), []);
   const redo = useCallback(() => send({ type: "redo" }), []);

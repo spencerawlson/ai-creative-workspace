@@ -21,6 +21,7 @@ import type {
   Selection,
   StudioEngine,
 } from "@/lib/engine/StudioEngine";
+import type { JointId } from "@/lib/studio/pose";
 import { nudgeLight } from "@/lib/studio/actions";
 import type { SceneDoc } from "@/lib/studio/schema";
 import { cx } from "./ui";
@@ -45,6 +46,8 @@ export function StudioViewport({
   onSelect,
   onLightDrag,
   onLightDragEnd,
+  onPoseDrag,
+  onPoseDragEnd,
   className,
   label = "3D lighting studio viewport",
 }: {
@@ -61,6 +64,10 @@ export function StudioViewport({
     patch: { azimuth: number; elevation: number },
   ) => void;
   onLightDragEnd?: (id: string) => void;
+  onPoseDrag?: (
+    patches: Partial<Record<JointId, Record<string, number>>>,
+  ) => void;
+  onPoseDragEnd?: () => void;
   className?: string;
   label?: string;
 }) {
@@ -79,6 +86,8 @@ export function StudioViewport({
     onSelect,
     onLightDrag,
     onLightDragEnd,
+    onPoseDrag,
+    onPoseDragEnd,
   });
   latest.current = {
     scene,
@@ -90,6 +99,8 @@ export function StudioViewport({
     onSelect,
     onLightDrag,
     onLightDragEnd,
+    onPoseDrag,
+    onPoseDragEnd,
   };
 
   useEffect(() => {
@@ -105,6 +116,8 @@ export function StudioViewport({
             onSelect: (s) => latest.current.onSelect?.(s),
             onLightDrag: (id, p) => latest.current.onLightDrag?.(id, p),
             onLightDragEnd: (id) => latest.current.onLightDragEnd?.(id),
+            onPoseDrag: (p) => latest.current.onPoseDrag?.(p),
+            onPoseDragEnd: () => latest.current.onPoseDragEnd?.(),
             onStatus: (s) => {
               setStatus(s.model);
               setMessage(s.message ?? null);

@@ -31,6 +31,7 @@ import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
 import { parseProject, serializeProject } from "@/lib/studio/persistence";
 import { ExportDialog, ShortcutsDialog } from "./Dialogs";
 import { Inspector } from "./Inspector";
+import type { JointId } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
 import { HistoryPanel, PresetsPanel, ScenePanel } from "./Panels";
 import { StudioViewport, type ViewportHandle } from "./StudioViewport";
@@ -126,7 +127,13 @@ export function LightingStudio() {
 
   const onLightDrag = useCallback(
     (id: string, patch: { azimuth: number; elevation: number }) =>
-      dispatch({ type: "updateLight", id, patch }),
+      dispatch({ type: "updateLight", id, patch }, { gesture: true }),
+    [dispatch],
+  );
+
+  const onPoseDrag = useCallback(
+    (patches: Partial<Record<JointId, Record<string, number>>>) =>
+      dispatch({ type: "updateJoints", patches }, { gesture: true }),
     [dispatch],
   );
 
@@ -405,8 +412,11 @@ export function LightingStudio() {
             onSelect={select}
             onLightDrag={onLightDrag}
             onLightDragEnd={seal}
+            onPoseDrag={onPoseDrag}
+            onPoseDragEnd={seal}
           />
           <ViewportOverlay
+            posing={isPoseSelection(validSelection)}
             view={view}
             onView={changeView}
             showHandles={showHandles}
@@ -624,12 +634,14 @@ function Toolbar({
 }
 
 function ViewportOverlay({
+  posing,
   view,
   onView,
   showHandles,
   onShowHandles,
   studio,
 }: {
+  posing: boolean;
   view: CameraView;
   onView: (v: CameraView) => void;
   showHandles: boolean;
@@ -681,7 +693,9 @@ function ViewportOverlay({
         </div>
       </div>
       <p className="pointer-events-none absolute bottom-2 left-2 hidden rounded-md bg-ink-900/70 px-2 py-1 text-2xs text-ink-300 backdrop-blur sm:block">
-        Drag to orbit · scroll or pinch to zoom · drag a light handle to move it
+        {posing
+          ? "Drag a body part to pose it · drag around the figure to orbit · scroll or pinch to zoom"
+          : "Drag to orbit · scroll or pinch to zoom · drag a light handle to move it"}
       </p>
     </>
   );
