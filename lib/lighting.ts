@@ -55,16 +55,20 @@ function light(
   };
 }
 
-/** Approximate colour for a colour temperature, as [r, g, b] in 0–1. */
+/** Approximate colour for a colour temperature, as [r, g, b] in 0–1.
+ * Supported range is 2000–9000K; the 2700–6500K stops are unchanged
+ * from M2 so existing presets and share links render identically. */
 export function kelvinToRgb(kelvin: number): [number, number, number] {
-  const k = Math.max(2700, Math.min(6500, kelvin));
-  // Piecewise-linear stops: warm tungsten → neutral → daylight.
+  const k = Math.max(2000, Math.min(9000, kelvin));
+  // Piecewise-linear stops: candle → tungsten → neutral → daylight → shade.
   const stops: Array<[number, [number, number, number]]> = [
+    [2000, [1.0, 0.5, 0.18]],
     [2700, [1.0, 0.62, 0.32]],
     [3500, [1.0, 0.78, 0.55]],
     [4500, [1.0, 0.89, 0.74]],
     [5600, [1.0, 0.97, 0.92]],
     [6500, [0.94, 0.96, 1.0]],
+    [9000, [0.8, 0.88, 1.0]],
   ];
   for (let i = 0; i < stops.length - 1; i++) {
     const [k0, c0] = stops[i];
@@ -81,14 +85,19 @@ export function kelvinToRgb(kelvin: number): [number, number, number] {
   return stops[stops.length - 1][1];
 }
 
+/** Height of the point every light orbits and aims at (mannequin centre). */
+export const LIGHT_PIVOT_Y = 0.95;
+
 /** Position of a light in world space, aimed at the mannequin centre. */
-export function lightPosition(l: LightState): [number, number, number] {
+export function lightPosition(
+  l: Pick<LightState, "azimuth" | "elevation" | "distance">,
+): [number, number, number] {
   const az = (l.azimuth * Math.PI) / 180;
   const el = (l.elevation * Math.PI) / 180;
   const d = l.distance;
   return [
     d * Math.cos(el) * Math.sin(az),
-    0.95 + d * Math.sin(el),
+    LIGHT_PIVOT_Y + d * Math.sin(el),
     d * Math.cos(el) * Math.cos(az),
   ];
 }

@@ -1,22 +1,30 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Lighting Studio — Pilot",
+  title: "Lighting Studio — AI Creative Workspace",
   description:
-    "M1: a real Three.js lighting scene with a procedural mannequin, orbit and zoom. Lights and presets come in M2.",
+    "Light a 3D mannequin like a studio photographer: key, fill, rim, spot and softbox lights, six classic presets, share links and high-resolution export.",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  themeColor: "#09090c",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body>{children}</body>
     </html>
   );

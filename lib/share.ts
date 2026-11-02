@@ -41,10 +41,7 @@ export function encodeSetup(preset: string, lights: LightState[]): string {
   };
   const json = JSON.stringify(payload);
   // JSON here is ASCII-only, so btoa is safe.
-  return btoa(json)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function isNum(v: unknown): v is number {
@@ -73,12 +70,18 @@ export function decodeSetup(param: string | null): SharedSetup | null {
       const [on, az, el, dist, inten, temp, soft, shad] = row;
       if (
         (on !== 0 && on !== 1) ||
-        !isNum(az) || !inRange(az, 0, 360) ||
-        !isNum(el) || !inRange(el, 0, 80) ||
-        !isNum(dist) || !inRange(dist, 2, 7) ||
-        !isNum(inten) || !inRange(inten, 0, 4) ||
-        !isNum(temp) || !inRange(temp, 2700, 6500) ||
-        !isNum(soft) || !inRange(soft, 0, 10) ||
+        !isNum(az) ||
+        !inRange(az, 0, 360) ||
+        !isNum(el) ||
+        !inRange(el, 0, 80) ||
+        !isNum(dist) ||
+        !inRange(dist, 2, 7) ||
+        !isNum(inten) ||
+        !inRange(inten, 0, 4) ||
+        !isNum(temp) ||
+        !inRange(temp, 2700, 6500) ||
+        !isNum(soft) ||
+        !inRange(soft, 0, 10) ||
         (shad !== 0 && shad !== 1)
       ) {
         return null;
