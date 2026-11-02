@@ -6,7 +6,11 @@
  *     c: [focalMm, exposureEv, toneMapping],
  *     mt: [preset, color, roughness, metalness],
  *     b: [preset, color, style, shadowOpacity],
- *     q: shadowQuality }
+ *     q: shadowQuality,
+ *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]] }
+ *
+ * `po` is omitted for the scan's A-pose, so unposed links are unchanged
+ * and links made before posing existed open in the A-pose.
  *
  * Links made by M3 (v1: three lights, no `v`) still open: they are
  * decoded by the original strict v1 decoder and upgraded with defaults.
@@ -16,6 +20,7 @@
 
 import { decodeSetup } from "@/lib/share";
 import { defaultScene, fromLegacyLight, presetLights } from "./presets";
+import { flattenJoints, isNeutral, unflattenJoints } from "./pose";
 import { LIGHT_KINDS, SceneSchema, type SceneDoc } from "./schema";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -61,6 +66,14 @@ export function encodeScene(scene: SceneDoc): string {
       round2(scene.backdrop.shadowOpacity),
     ],
     q: scene.shadows.quality,
+    ...(isNeutral(scene.pose.joints)
+      ? {}
+      : {
+          po: [
+            scene.pose.preset,
+            flattenJoints(scene.pose.joints).map((v) => Math.round(v)),
+          ],
+        }),
   };
   return toBase64Url(JSON.stringify(payload));
 }
@@ -119,6 +132,14 @@ export function decodeScene(param: string | null): SceneDoc | null {
       shadowOpacity: arr(p.b)[3],
     },
     shadows: { quality: p.q },
+    ...("po" in p
+      ? {
+          pose: {
+            preset: arr(p.po)[0],
+            joints: unflattenJoints(arr(arr(p.po)[1])),
+          },
+        }
+      : {}),
   };
   const checked = SceneSchema.safeParse(candidate);
   return checked.success ? checked.data : null;

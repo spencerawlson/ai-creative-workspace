@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { PoseSchema, defaultPose } from "./pose";
 
 export const LIMITS = {
   maxLights: 8,
@@ -115,6 +116,9 @@ export const SceneSchema = z
     material: MaterialSchema,
     backdrop: BackdropSchema,
     shadows: ShadowSchema,
+    /** Optional on input: scenes saved before posing existed load in
+     * the scan's A-pose. */
+    pose: PoseSchema.default(defaultPose),
   })
   .refine((s) => new Set(s.lights.map((l) => l.id)).size === s.lights.length, {
     message: "Light ids must be unique",

@@ -3,6 +3,7 @@
  */
 
 import { PRESETS, type LightState } from "@/lib/lighting";
+import { defaultPose } from "./pose";
 import type {
   BackdropSettings,
   CameraSettings,
@@ -213,6 +214,7 @@ export function defaultScene(): SceneDoc {
     material: materialFromPreset("studio-grey")!,
     backdrop: backdropFromPreset("studio-dark")!,
     shadows: { quality: "medium" },
+    pose: defaultPose(),
   };
 }
 
