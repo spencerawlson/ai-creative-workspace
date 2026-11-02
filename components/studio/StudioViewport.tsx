@@ -128,6 +128,9 @@ export function StudioViewport({
           return;
         }
         engineRef.current = engine;
+        // Automated browsers only: lets E2E tests find joints on screen.
+        if (navigator.webdriver)
+          Object.assign(window, { __studioEngine: engine });
         const p = latest.current;
         engine.setShowHandles(p.showHandles);
         engine.setSelection(p.selection);

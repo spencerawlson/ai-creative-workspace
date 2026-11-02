@@ -5,7 +5,8 @@ import {
   canvasBrightness,
   dragOnPage,
   isMobile,
-  jointRings,
+  jointsOnScreen,
+  overlayPixels,
   openStudio,
   sParam,
   showPanel,
@@ -282,27 +283,24 @@ test.describe("Lighting Studio — critical journeys", () => {
   }, info) => {
     await openStudio(page);
     await showPanel(page, "scene");
+    expect(await overlayPixels(page)).toBe(0);
     await page.getByTestId("node-pose").click();
-    // Pose mode shows a circle on every posable joint.
-    let rings: Array<{ x: number; y: number }> = [];
-    await expect
-      .poll(async () => (rings = await jointRings(page)).length)
-      .toBeGreaterThanOrEqual(10);
-    // The figure faces the camera: its right wrist is the left-most
-    // joint, and its right elbow the nearest joint above that.
-    const wrist = rings.reduce((a, r) => (r.x < a.x ? r : a));
-    const elbow = rings
-      .filter((r) => r.y < wrist.y - 5)
-      .reduce((a, r) =>
-        Math.hypot(r.x - wrist.x, r.y - wrist.y) <
-        Math.hypot(a.x - wrist.x, a.y - wrist.y)
-          ? r
-          : a,
+    // Pose mode draws the joint overlay.
+    await expect.poll(() => overlayPixels(page)).toBeGreaterThan(20);
+    const joints = await jointsOnScreen(page);
+    expect(Object.keys(joints)).toHaveLength(14); // 12 joints + 2 hands
+    // Use a hand that isn't under a side panel (on a tablet the figure's
+    // right hand sits behind the scene list).
+    const exposed = (p: { x: number; y: number }) =>
+      page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.tagName === "CANVAS",
+        p,
       );
-    const hand = {
-      x: wrist.x + (wrist.x - elbow.x) * 0.45,
-      y: wrist.y + (wrist.y - elbow.y) * 0.45,
-    };
+    const side = (await exposed(joints.handR)) ? "R" : "L";
+    expect(await exposed(joints[`hand${side}`])).toBe(true);
+    const wrist = joints[`wrist${side}`];
+    const hand = joints[`hand${side}`];
+    const out = side === "R" ? -40 : 40; // away from the body on screen
     const box = (await page.getByTestId("lighting-scene").boundingBox())!;
 
     // Grab the hand and pull it up: the whole arm follows.
@@ -310,11 +308,11 @@ test.describe("Lighting Studio — critical journeys", () => {
       x: hand.x,
       y: hand.y - box.height * 0.35,
     });
-    await expect(page.getByTestId("pose-group-armR")).toHaveAttribute(
+    await expect(page.getByTestId(`pose-group-arm${side}`)).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    const raise = page.getByTestId("pose-shoulderR-raise");
+    const raise = page.getByTestId(`pose-shoulder${side}-raise`);
     await expect
       .poll(async () => Number(await raise.inputValue()))
       .toBeGreaterThan(30);
@@ -323,9 +321,9 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(raise).toHaveValue("0");
 
     // Drag the wrist's own dot outwards: the hand bends at the wrist.
-    await dragOnPage(page, info, wrist, { x: wrist.x - 40, y: wrist.y - 10 });
-    const bend = page.getByTestId("pose-wristR-bend");
-    const lift = page.getByTestId("pose-wristR-lift");
+    await dragOnPage(page, info, wrist, { x: wrist.x + out, y: wrist.y - 10 });
+    const bend = page.getByTestId(`pose-wrist${side}-bend`);
+    const lift = page.getByTestId(`pose-wrist${side}-lift`);
     await expect
       .poll(
         async () =>

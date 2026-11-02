@@ -65,15 +65,27 @@ export async function canvasBrightness(page: Page): Promise<number> {
   }, png.toString("base64"));
 }
 
-/** Centres of the joint circles drawn over the figure in pose mode, in
- * page coordinates (found by their exact overlay colours). */
-export async function jointRings(
+/** Where each posable joint (plus `handL`/`handR`) is on screen, from
+ * the engine's test hook (only present in automated browsers). */
+export async function jointsOnScreen(
   page: Page,
-): Promise<Array<{ x: number; y: number }>> {
-  const canvas = page.getByTestId("lighting-scene");
-  const box = (await canvas.boundingBox())!;
-  const png = (await canvas.screenshot()).toString("base64");
-  const found = await page.evaluate(async (b64) => {
+): Promise<Record<string, { x: number; y: number }>> {
+  return page.evaluate(() =>
+    (
+      window as unknown as {
+        __studioEngine: {
+          jointsOnScreen(): Record<string, { x: number; y: number }>;
+        };
+      }
+    ).__studioEngine.jointsOnScreen(),
+  );
+}
+
+/** How many pixels of the joint overlay's colours (JOINT_BLUE,
+ * JOINT_GREEN in StudioEngine) are on the canvas. */
+export async function overlayPixels(page: Page): Promise<number> {
+  const png = await page.getByTestId("lighting-scene").screenshot();
+  return page.evaluate(async (b64) => {
     const img = new Image();
     img.src = `data:image/png;base64,${b64}`;
     await img.decode();
@@ -82,49 +94,16 @@ export async function jointRings(
     c.height = img.height;
     const ctx = c.getContext("2d")!;
     ctx.drawImage(img, 0, 0);
-    const { data, width, height } = ctx.getImageData(0, 0, c.width, c.height);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
     const near = (i: number, r: number, g: number, b: number) =>
       Math.abs(data[i] - r) < 16 &&
       Math.abs(data[i + 1] - g) < 16 &&
       Math.abs(data[i + 2] - b) < 16;
-    // JOINT_BLUE and JOINT_GREEN in StudioEngine.
-    const ring = (k: number) =>
-      near(k * 4, 0x4f, 0x86, 0xff) || near(k * 4, 0x5c, 0xf2, 0x5c);
-    const seen = new Uint8Array(width * height);
-    const blobs: Array<{ x: number; y: number }> = [];
-    for (let k = 0; k < width * height; k++) {
-      if (seen[k] || !ring(k)) continue;
-      let sx = 0;
-      let sy = 0;
-      let n = 0;
-      const stack = [k];
-      seen[k] = 1;
-      while (stack.length) {
-        const q = stack.pop()!;
-        const qx = q % width;
-        const qy = (q / width) | 0;
-        sx += qx;
-        sy += qy;
-        n++;
-        for (const nk of [q - 1, q + 1, q - width, q + width]) {
-          if (nk < 0 || nk >= width * height || seen[nk] || !ring(nk)) continue;
-          if (Math.abs((nk % width) - qx) > 1) continue;
-          seen[nk] = 1;
-          stack.push(nk);
-        }
-      }
-      if (n >= 4) blobs.push({ x: sx / n, y: sy / n });
-    }
-    return { blobs, width };
-  }, png);
-  // Screenshot pixels → CSS pixels; merge fragments of the same ring.
-  const s = box.width / found.width;
-  const out: Array<{ x: number; y: number }> = [];
-  for (const b of found.blobs) {
-    const p = { x: box.x + b.x * s, y: box.y + b.y * s };
-    if (!out.some((o) => Math.hypot(o.x - p.x, o.y - p.y) < 6)) out.push(p);
-  }
-  return out;
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4)
+      if (near(i, 0x4f, 0x86, 0xff) || near(i, 0x5c, 0xf2, 0x5c)) n++;
+    return n;
+  }, png.toString("base64"));
 }
 
 /** Press, move in small steps and release: a touch drag on touch

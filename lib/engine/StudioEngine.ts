@@ -1156,6 +1156,33 @@ export class StudioEngine {
     this.invalidate();
   }
 
+  /** For automated tests: where each posable joint (and each hand's
+   * middle) is on screen, in client pixels. */
+  jointsOnScreen(): Record<string, { x: number; y: number }> {
+    const rig = this.currentRig;
+    if (!rig) return {};
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const out: Record<string, { x: number; y: number }> = {};
+    const put = (name: string, p: THREE.Vector3) => {
+      p.project(this.camera);
+      out[name] = {
+        x: rect.left + ((p.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - p.y) / 2) * rect.height,
+      };
+    };
+    this.figure.updateMatrixWorld(true);
+    for (const d of rig.dots) {
+      const bone = rig.bones[d.def.bone];
+      put(d.def.joint, bone.getWorldPosition(new THREE.Vector3()));
+      if (d.def.bone.startsWith("wrist"))
+        put(
+          `hand${d.def.bone.slice(-1)}`,
+          bone.localToWorld(d.effector.clone().multiplyScalar(0.5)),
+        );
+    }
+    return out;
+  }
+
   get loadedModelUrl(): string | null {
     return this.modelUrl;
   }
@@ -1204,13 +1231,23 @@ export class StudioEngine {
   } | null {
     const rig = this.currentRig;
     if (!rig || !this.poseMode) return null;
-    this.pointerRay(e);
+    const ray = this.pointerRay(e);
+    const partHit = this.raycaster
+      .intersectObject(this.figure, true)
+      .find((h) => h.object.name === "pose-pick");
     const dotHit = this.raycaster.intersectObjects(
       rig.dots.map((d) => d.pick),
       false,
     )[0];
-    if (dotHit) {
-      const dot = rig.dots.find((d) => d.pick === dotHit.object)!;
+    const dot = dotHit && rig.dots.find((d) => d.pick === dotHit.object);
+    // A dot's generous touch target only counts off the body: over a body
+    // part, the press must land near the circle itself. (On a phone the
+    // whole hand sits inside the wrist dot's target.)
+    const onCircle =
+      dot &&
+      ray.distanceToPoint(dot.ring.getWorldPosition(new THREE.Vector3())) <
+        dot.ring.getWorldScale(new THREE.Vector3()).x * 2;
+    if (dot && (!partHit || onCircle)) {
       const grabbed = rig.bones[dot.def.bone];
       return {
         joint: dot.def.joint,
@@ -1220,9 +1257,7 @@ export class StudioEngine {
         at: grabbed.getWorldPosition(new THREE.Vector3()),
       };
     }
-    const hit = this.raycaster
-      .intersectObject(this.figure, true)
-      .find((h) => h.object.name === "pose-pick");
+    const hit = partHit;
     if (!hit) return null;
     const vars = dragVariables(hit.object.userData.bone as BoneName);
     if (vars.length === 0) return null;
