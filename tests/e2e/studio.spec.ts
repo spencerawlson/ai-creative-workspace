@@ -47,7 +47,12 @@ test.describe("Lighting Studio — critical journeys", () => {
   }) => {
     await openStudio(page);
     await showPanel(page, "presets");
+    // The URL is synced on a 400 ms debounce: wait for each edit to land
+    // in it before copying the link, or a fast machine copies a stale one.
+    const initial = await sParam(page);
     await page.getByTestId("preset-rembrandt").click();
+    await expect.poll(() => sParam(page)).not.toBe(initial);
+    const afterPreset = await sParam(page);
     await showPanel(page, "scene");
     await page.getByTestId("node-model").click();
     await page.getByTestId("model-female").click();
@@ -55,17 +60,12 @@ test.describe("Lighting Studio — critical journeys", () => {
       "data-status",
       "ready",
     );
-    const url = page.url();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("s"))
-      .toBeTruthy();
+    await expect.poll(() => sParam(page)).not.toBe(afterPreset);
+    const url = new URL(page.url());
 
     const other = await browser.newContext();
     const page2 = await other.newPage();
-    await openStudio(
-      page2,
-      new URL(page.url()).pathname + new URL(page.url()).search,
-    );
+    await openStudio(page2, url.pathname + url.search);
     await showPanel(page2, "presets");
     await expect(page2.getByTestId("preset-rembrandt")).toHaveAttribute(
       "aria-pressed",
@@ -74,7 +74,6 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page2, "scene");
     await expect(page2.getByTestId("node-model")).toContainText("Female");
     await other.close();
-    expect(url).toContain("s=");
   });
 
   test("M3 (v1) share links still open", async ({ page }) => {
