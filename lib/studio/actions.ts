@@ -33,6 +33,15 @@ import {
   presetLights,
 } from "./presets";
 
+import {
+  JOINTS,
+  JOINT_IDS,
+  JointPatchSchema,
+  mirrorJoints,
+  posePreset,
+  type JointId,
+} from "./pose";
+
 const lightId = z.string().min(1).max(24);
 
 export const SceneActionSchema = z.discriminatedUnion("type", [
@@ -99,6 +108,20 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       label: z.string().max(48).optional(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("applyPosePreset"),
+      presetId: z.string().max(32),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("updateJoint"),
+      joint: z.enum(JOINT_IDS as [JointId, ...JointId[]]),
+      patch: JointPatchSchema,
+    })
+    .strict(),
+  z.object({ type: z.literal("mirrorPose") }).strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
 export type SceneAction = z.infer<typeof SceneActionSchema>;
@@ -237,6 +260,42 @@ export function applyAction(
       return ok({ ...scene, shadows: { ...scene.shadows, ...action.patch } });
     case "loadScene":
       return ok(action.scene);
+    case "applyPosePreset": {
+      const preset = posePreset(action.presetId);
+      if (!preset)
+        return { ok: false, error: `Unknown pose "${action.presetId}"` };
+      return ok({
+        ...scene,
+        pose: { preset: preset.id, joints: structuredClone(preset.joints) },
+      });
+    }
+    case "updateJoint": {
+      const dofs = JOINTS[action.joint].dofs;
+      const unknown = Object.keys(action.patch).find((k) => !(k in dofs));
+      if (unknown)
+        return {
+          ok: false,
+          error: `${JOINTS[action.joint].label} has no "${unknown}" movement`,
+        };
+      return ok({
+        ...scene,
+        pose: {
+          preset: "custom",
+          joints: {
+            ...scene.pose.joints,
+            [action.joint]: {
+              ...scene.pose.joints[action.joint],
+              ...action.patch,
+            },
+          },
+        },
+      });
+    }
+    case "mirrorPose":
+      return ok({
+        ...scene,
+        pose: { preset: "custom", joints: mirrorJoints(scene.pose.joints) },
+      });
     case "reset":
       return ok(defaultScene());
   }
@@ -254,6 +313,8 @@ export function coalesceKey(action: SceneAction): string | null {
       return `material:${Object.keys(action.patch).sort().join(",")}`;
     case "updateBackdrop":
       return `backdrop:${Object.keys(action.patch).sort().join(",")}`;
+    case "updateJoint":
+      return `joint:${action.joint}:${Object.keys(action.patch).sort().join(",")}`;
     default:
       return null;
   }
@@ -335,6 +396,18 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
       return `Shadows: ${fields(action.patch)}`;
     case "loadScene":
       return action.label ?? "Load scene";
+    case "applyPosePreset":
+      return `Pose: ${posePreset(action.presetId)?.name ?? action.presetId}`;
+    case "updateJoint": {
+      const j = JOINTS[action.joint];
+      const dofs = j.dofs as Record<string, { label: string }>;
+      const what = Object.keys(action.patch)
+        .map((k) => dofs[k]?.label.toLowerCase() ?? k)
+        .join(", ");
+      return `${j.label}: ${what}`;
+    }
+    case "mirrorPose":
+      return "Mirror pose";
     case "reset":
       return "Reset scene";
   }

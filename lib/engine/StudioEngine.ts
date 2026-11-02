@@ -23,6 +23,13 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
+import type { JointId } from "@/lib/studio/pose";
+import {
+  BONE_NAMES,
+  applyPose,
+  type BoneName,
+  type RigDirections,
+} from "./posing";
 import {
   LIMITS,
   type MannequinModel,
@@ -31,7 +38,9 @@ import {
 } from "@/lib/studio/schema";
 
 export type CameraView = "face" | "full" | "studio";
-export type Selection = string | null; // light id, "model", "camera", "backdrop"
+/** Light id, "model", "camera", "backdrop", "pose", or `pose:<joint>`
+ * (a body part tapped in the viewport). */
+export type Selection = string | null;
 
 export const MODEL_URLS: Record<MannequinModel, string> = {
   male: "/models/mannequin-male.glb",
@@ -125,10 +134,38 @@ interface LightRig {
   state: StudioLight;
 }
 
+interface ModelRig {
+  bones: Record<BoneName, THREE.Bone>;
+  dirs: RigDirections;
+}
+
 interface CachedModel {
   object: THREE.Object3D;
   headHeight: number;
+  /** Null for an unrigged GLB: it renders, but can't be posed. */
+  rig: ModelRig | null;
 }
+
+/** Tap targets: one invisible capsule per bone, from the joint to the
+ * next joint (or limb tip), radius as a fraction of figure height. */
+const PICK_CAPSULES: Array<[BoneName, BoneName | "tip", number, JointId]> = [
+  ["pelvis", "spine", 0.09, "spine"],
+  ["spine", "neck", 0.1, "spine"],
+  ["neck", "tip", 0.06, "head"],
+  ["shoulderL", "elbowL", 0.04, "shoulderL"],
+  ["elbowL", "wristL", 0.035, "elbowL"],
+  ["wristL", "tip", 0.03, "wristL"],
+  ["shoulderR", "elbowR", 0.04, "shoulderR"],
+  ["elbowR", "wristR", 0.035, "elbowR"],
+  ["wristR", "tip", 0.03, "wristR"],
+  ["hipL", "kneeL", 0.06, "hipL"],
+  ["kneeL", "tip", 0.045, "kneeL"],
+  ["hipR", "kneeR", 0.06, "hipR"],
+  ["kneeR", "tip", 0.045, "kneeR"],
+];
+/** Where the face camera aims, between the base of the neck and the
+ * crown. 0.445 reproduces the pre-rig vertex-average heuristic. */
+const HEAD_FRACTION = 0.445;
 
 export class StudioEngine {
   readonly renderer: THREE.WebGLRenderer;
@@ -306,6 +343,7 @@ export class StudioEngine {
     }
     if (!prev || prev.material !== doc.material) this.syncMaterial(doc);
     if (!prev || prev.backdrop !== doc.backdrop) this.syncBackdrop(doc);
+    if (!prev || prev.pose !== doc.pose) this.syncPose();
 
     const fov = overrides.fov ?? focalToVerticalFov(doc.camera.focalMm);
     if (this.camera.fov !== fov) {
@@ -786,6 +824,9 @@ export class StudioEngine {
   }
 
   private prepareModel(root: THREE.Object3D): CachedModel {
+    root.updateMatrixWorld(true);
+    const rig = this.prepareRig(root);
+    // Bounds in the bind pose (the skinned box applies the bones).
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -804,30 +845,131 @@ export class StudioEngine {
       mesh.receiveShadow = true;
       mesh.name = "model";
     });
-    // Head height from THIS model's geometry: average Y of vertices in
-    // the top 0.25 units (head + neck band), clamped inside the figure.
     root.updateMatrixWorld(true);
-    const topY = size.y * s;
-    let sum = 0;
-    let count = 0;
-    const v = new THREE.Vector3();
-    root.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      const pos = mesh.isMesh ? mesh.geometry.attributes.position : null;
-      if (!pos) return;
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-        if (v.y >= topY - 0.25) {
-          sum += v.y;
-          count += 1;
+    let headHeight = 1.72;
+    if (rig) {
+      const toWorldY = (y: number) => (y - box.min.y) * s;
+      headHeight = THREE.MathUtils.lerp(
+        toWorldY(rig.neckY),
+        toWorldY(rig.crownY),
+        HEAD_FRACTION,
+      );
+      // After the material pass, so the capsules keep their own.
+      this.addPickCapsules(rig, size.y);
+    } else {
+      // Unrigged GLB: average Y of the vertices in the top 0.25 units.
+      const topY = size.y * s;
+      let sum = 0;
+      let count = 0;
+      const v = new THREE.Vector3();
+      root.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        const pos = mesh.isMesh ? mesh.geometry.attributes.position : null;
+        if (!pos) return;
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+          if (v.y >= topY - 0.25) {
+            sum += v.y;
+            count += 1;
+          }
         }
-      }
+      });
+      if (count > 0)
+        headHeight = THREE.MathUtils.clamp(
+          sum / count,
+          topY - 0.3,
+          topY - 0.05,
+        );
+    }
+    return {
+      object: root,
+      headHeight,
+      rig: rig ? { bones: rig.bones, dirs: rig.dirs } : null,
+    };
+  }
+
+  /** Find the skeleton baked by scripts/rig-mannequin.mjs and measure it
+   * in the bind pose, before the figure is scaled into the studio. */
+  private prepareRig(root: THREE.Object3D) {
+    let mesh: THREE.SkinnedMesh | null = null;
+    root.traverse((o) => {
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh) mesh = o as THREE.SkinnedMesh;
     });
-    const headHeight =
-      count > 0
-        ? THREE.MathUtils.clamp(sum / count, topY - 0.3, topY - 0.05)
-        : 1.72;
-    return { object: root, headHeight };
+    const skinned = mesh as THREE.SkinnedMesh | null;
+    if (!skinned) return null;
+    const bones = {} as Record<BoneName, THREE.Bone>;
+    for (const b of skinned.skeleton.bones) bones[b.name as BoneName] = b;
+    const tips = (skinned.userData.rig?.tips ?? {}) as Record<string, number[]>;
+    if (BONE_NAMES.some((n) => !bones[n]) || !tips.neck) return null;
+    // Posed limbs leave the bind-pose bounds, and the one figure is
+    // always in view, so skip culling. Taps hit the capsules instead of
+    // CPU-skinning half a million triangles.
+    skinned.frustumCulled = false;
+    skinned.raycast = () => {};
+    const at = (b: BoneName) => bones[b].getWorldPosition(new THREE.Vector3());
+    const tip = (key: string) => new THREE.Vector3().fromArray(tips[key]);
+    const dir = (a: THREE.Vector3, b: THREE.Vector3) =>
+      b.clone().sub(a).normalize();
+    const dirs: RigDirections = {
+      upperArmL: dir(at("shoulderL"), at("elbowL")),
+      upperArmR: dir(at("shoulderR"), at("elbowR")),
+      forearmL: dir(at("elbowL"), at("wristL")),
+      forearmR: dir(at("elbowR"), at("wristR")),
+      thighL: dir(at("hipL"), at("kneeL")),
+      thighR: dir(at("hipR"), at("kneeR")),
+    };
+    const tipOf: Partial<Record<BoneName, THREE.Vector3>> = {
+      neck: tip("neck"),
+      wristL: tip("wristL"),
+      wristR: tip("wristR"),
+      kneeL: tip("kneeL"),
+      kneeR: tip("kneeR"),
+    };
+    return {
+      bones,
+      dirs,
+      at,
+      tipOf,
+      neckY: at("neck").y,
+      crownY: tipOf.neck!.y,
+    };
+  }
+
+  private addPickCapsules(
+    rig: NonNullable<ReturnType<StudioEngine["prepareRig"]>>,
+    height: number,
+  ): void {
+    const material = new THREE.MeshBasicMaterial();
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const [bone, to, radius, joint] of PICK_CAPSULES) {
+      const a = rig.at(bone);
+      const b = to === "tip" ? rig.tipOf[bone]! : rig.at(to);
+      const r = radius * height;
+      const capsule = new THREE.Mesh(
+        new THREE.CapsuleGeometry(
+          r,
+          Math.max(0.001, a.distanceTo(b) - r),
+          2,
+          8,
+        ),
+        material,
+      );
+      capsule.name = "pose-pick";
+      capsule.userData.joint = joint;
+      capsule.visible = false;
+      // Bones are world-aligned in the bind pose, so a bone-local offset
+      // is the world offset from the joint.
+      capsule.position.copy(a.clone().lerp(b, 0.5).sub(a));
+      capsule.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
+      rig.bones[bone].add(capsule);
+    }
+  }
+
+  private syncPose(): void {
+    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
+    if (!model?.rig || !this.doc) return;
+    applyPose(model.rig.bones, this.doc.pose.joints, model.rig.dirs);
+    this.invalidate();
   }
 
   private showModel(url: string, model: CachedModel): void {
@@ -835,6 +977,7 @@ export class StudioEngine {
     this.figure.add(model.object);
     this.modelUrl = url;
     this.headHeight = model.headHeight;
+    this.syncPose();
     if (this.view === "face") {
       this.controls.target.set(0, this.headHeight, 0);
       this.camera.position.set(0.35, this.headHeight + 0.13, 0.65);
@@ -910,11 +1053,13 @@ export class StudioEngine {
       [this.figure, this.cyc],
       true,
     )[0];
-    const sel: Selection = hit
-      ? hit.object.name === "model"
-        ? "model"
-        : "backdrop"
-      : null;
+    const sel: Selection = !hit
+      ? null
+      : hit.object.name === "pose-pick"
+        ? `pose:${hit.object.userData.joint as string}`
+        : hit.object.name === "model"
+          ? "model"
+          : "backdrop";
     this.selection = sel;
     this.updateHandleStyles();
     this.callbacks.onSelect?.(sel);

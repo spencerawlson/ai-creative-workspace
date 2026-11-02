@@ -18,7 +18,10 @@ import {
   User,
   Zap,
   type LucideIcon,
+  PersonStanding,
 } from "lucide-react";
+import { posePreset } from "@/lib/studio/pose";
+import { isPoseSelection } from "./PoseInspector";
 import { PRESETS, kelvinToRgb } from "@/lib/lighting";
 import type { Selection } from "@/lib/engine/StudioEngine";
 import {
@@ -255,6 +258,14 @@ export function ScenePanel({
             selected={selection === "model"}
             onSelect={() => onSelect("model")}
             testId="node-model"
+          />
+          <Row
+            icon={PersonStanding}
+            label="Pose"
+            detail={posePreset(scene.pose.preset)?.name ?? "Custom pose"}
+            selected={isPoseSelection(selection)}
+            onSelect={() => onSelect("pose")}
+            testId="node-pose"
           />
           <Row
             icon={ImageIcon}

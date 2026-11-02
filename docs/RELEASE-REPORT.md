@@ -137,7 +137,8 @@ finished loading the scene (errors now stay until dismissed).
    depends on. A proper mobile LOD needs re-baked normals.
 3. **E2E speed.** Headless Chromium renders WebGL in software at about
    1 fps for this scene, so the suite runs with one worker and takes
-   about 25 minutes. In CI it will be slow but deterministic.
+   about 12 minutes locally. CI runs desktop, tablet and phone as three
+   parallel jobs.
 4. **Accessibility.** Only the automated axe checks have run. There
    has been no manual screen-reader (VoiceOver/NVDA) pass. Light
    handles can't be reached by keyboard (the inspector sliders are the
@@ -151,7 +152,12 @@ finished loading the scene (errors now stay until dismissed).
    glob patterns. Clear it when ESLint's chain updates; forcing an
    override would break ESLint.
 8. **CSP** allows `'unsafe-inline'` scripts, which Next.js needs
-   without nonce middleware. Tightening it needs middleware nonces.
+   without nonces. Nonces need middleware that renders every page per
+   request, which would make the currently static pages dynamic. Not
+   worth it while the app loads no third-party scripts and has no raw
+   HTML or eval sinks (checked: no `dangerouslySetInnerHTML`,
+   `innerHTML`, `eval` or `new Function` in app code). Revisit when
+   accounts or user-generated content arrive.
 
 ## 5. Performance findings
 
@@ -214,3 +220,20 @@ been run.
    endpoint whose tools are generated from `SceneActionSchema`, with
    preview-then-apply as a single undo step, rate limits and usage
    accounting (ARCHITECTURE.md §3).
+
+## Addendum (same day): keyboard handles and mannequin posing
+
+Built after this report, on branch `mannequin-posing`:
+
+- **Light handles by keyboard:** `L` / `Shift+L` select a light; with
+  the viewport focused, the arrow keys move it and changes are
+  announced. This closes the keyboard part of risk 4.
+- **Posing:** both mannequins are rigged (13 bones, fitted per scan) and
+  can be posed by joint (head, torso, shoulders, elbows, wrists, hips,
+  knees) or with seven presets. Tap a body part to open its controls.
+  Poses are validated, undoable, autosaved and travel in share links.
+  Models grow from 4.55 to 4.86 MB.
+- **Known limits:** extreme shoulder angles stretch the armpit (it's
+  linear blend skinning on a fused scan, smoothed but not perfect).
+  Fingers and ankles are not posable. Body parts can pass through each
+  other: there is no collision.

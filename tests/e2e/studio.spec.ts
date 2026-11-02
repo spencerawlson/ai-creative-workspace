@@ -237,6 +237,57 @@ test.describe("Lighting Studio — critical journeys", () => {
     );
   });
 
+  test("pose the mannequin: preset, joint slider, undo, share link", async ({
+    page,
+    browser,
+  }) => {
+    await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    const viewport = page.getByTestId("lighting-scene");
+    const before = await viewport.screenshot();
+    await page.getByTestId("pose-preset-hand-raised").click();
+    await expect(page.getByTestId("pose-preset-hand-raised")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // The figure really moved.
+    await expect
+      .poll(async () => Buffer.compare(before, await viewport.screenshot()))
+      .not.toBe(0);
+
+    // The pose travels in the share link.
+    await expect.poll(() => sParam(page)).toMatch(/./);
+    const url = new URL(page.url());
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await openStudio(page2, url.pathname + url.search);
+    await showPanel(page2, "scene");
+    await expect(page2.getByTestId("node-pose")).toContainText("Hand raised");
+    await other.close();
+
+    // Lift the hand at the wrist, then undo it.
+    await page.getByTestId("pose-group-armR").click();
+    const lift = page.getByTestId("pose-wristR-lift");
+    await lift.fill("40");
+    await expect(lift).toHaveValue("40");
+    await page.getByTestId("undo").click();
+    await expect(lift).toHaveValue("15");
+  });
+
+  test("tapping the figure opens the pose controls for that body part", async ({
+    page,
+  }) => {
+    await openStudio(page);
+    // The full-body view is centred on the hips.
+    await page.getByTestId("lighting-scene").click();
+    await expect(page.getByTestId("pose-group-torso")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
+  });
+
   test("Photography page still renders through the shared engine", async ({
     page,
   }) => {

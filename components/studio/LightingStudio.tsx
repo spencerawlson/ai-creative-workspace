@@ -31,6 +31,7 @@ import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
 import { parseProject, serializeProject } from "@/lib/studio/persistence";
 import { ExportDialog, ShortcutsDialog } from "./Dialogs";
 import { Inspector } from "./Inspector";
+import { isPoseSelection } from "./PoseInspector";
 import { HistoryPanel, PresetsPanel, ScenePanel } from "./Panels";
 import { StudioViewport, type ViewportHandle } from "./StudioViewport";
 import { Button, IconButton, cx } from "./ui";
@@ -105,6 +106,7 @@ export function LightingStudio() {
   const validSelection =
     selection &&
     !["model", "camera", "backdrop"].includes(selection) &&
+    !isPoseSelection(selection) &&
     !scene.lights.some((l) => l.id === selection)
       ? null
       : selection;
@@ -251,6 +253,10 @@ export function LightingStudio() {
           setSelection(ids[next]);
           break;
         }
+        case "p":
+        case "P":
+          select("pose");
+          break;
         case "[":
           setPanelOpen(!panelOpen);
           break;
@@ -273,6 +279,7 @@ export function LightingStudio() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
+    select,
     exportOpen,
     shortcutsOpen,
     undo,
