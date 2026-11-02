@@ -7,3 +7,49 @@ body {
   margin: 0;
   overscroll-behavior: none;
 }
+
+body {
+  @apply bg-ink-950 font-sans text-ink-100 antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* One focus treatment everywhere, keyboard only. */
+:focus-visible {
+  outline: 2px solid theme("colors.accent.DEFAULT");
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  @apply h-5 w-full cursor-pointer appearance-none bg-transparent;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  @apply h-1 rounded-full bg-ink-600;
+}
+input[type="range"]::-moz-range-track {
+  @apply h-1 rounded-full bg-ink-600;
+}
+input[type="range"]::-webkit-slider-thumb {
+  @apply -mt-1.5 h-4 w-4 appearance-none rounded-full border-2 border-ink-900 bg-ink-100 shadow;
+}
+input[type="range"]::-moz-range-thumb {
+  @apply h-4 w-4 rounded-full border-2 border-ink-900 bg-ink-100;
+}
+input[type="range"]:hover::-webkit-slider-thumb {
+  @apply bg-accent-strong;
+}
+input[type="range"]:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

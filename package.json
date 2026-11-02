@@ -8,10 +8,12 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/eslintrc": "^3.3.7",
     "@gltf-transform/core": "^4.5.1",
     "@gltf-transform/extensions": "^4.5.1",
     "@gltf-transform/functions": "^4.5.1",
+    "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/node": "22.15.0",
@@ -42,10 +44,14 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "models": "node scripts/optimize-models.mjs"
+    "models": "node scripts/optimize-models.mjs",
+    "test:e2e": "playwright test"
   },
   "version": "0.1.0",
   "overrides": {
     "postcss": "$postcss"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

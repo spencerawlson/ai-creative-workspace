@@ -58,7 +58,9 @@ export type HistoryCommand =
   | { type: "redo" }
   | { type: "jump"; index: number }
   /** End the current coalescing run (e.g. on pointer up). */
-  | { type: "seal" };
+  | { type: "seal" }
+  /** Start a fresh history from a validated scene (startup restore). */
+  | { type: "replace"; scene: SceneDoc; label: string };
 
 export function historyReducer(
   h: HistoryState,
@@ -120,6 +122,8 @@ export function historyReducer(
       return { ...h, index: cmd.index, lastKey: null, error: null };
     case "seal":
       return h.lastKey === null ? h : { ...h, lastKey: null };
+    case "replace":
+      return createHistory(cmd.scene, cmd.label);
   }
 }
 

@@ -1,0 +1,193 @@
+"use client";
+
+/** Studio state: undoable scene history plus the side effects around it
+ * (URL sync, local autosave, startup restore). Components call
+ * `dispatch(action)`; nothing else mutates the scene. */
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import type { SceneAction } from "@/lib/studio/actions";
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  historyReducer,
+  present,
+} from "@/lib/studio/history";
+import { loadAutosave, saveAutosave } from "@/lib/studio/persistence";
+import { defaultScene } from "@/lib/studio/presets";
+import { decodeScene, encodeScene } from "@/lib/studio/share";
+
+export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
+
+export type Notice = { id: number; tone: "info" | "error"; text: string };
+
+export function useStudio() {
+  const [history, send] = useReducer(historyReducer, undefined, () =>
+    createHistory(defaultScene()),
+  );
+  const [name, setName] = useState(DEFAULT_PROJECT_NAME);
+  const [hydrated, setHydrated] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeId = useRef(0);
+  const scene = present(history);
+
+  const notify = useCallback((text: string, tone: Notice["tone"] = "info") => {
+    setNotice({ id: ++noticeId.current, tone, text });
+  }, []);
+
+  const dispatch = useCallback((action: SceneAction) => {
+    send({ type: "commit", action, now: performance.now() });
+  }, []);
+  const seal = useCallback(() => send({ type: "seal" }), []);
+  const undo = useCallback(() => send({ type: "undo" }), []);
+  const redo = useCallback(() => send({ type: "redo" }), []);
+  const jump = useCallback(
+    (index: number) => send({ type: "jump", index }),
+    [],
+  );
+
+  // Rejected actions (out of range, unknown light, too many lights).
+  useEffect(() => {
+    if (history.error) notify(history.error, "error");
+  }, [history.error, notify]);
+
+  // Startup: a share link wins, then the last autosave, then defaults.
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("s");
+    if (param) {
+      const shared = decodeScene(param);
+      if (shared) {
+        send({ type: "replace", scene: shared, label: "Open shared link" });
+        notify("Opened a shared lighting setup.");
+      } else {
+        notify(
+          "That share link is damaged or from a newer version — showing the default setup.",
+          "error",
+        );
+      }
+    } else {
+      const saved = loadAutosave();
+      if (saved) {
+        send({
+          type: "replace",
+          scene: saved.scene,
+          label: "Restore last session",
+        });
+        setName(saved.name);
+        setSavedAt(saved.savedAt);
+      }
+    }
+    setHydrated(true);
+  }, [notify]);
+
+  // Keep the address bar a live share link, and autosave locally.
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => {
+      const url = new URL(window.location.href);
+      const param = encodeScene(scene);
+      if (url.searchParams.get("s") !== param) {
+        url.searchParams.set("s", param);
+        window.history.replaceState(null, "", url.toString());
+      }
+      const now = Date.now();
+      if (saveAutosave({ savedAt: now, name, scene })) setSavedAt(now);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [hydrated, scene, name]);
+
+  const shareUrl = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", encodeScene(scene));
+    return url.toString();
+  }, [scene]);
+
+  return useMemo(
+    () => ({
+      scene,
+      history,
+      dispatch,
+      seal,
+      undo,
+      redo,
+      jump,
+      canUndo: canUndo(history),
+      canRedo: canRedo(history),
+      name,
+      setName,
+      hydrated,
+      savedAt,
+      notice,
+      notify,
+      shareUrl,
+    }),
+    [
+      scene,
+      history,
+      dispatch,
+      seal,
+      undo,
+      redo,
+      jump,
+      name,
+      hydrated,
+      savedAt,
+      notice,
+      notify,
+      shareUrl,
+    ],
+  );
+}
+
+export type Studio = ReturnType<typeof useStudio>;
+
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fallback for browsers that block the async clipboard API.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function slug(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "lighting"
+  );
+}

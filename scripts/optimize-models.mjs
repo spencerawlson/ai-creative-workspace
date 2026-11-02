@@ -2,9 +2,15 @@
 // scans in assets/source/. Run with `npm run models` after replacing a
 // source file. Output is deterministic for a given source + settings.
 //
-// Pipeline: dedup -> weld -> simplify (bounded error, keeps facial
-// planes) -> quantize -> EXT_meshopt_compression. The scene replaces
-// every material at load time, so materials are not preserved here.
+// Pipeline: dedup -> weld -> quantize -> EXT_meshopt_compression.
+// The scene replaces every material at load time, so materials are not
+// preserved here.
+//
+// No simplification, on purpose: A/B renders of the Rembrandt face
+// close-up showed meshopt simplify (even at 60% kept, 1e-4 error)
+// leaves blotchy shading on the brow and cheek planes — the exact area
+// the lesson is about. Compression alone is visually identical to the
+// source. A lighter mobile LOD is future work and needs normal re-baking.
 
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,18 +21,12 @@ import {
   meshopt,
   prune,
   quantize,
-  simplify,
   weld,
 } from "@gltf-transform/functions";
-import { MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
+import { MeshoptEncoder } from "meshoptimizer";
 
 const SRC = "assets/source";
 const OUT = "public/models";
-/** Fraction of triangles to keep, and the max allowed geometric error
- * as a fraction of the mesh radius. Error wins over ratio, so flat
- * regions are reduced and curved ones (nose, brow, cheek) keep detail. */
-const RATIO = 0.3;
-const ERROR = 0.0008;
 
 function triangleCount(doc) {
   let tris = 0;
@@ -41,7 +41,6 @@ function triangleCount(doc) {
 }
 
 await MeshoptEncoder.ready;
-await MeshoptSimplifier.ready;
 const io = new NodeIO()
   .registerExtensions(ALL_EXTENSIONS)
   .registerDependencies({ "meshopt.encoder": MeshoptEncoder });
@@ -55,9 +54,8 @@ for (const file of await readdir(SRC)) {
   await doc.transform(
     dedup(),
     weld(),
-    simplify({ simplifier: MeshoptSimplifier, ratio: RATIO, error: ERROR }),
     prune(),
-    quantize({ quantizePosition: 14, quantizeNormal: 10 }),
+    quantize({ quantizePosition: 14, quantizeNormal: 12 }),
     meshopt({ encoder: MeshoptEncoder, level: "medium" }),
   );
   await io.write(out, doc);
