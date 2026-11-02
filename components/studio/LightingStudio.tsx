@@ -236,6 +236,21 @@ export function LightingStudio() {
               patch: { on: !light.on },
             });
           break;
+        case "l":
+        case "L": {
+          // Cycle through lights (Shift goes backwards). Selecting is the
+          // keyboard route to a handle: arrow keys then move it.
+          const ids = scene.lights.map((l) => l.id);
+          const i = light ? ids.indexOf(light.id) : -1;
+          const next =
+            i < 0
+              ? e.shiftKey
+                ? ids.length - 1
+                : 0
+              : (i + (e.shiftKey ? -1 : 1) + ids.length) % ids.length;
+          setSelection(ids[next]);
+          break;
+        }
         case "[":
           setPanelOpen(!panelOpen);
           break;

@@ -4,6 +4,7 @@ import {
   SceneActionSchema,
   applyAction,
   describeAction,
+  nudgeLight,
   tryApplyAction,
   type SceneAction,
 } from "@/lib/studio/actions";
@@ -148,5 +149,31 @@ describe("describeAction", () => {
     expect(describeAction(s, { type: "addLight", kind: "area" })).toBe(
       "Add softbox light",
     );
+  });
+});
+
+describe("nudgeLight (keyboard handle movement)", () => {
+  it("wraps azimuth around the subject in both directions", () => {
+    expect(nudgeLight({ azimuth: 355, elevation: 0 }, 15, 0).azimuth).toBe(10);
+    expect(nudgeLight({ azimuth: 5, elevation: 0 }, -15, 0).azimuth).toBe(350);
+  });
+
+  it("clamps elevation to the schema range", () => {
+    const [lo, hi] = LIMITS.elevation;
+    expect(nudgeLight({ azimuth: 0, elevation: hi - 2 }, 0, 5).elevation).toBe(
+      hi,
+    );
+    expect(nudgeLight({ azimuth: 0, elevation: lo + 2 }, 0, -5).elevation).toBe(
+      lo,
+    );
+  });
+
+  it("always patches both fields so mixed presses coalesce into one undo step", () => {
+    const scene = defaultScene();
+    const key = scene.lights[0];
+    const patch = nudgeLight(key, 5, 0);
+    expect(Object.keys(patch).sort()).toEqual(["azimuth", "elevation"]);
+    const next = applyAction(scene, { type: "updateLight", id: key.id, patch });
+    expect(next.ok && next.scene.lights[0].azimuth).toBe(patch.azimuth);
   });
 });

@@ -259,6 +259,20 @@ export function coalesceKey(action: SceneAction): string | null {
   }
 }
 
+/** Keyboard nudge for a light handle: azimuth wraps around the subject,
+ * elevation clamps to the schema range. Always returns both fields so
+ * mixed left/up presses coalesce into one undo step. */
+export function nudgeLight(
+  light: Pick<StudioLight, "azimuth" | "elevation">,
+  dAzimuth: number,
+  dElevation: number,
+): { azimuth: number; elevation: number } {
+  const azimuth = (((light.azimuth + dAzimuth) % 360) + 360) % 360;
+  const [lo, hi] = LIMITS.elevation;
+  const elevation = Math.min(hi, Math.max(lo, light.elevation + dElevation));
+  return { azimuth, elevation };
+}
+
 const FIELD_LABELS: Record<string, string> = {
   on: "on/off",
   azimuth: "direction",

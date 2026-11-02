@@ -21,6 +21,7 @@ import type {
   Selection,
   StudioEngine,
 } from "@/lib/engine/StudioEngine";
+import { nudgeLight } from "@/lib/studio/actions";
 import type { SceneDoc } from "@/lib/studio/schema";
 import { cx } from "./ui";
 
@@ -67,6 +68,7 @@ export function StudioViewport({
   const engineRef = useRef<StudioEngine | null>(null);
   const [status, setStatus] = useState<Status>("starting");
   const [message, setMessage] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const latest = useRef({
     scene,
     overrides,
@@ -169,10 +171,35 @@ export function StudioViewport({
     [],
   );
 
+  // With a light selected (and handles shown), the arrow keys move that
+  // light's handle instead of the camera — the keyboard path for handles.
+  const selectedLight =
+    showHandles && onLightDrag
+      ? scene.lights.find((l) => l.id === selection)
+      : undefined;
+
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const engine = engineRef.current;
     if (!engine || e.metaKey || e.ctrlKey || e.altKey) return;
     const step = e.shiftKey ? 15 : 5;
+    if (selectedLight && onLightDrag) {
+      const nudges: Record<string, [number, number]> = {
+        ArrowLeft: [-step, 0],
+        ArrowRight: [step, 0],
+        ArrowUp: [0, step],
+        ArrowDown: [0, -step],
+      };
+      const n = nudges[e.key];
+      if (n) {
+        e.preventDefault();
+        const patch = nudgeLight(selectedLight, n[0], n[1]);
+        onLightDrag(selectedLight.id, patch);
+        setAnnouncement(
+          `${selectedLight.label}: direction ${Math.round(patch.azimuth)}°, height ${Math.round(patch.elevation)}°`,
+        );
+        return;
+      }
+    }
     const moves: Record<string, [number, number, number]> = {
       ArrowLeft: [-step, 0, 1],
       ArrowRight: [step, 0, 1],
@@ -196,11 +223,22 @@ export function StudioViewport({
         data-status={status}
         tabIndex={0}
         role="application"
-        aria-label={`${label}. Drag or use arrow keys to orbit, plus and minus to zoom.`}
+        aria-label={
+          selectedLight
+            ? `${label}. ${selectedLight.label} selected: arrow keys move the light, Shift for bigger steps, Escape to deselect.`
+            : `${label}. Drag or use arrow keys to orbit, plus and minus to zoom. Press L to select a light.`
+        }
         aria-busy={status === "starting" || status === "loading"}
         onKeyDown={onKeyDown}
         className="h-full w-full [&_canvas]:block [&_canvas]:h-full [&_canvas]:w-full [&_canvas]:touch-none"
       />
+      <p
+        aria-live="polite"
+        data-testid="viewport-announcement"
+        className="sr-only"
+      >
+        {announcement}
+      </p>
       {(status === "starting" || status === "loading") && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 text-xs text-ink-200 backdrop-blur">

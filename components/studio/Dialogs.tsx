@@ -200,6 +200,8 @@ export const SHORTCUTS: Array<[string, string[]]> = [
   ["Redo", ["Ctrl", "Shift", "Z"]],
   ["Apply preset 1–6", ["1 … 6"]],
   ["Face / full body / studio overview", ["F", "B", "O"]],
+  ["Select next / previous light", ["L", "Shift+L"]],
+  ["Move selected light (viewport focused)", ["←", "→", "↑", "↓"]],
   ["Toggle selected light on/off", ["T"]],
   ["Duplicate selected light", ["Ctrl", "D"]],
   ["Delete selected light", ["Del"]],
@@ -209,7 +211,7 @@ export const SHORTCUTS: Array<[string, string[]]> = [
   ["Deselect", ["Esc"]],
   ["Export image", ["Ctrl", "E"]],
   ["Save project file", ["Ctrl", "S"]],
-  ["Orbit camera (viewport focused)", ["←", "→", "↑", "↓"]],
+  ["Orbit camera (viewport focused, no light selected)", ["←", "→", "↑", "↓"]],
   ["Zoom (viewport focused)", ["+", "−"]],
   ["This list", ["?"]],
 ];

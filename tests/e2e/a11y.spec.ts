@@ -47,3 +47,26 @@ test("keyboard: viewport is focusable and orbits with arrow keys", async ({
     .poll(async () => Buffer.compare(before, await viewport.screenshot()))
     .not.toBe(0);
 });
+
+test("keyboard: L selects a light and arrow keys move its handle", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name === "mobile", "no hardware keyboard on phones");
+  await openStudio(page);
+  const viewport = page.getByTestId("lighting-scene");
+  await viewport.focus();
+  await page.keyboard.press("l");
+  const azimuth = page.getByTestId("light-azimuth");
+  await expect(azimuth).toBeVisible();
+  const before = Number(await azimuth.inputValue());
+  await expect(viewport).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(azimuth).toHaveValue(String((before + 20) % 360));
+  await expect(page.getByTestId("viewport-announcement")).toContainText(
+    `direction ${(before + 20) % 360}°`,
+  );
+  // Both nudges coalesce into a single undo step.
+  await page.getByTestId("undo").click();
+  await expect(azimuth).toHaveValue(String(before));
+});
