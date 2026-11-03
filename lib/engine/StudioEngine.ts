@@ -1532,13 +1532,20 @@ export class StudioEngine {
     const partHit = this.pickBodyPart();
     const active = this.active;
     const rig = active?.rig;
-    const dotHit = rig
-      ? this.raycaster.intersectObjects(
-          rig.dots.filter((d) => d.ring.visible).map((d) => d.pick),
-          false,
-        )[0]
-      : undefined;
-    const dot = dotHit && rig?.dots.find((d) => d.pick === dotHit.object);
+    // Of the dots whose touch target the pointer is in, the one whose
+    // centre is closest to it (not the nearest to the camera: with a
+    // hand's finger dots showing, the thumb's base dot sits in front of
+    // the wrist's).
+    const p = new THREE.Vector3();
+    const dot = rig?.dots
+      .filter((d) => d.ring.visible)
+      .map((d) => ({
+        d,
+        miss: ray.distanceToPoint(d.ring.getWorldPosition(p)),
+        reach: d.pick.getWorldScale(new THREE.Vector3()).x,
+      }))
+      .filter((c) => c.miss < c.reach)
+      .sort((a, b) => a.miss - b.miss)[0]?.d;
     // A dot's generous touch target only counts off the body: over a body
     // part, the press must land near the circle itself. (On a phone the
     // whole hand sits inside the wrist dot's target.)
