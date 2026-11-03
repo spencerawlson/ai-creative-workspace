@@ -529,12 +529,16 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
+    // The address bar becomes a compressed, animated link (one key)...
+    await expect.poll(() => sParam(page)).toMatch(/^z/);
+    const oneKey = await sParam(page);
     await scrub.fill("2");
     await page.getByTestId("pose-preset-arms-up").click();
     await expect(
       await timelineControl(page, "timeline-key-2.00"),
     ).toBeVisible();
-    // The address bar becomes a compressed, animated link.
+    // ...and is rewritten (debounced) once the second key is in.
+    await expect.poll(() => sParam(page)).not.toBe(oneKey);
     await expect.poll(() => sParam(page)).toMatch(/^z/);
     const url = new URL(page.url());
     const other = await browser.newContext();
@@ -668,6 +672,41 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
   });
 
+  test("type a pose or a move: it is found, applied, played, and undone in one step", async ({
+    page,
+  }) => {
+    await openStudio(page);
+    await page.getByTestId("lighting-scene").click();
+    const box = page.getByTestId("motion-input");
+    await box.click();
+    // Nothing typed: the whole library, by kind.
+    await expect(page.getByTestId("motion-option-eat")).toBeAttached();
+    await box.fill("sit on a chair");
+    await expect(page.getByTestId("motion-option-sit")).toBeVisible();
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toHaveText("Pose: Sit");
+    await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
+
+    // A typo still finds the walk; it becomes keyframes and plays.
+    await box.fill("walkng");
+    await expect(page.getByTestId("motion-option-walk")).toBeVisible();
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText("Walk:");
+    // Playing: the legs take at least two different walking positions
+    // (software rendering on CI shows few frames, so no more is asked).
+    const seen = new Set<number>();
+    await expect
+      .poll(async () => {
+        const v = await poseValue(page, "hipL", "forward");
+        if (v !== 90) seen.add(v); // 90: still the seated pose
+        return seen.size;
+      })
+      .toBeGreaterThanOrEqual(2);
+    // One undo takes the whole move away; the seated pose is back.
+    await page.getByTestId("undo").click();
+    await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
+  });
+
   test("Photography page still renders through the shared engine", async ({
     page,
   }) => {
@@ -691,6 +730,32 @@ test.describe("layout", () => {
     const box = (await page.getByTestId("lighting-scene").boundingBox())!;
     expect(box.width).toBeGreaterThan(320);
     expect(box.height).toBeGreaterThan(300);
+  });
+
+  test("phones: the panels fold down to a bar and the view grows", async ({
+    page,
+  }, info) => {
+    test.skip(!isMobile(info), "mobile layout only");
+    await openStudio(page);
+    const view = page.getByTestId("lighting-scene");
+    const before = (await view.boundingBox())!.height;
+    const handle = page.getByTestId("sheet-handle");
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await handle.click();
+    await expect(handle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("tabpanel")).toHaveCount(0);
+    await expect
+      .poll(async () => (await view.boundingBox())!.height)
+      .toBeGreaterThan(before * 1.5);
+    // The tabs stay in the bar; picking one opens the panels again.
+    await page.getByTestId("tab-scene").click();
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("node-light-key")).toBeVisible();
+    // Selecting in the view (folded first) opens them too.
+    await handle.click();
+    await view.click();
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
   });
 
   test("selecting a light on a phone opens the inspector tab", async ({

@@ -37,6 +37,7 @@ const KEY_EDITS = new Set<SceneAction["type"]>([
   "moveKey",
   "deleteKey",
   "clearKeys",
+  "applyMotion",
 ]);
 
 export interface TimelineState {

@@ -102,8 +102,13 @@ export function Timeline({
   }
   const toggle = () => (playing ? pause() : play());
 
+  // Only a new request toggles: a timeline shown later (another phone
+  // tab) doesn't replay an old one.
+  const seenRequest = useRef(playRequest);
   useEffect(() => {
-    if (playRequest > 0) toggle();
+    if (playRequest === seenRequest.current) return;
+    seenRequest.current = playRequest;
+    toggle();
     // Only on a new request, not when toggle's closure changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playRequest]);

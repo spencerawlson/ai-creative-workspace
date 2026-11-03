@@ -116,6 +116,9 @@ export function LightingStudio() {
   const [panelPref, setPanelOpen] = useState<boolean | null>(null);
   const panelOpen = panelPref ?? isWide;
   const [mobileTab, setMobileTab] = useState<MobileTab>("presets");
+  // Phones: the panels below the view fold down to a slim bar.
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const sheetSwipe = useRef<{ y: number; moved: boolean } | null>(null);
   const [view, setView] = useState<CameraView>("full");
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
@@ -137,7 +140,10 @@ export function LightingStudio() {
     (s: Selection, figureId?: string) => {
       setSelection(s);
       if (figureId) setActiveId(figureId);
-      if (!isDesktop && s !== null) setMobileTab("edit");
+      if (!isDesktop && s !== null) {
+        setMobileTab("edit");
+        setSheetOpen(true);
+      }
     },
     [isDesktop],
   );
@@ -176,6 +182,18 @@ export function LightingStudio() {
       if (view) viewport.current?.setCameraPlacement(view);
     },
     [studio, keyCamera],
+  );
+
+  // A typed move was added: show it from its start and play it.
+  const playFrom = useCallback(
+    (t: number) => {
+      // After the move's keys are in (the dispatch is applied first).
+      requestAnimationFrame(() => {
+        seek(t);
+        setPlayRequest((n) => n + 1);
+      });
+    },
+    [seek],
   );
 
   // Every dispatch reads this to auto-key at the current time.
@@ -432,6 +450,8 @@ export function LightingStudio() {
       onView={changeView}
       showHandles={showHandles}
       onShowHandles={setShowHandles}
+      time={time}
+      onPlayFrom={playFrom}
     />
   );
   const panels: Record<Tool, React.ReactNode> = {
@@ -580,11 +600,14 @@ export function LightingStudio() {
             previewing
               ? "fixed inset-0 z-50 h-dvh"
               : cx(
-                  "relative shrink-0 md:h-auto md:min-w-0 md:flex-1",
-                  // Phones: a shorter view while the graph editor is open.
-                  graphOpen && mobileTab === "animate"
-                    ? "h-[30dvh]"
-                    : "h-[46dvh]",
+                  "relative md:h-auto md:min-w-0 md:flex-1",
+                  // Phones: the view takes what the panels leave; a
+                  // shorter view while the graph editor is open.
+                  !sheetOpen
+                    ? "min-h-0 flex-1"
+                    : graphOpen && mobileTab === "animate"
+                      ? "h-[30dvh] shrink-0"
+                      : "h-[46dvh] shrink-0",
                 ),
           )}
           data-testid={previewing ? "preview-screen" : undefined}
@@ -644,8 +667,52 @@ export function LightingStudio() {
             {inspector}
           </aside>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col bg-ink-900">
+          <div
+            className={cx(
+              "flex flex-col bg-ink-900",
+              sheetOpen ? "min-h-0 flex-1" : "shrink-0",
+            )}
+            data-testid="phone-sheet"
+            data-open={sheetOpen}
+          >
             {miniTimeline}
+            {/* Grab handle: tap, or swipe down / up, to fold the panels
+                away and back. */}
+            <button
+              type="button"
+              aria-expanded={sheetOpen}
+              aria-controls="phone-panels"
+              aria-label={sheetOpen ? "Hide panels" : "Show panels"}
+              data-testid="sheet-handle"
+              className="flex h-7 w-full shrink-0 touch-none items-center justify-center border-t border-ink-800"
+              onPointerDown={(e) => {
+                sheetSwipe.current = { y: e.clientY, moved: false };
+              }}
+              onPointerMove={(e) => {
+                const sw = sheetSwipe.current;
+                if (!sw || sw.moved) return;
+                const dy = e.clientY - sw.y;
+                if (Math.abs(dy) > 24) {
+                  sw.moved = true;
+                  setSheetOpen(dy < 0);
+                }
+              }}
+              onPointerUp={() => {
+                const sw = sheetSwipe.current;
+                sheetSwipe.current = null;
+                if (sw && !sw.moved) setSheetOpen((o) => !o);
+              }}
+              onPointerCancel={() => (sheetSwipe.current = null)}
+              onKeyDown={(e) => {
+                // Pointer handlers do the tap; Enter/Space for keyboards.
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSheetOpen((o) => !o);
+                }
+              }}
+            >
+              <span aria-hidden className="h-1 w-10 rounded-full bg-ink-500" />
+            </button>
             <div
               role="tablist"
               aria-label="Panels"
@@ -660,7 +727,10 @@ export function LightingStudio() {
                   type="button"
                   aria-selected={mobileTab === t}
                   data-testid={`tab-${t}`}
-                  onClick={() => setMobileTab(t)}
+                  onClick={() => {
+                    setMobileTab(t);
+                    setSheetOpen(true);
+                  }}
                   className={cx(
                     "h-11 min-w-0 flex-1 truncate px-0.5 text-xs font-medium",
                     mobileTab === t
@@ -672,10 +742,14 @@ export function LightingStudio() {
                 </button>
               ))}
             </div>
-            {mobileTab === "animate" ? (
+            {!sheetOpen ? null : mobileTab === "animate" ? (
               // Phones: the timeline lives in its own tab, with every
               // control, and the graph editor fills the rest of it.
-              <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
+              <div
+                id="phone-panels"
+                className="flex min-h-0 flex-1 flex-col"
+                role="tabpanel"
+              >
                 {phoneTimeline}
                 {graphOpen && !previewing ? (
                   <GraphEditor
@@ -695,7 +769,11 @@ export function LightingStudio() {
                 )}
               </div>
             ) : (
-              <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
+              <div
+                id="phone-panels"
+                role="tabpanel"
+                className="min-h-0 flex-1 overflow-y-auto"
+              >
                 {mobileTab === "edit" ? inspector : panels[mobileTab]}
               </div>
             )}

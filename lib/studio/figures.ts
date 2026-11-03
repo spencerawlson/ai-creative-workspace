@@ -18,7 +18,15 @@ export function newFigure(
   model: MannequinModel,
   at: { x: number; z: number },
 ): Figure {
-  return { id, model, x: at.x, z: at.z, rotation: 0, pose: defaultPose() };
+  return {
+    id,
+    model,
+    x: at.x,
+    y: 0,
+    z: at.z,
+    rotation: 0,
+    pose: defaultPose(),
+  };
 }
 
 export function findFigure(

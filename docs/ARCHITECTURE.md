@@ -24,6 +24,8 @@ lib/studio/             Framework-free scene model (pure TS, unit-tested)
   channels.ts           Animated values per figure/light/camera: labels,
                         ranges, rounding (graph editor)
   pose.ts               Mannequin joints, limits, pose presets, mirror
+  motions.ts            Built-in poses and moves; floor contact, travel
+  motionSearch.ts       Typed search: stems, synonyms, typos, options
   share.ts              ?s= link codec v2 (reads M3 v1 links)
   persistence.ts        Local autosave + .lighting.json project files
 lib/engine/StudioEngine.ts
@@ -72,8 +74,8 @@ runs a small damped-least-squares solver over that joint's existing
 angles, inside their limits; one drag is one undo step (a "gesture"
 commit, sealed on release).
 
-**Figures.** A scene holds 1–4 `figures` (model, x/z on the floor,
-rotation, pose). Scenes saved with the older single top-level
+**Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
+up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with
 the old link layout. The engine loads each GLB once as a template and
 puts `SkeletonUtils` clones on stage, each with its own skeleton,
@@ -81,12 +83,15 @@ capsules and overlay but shared geometry and materials. Pose and model
 actions carry an optional `figure` (omitted = the first). The UI keeps
 an "active figure" that the mannequin and pose controls act on.
 
-**Keyframes.** `scene.animation` holds a length and up to 60 keys. A
+**Keyframes.** `scene.animation` holds a length and up to 120 keys. A
 key is a snapshot at a time of what moves: each figure's place, turn
 and joints, each light's settings, and optionally the camera placement
 (orbit position and target, not otherwise saved) and focal length.
 `evaluate(scene, t)` interpolates between the keys around `t` (smooth,
-linear or step per key; wrapping angles go the short way) and is pure.
+linear, step or spline per key; wrapping angles go the short way) and
+is pure. Spline keys take their slope from the neighbouring keys that
+record the same value (monotone, Fritsch–Carlson), so a curve passes
+smoothly through each key without overshooting it.
 Moving the playhead is a history `showTime` command: it replaces what
 moves in the current entry without adding an undo step, so unkeyed
 edits are dropped, as in Maya. With auto-key on, `useStudio` tags each
@@ -97,6 +102,21 @@ timeline component and draws each frame straight to the engine
 own cubic Hermite curve between keys; with no graph-editor tangents
 that is exactly the key's ease, and every result is clamped to the
 channel's range.
+
+**Motion library.** `lib/studio/motions.ts` is plain data: each pose
+or move lists, per frame, only the joints that differ from a relaxed
+stance; one-sided ones are written for the right and mirrored.
+`planMotion` lays a move out from a figure's placement: cycles,
+whole-stride travel along its facing direction (fewer cycles, or on
+the spot, when the room ends; it stops 1.5 m in front of centre, short
+of the camera), and a `y` from a two-segment leg model so the lowest
+foot, knee or seat touches the floor. The `applyMotion` action writes
+the frames as spline keys on that one figure over the move's span,
+replacing only that figure's keys there; a pose is an ordinary edit
+(auto-key keys it). `motionSearch.ts` normalises and stems what is
+typed, matches names and other words (prefix for the word being
+typed; edit distance only when nothing matches exactly) and turns
+"left", "N times", "slowly", "in place", "backwards" into options.
 
 **Animated links.** A link for a scene with keys holds the animation
 too, as positional rows, deflate-raw compressed with the browser's

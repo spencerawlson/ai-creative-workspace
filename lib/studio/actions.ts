@@ -60,6 +60,7 @@ import {
   upsertKey,
   withKeyValue,
 } from "./animation";
+import { findMotion, motionSteps, type MotionStep } from "./motions";
 import {
   figureLabel,
   findFigure,
@@ -75,6 +76,7 @@ const figureRef = FigureIdSchema.optional();
 
 const FigurePatchSchema = FigureSchema.pick({
   x: true,
+  y: true,
   z: true,
   rotation: true,
 })
@@ -195,6 +197,21 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("mirrorPose"), figure: figureRef }).strict(),
+  z
+    .object({
+      // A pose or move from the motion library (lib/studio/motions.ts).
+      // A move becomes keyframes on this figure from time `t`.
+      type: z.literal("applyMotion"),
+      motion: z.string().max(32),
+      figure: figureRef,
+      t: keyTime.optional(),
+      mirror: z.boolean().optional(),
+      repeat: z.number().int().min(1).max(10).optional(),
+      slow: z.number().finite().min(0.25).max(4).optional(),
+      inPlace: z.boolean().optional(),
+      backwards: z.boolean().optional(),
+    })
+    .strict(),
   z
     .object({
       // Record what moves, at time `t`; replaces a key already there.
@@ -435,6 +452,8 @@ export function applyAction(
         ...f,
         pose: { preset: "custom", joints: mirrorJoints(f.pose.joints) },
       }));
+    case "applyMotion":
+      return applyMotion(scene, action, ok);
     case "setKey": {
       const r = upsertKey(
         scene.animation,
@@ -528,6 +547,91 @@ export function applyAction(
 
 const secs = (t: number) => `${t.toFixed(2)} s`;
 
+function applyMotion(
+  scene: SceneDoc,
+  action: Extract<SceneAction, { type: "applyMotion" }>,
+  ok: (next: SceneDoc) => ActionResult,
+): ActionResult {
+  const motion = findMotion(action.motion);
+  if (!motion) return { ok: false, error: `Unknown motion "${action.motion}"` };
+  const figure = findFigure(scene, action.figure);
+  if (!figure) return { ok: false, error: `No figure "${action.figure}"` };
+  const steps = motionSteps(motion, figure, action);
+  const at = (s: MotionStep): Figure => ({
+    ...figure,
+    x: s.x,
+    y: s.y,
+    z: s.z,
+    rotation: s.rotation,
+    pose: { preset: "custom", joints: s.joints },
+  });
+  const figures = scene.figures.map((f) => (f === figure ? at(steps[0]) : f));
+  if (motion.kind === "pose") return ok({ ...scene, figures });
+
+  const t0 = roundTime(action.t ?? 0);
+  const end = roundTime(t0 + steps[steps.length - 1].at);
+  if (end > LIMITS.duration[1])
+    return {
+      ok: false,
+      error: `${motion.name} would end at ${secs(end)}; animations are at most ${LIMITS.duration[1]} s`,
+    };
+  // The move replaces this figure's keys over its span; other figures,
+  // lights and the camera keep theirs.
+  const id = figure.id;
+  let keys = scene.animation.keys
+    .map((k) => {
+      if (k.t < t0 - KEY_EPSILON || k.t > end + KEY_EPSILON) return k;
+      if (!k.figures[id]) return k;
+      const rest = { ...k.figures };
+      delete rest[id];
+      return { ...k, figures: rest };
+    })
+    .filter(
+      (k) =>
+        Object.keys(k.figures).length > 0 ||
+        Object.keys(k.lights).length > 0 ||
+        k.camera,
+    );
+  for (const s of steps) {
+    const t = roundTime(t0 + s.at);
+    const entry = {
+      x: s.x,
+      y: s.y,
+      z: s.z,
+      rotation: s.rotation,
+      joints: s.joints,
+    };
+    const same = keys.find((k) => Math.abs(k.t - t) < KEY_EPSILON);
+    keys = same
+      ? keys.map((k) =>
+          k === same ? { ...k, figures: { ...k.figures, [id]: entry } } : k,
+        )
+      : [
+          ...keys,
+          { t, ease: "spline" as const, figures: { [id]: entry }, lights: {} },
+        ];
+  }
+  if (keys.length > LIMITS.maxKeys)
+    return {
+      ok: false,
+      error: `That would make ${keys.length} keyframes; at most ${LIMITS.maxKeys}`,
+    };
+  return ok({
+    ...scene,
+    figures,
+    animation: {
+      ...scene.animation,
+      // A first move sets the length (so it loops without a long pause);
+      // later ones only ever lengthen it.
+      duration:
+        scene.animation.keys.length === 0
+          ? Math.max(LIMITS.duration[0], Math.ceil(end))
+          : Math.max(scene.animation.duration, Math.ceil(end)),
+      keys: keys.sort((a, b) => a.t - b.t),
+    },
+  });
+}
+
 /** Replace one figure (the first if `id` is omitted) with `change(f)`.
  * Returning the same object is a no-op. */
 function withFigure(
@@ -584,6 +688,9 @@ export function isAnimatable(action: SceneAction): boolean {
     case "mirrorPose":
     case "updateFigure":
       return true;
+    case "applyMotion":
+      // Moves set their own keys; a pose is an edit like any other.
+      return findMotion(action.motion)?.kind === "pose";
     case "updateCamera":
       return "focalMm" in action.patch;
     default:
@@ -680,6 +787,7 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
     "updateJoint",
     "updateJoints",
     "mirrorPose",
+    "applyMotion",
   ].includes(action.type);
   return perFigure && scene.figures.length > 1
     ? `${figureLabel(scene, figure ?? scene.figures[0].id)} · ${label}`
@@ -732,6 +840,14 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return action.label ?? "Load scene";
     case "applyPosePreset":
       return `Pose: ${posePreset(action.presetId)?.name ?? action.presetId}`;
+    case "applyMotion": {
+      const m = findMotion(action.motion);
+      const name = m?.name ?? action.motion;
+      const side = action.mirror ? " (left)" : "";
+      return m?.kind === "move"
+        ? `Move: ${name}${side} at ${secs(action.t ?? 0)}`
+        : `Pose: ${name}${side}`;
+    }
     case "updateJoint": {
       const j = JOINTS[action.joint];
       const dofs = j.dofs as Record<string, { label: string }>;

@@ -17,11 +17,13 @@ export const LIMITS = {
   /** Where a figure may stand on the floor (metres from the centre). */
   figureX: [-3, 3],
   figureZ: [-3, 3],
+  /** Up/down from standing (jumping, sitting, squatting), metres. */
+  figureY: [-1, 1.5],
   /** Which way a figure faces, degrees about the vertical (0 = camera). */
   rotation: [-180, 180],
   /** Keyframe animation: length in seconds, and at most this many keys. */
   duration: [1, 120],
-  maxKeys: 60,
+  maxKeys: 120,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],
@@ -128,6 +130,8 @@ export const FigureSchema = z.object({
   x: num("figureX"),
   z: num("figureZ"),
   rotation: num("rotation"),
+  /** Optional on input: added with the motion library. */
+  y: num("figureY").default(0),
   /** Optional on input: scenes saved before posing existed load in
    * the scan's A-pose. */
   pose: PoseSchema.default(defaultPose),
@@ -168,6 +172,7 @@ const FigureKeySchema = z.object({
   x: num("figureX"),
   z: num("figureZ"),
   rotation: num("rotation"),
+  y: num("figureY").default(0),
   joints: PoseJointsSchema,
 });
 const LightKeySchema = LightSchema.pick({
@@ -185,7 +190,10 @@ export type LightKey = z.infer<typeof LightKeySchema>;
 
 /** How values travel from a key to the next: ease in/out, a straight
  * line, or hold until the next key. */
-export const EASES = ["smooth", "linear", "step"] as const;
+/** "spline" passes smoothly through each key (Maya's auto tangents);
+ * "smooth" eases in and out of every key. New eases go last: links
+ * store the index. */
+export const EASES = ["smooth", "linear", "step", "spline"] as const;
 export const EaseSchema = z.enum(EASES);
 export type Ease = z.infer<typeof EaseSchema>;
 
@@ -228,7 +236,7 @@ export const ChannelSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("figure"),
       figure: FigureIdSchema,
-      field: z.enum(["x", "z", "rotation"]),
+      field: z.enum(["x", "y", "z", "rotation"]),
     })
     .strict(),
   z

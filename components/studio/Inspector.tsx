@@ -24,6 +24,7 @@ import {
   type StudioLight,
 } from "@/lib/studio/schema";
 import type { Studio } from "./useStudio";
+import { MotionSearch } from "./MotionSearch";
 import { PoseInspector, isPoseSelection } from "./PoseInspector";
 import type { ViewportHandle } from "./StudioViewport";
 import {
@@ -50,6 +51,9 @@ type Props = {
   onView: (v: CameraView) => void;
   showHandles: boolean;
   onShowHandles: (v: boolean) => void;
+  /** The timeline's current time: where typed moves start. */
+  time: number;
+  onPlayFrom?: (t: number) => void;
 };
 
 export function Inspector(props: Props) {
@@ -267,13 +271,17 @@ function LightInspector({
   );
 }
 
-function ModelInspector({ studio, figure, onSelect }: Props) {
+function ModelInspector({ studio, figure, onSelect, time, onPlayFrom }: Props) {
   const { scene, dispatch, seal } = studio;
   const m = scene.material;
   const many = scene.figures.length > 1;
   const expectNewFigure = useSelectNewFigure(scene.figures, onSelect);
-  const place = (patch: { x?: number; z?: number; rotation?: number }) =>
-    dispatch({ type: "updateFigure", figure: figure.id, patch });
+  const place = (patch: {
+    x?: number;
+    y?: number;
+    z?: number;
+    rotation?: number;
+  }) => dispatch({ type: "updateFigure", figure: figure.id, patch });
   return (
     <>
       <PanelHeader title={many ? figureLabel(scene, figure.id) : "Mannequin"}>
@@ -313,6 +321,14 @@ function ModelInspector({ studio, figure, onSelect }: Props) {
             dispatch({ type: "setModel", model, figure: figure.id })
           }
         />
+        <div className="mt-3">
+          <MotionSearch
+            studio={studio}
+            figure={figure}
+            time={time}
+            onPlayFrom={onPlayFrom}
+          />
+        </div>
         <SectionTitle>Placement</SectionTitle>
         <Slider
           label="Left / right"
@@ -336,6 +352,18 @@ function ModelInspector({ studio, figure, onSelect }: Props) {
           testId="figure-z"
           hint="Positive comes towards the camera"
           onChange={(z) => place({ z })}
+          onCommitEnd={seal}
+        />
+        <Slider
+          label="Up / down"
+          value={figure.y}
+          min={LIMITS.figureY[0]}
+          max={LIMITS.figureY[1]}
+          step={0.01}
+          unit=" m"
+          testId="figure-y"
+          hint="Lift or lower the whole figure (jumps, sitting)"
+          onChange={(y) => place({ y })}
           onCommitEnd={seal}
         />
         <Slider
