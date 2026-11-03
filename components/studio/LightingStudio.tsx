@@ -207,14 +207,17 @@ export function LightingStudio() {
   );
 
   async function share() {
-    const ok = await copyText(studio.shareUrl());
+    const link = await studio.shareUrl();
+    const ok = await copyText(link.url);
     setCopied(ok ? "copied" : "failed");
     studio.notify(
       !ok
         ? "Couldn't copy. Copy the address bar instead."
-        : scene.animation.keys.length > 0
-          ? "Share link copied. It opens this frame; save a project file (Ctrl+S) to keep the animation."
-          : "Share link copied — it opens this exact setup.",
+        : link.animated
+          ? "Share link copied — it opens this animation."
+          : link.tooLong
+            ? "Share link copied. The animation is too long for a link, so it opens this frame; save a project file (Ctrl+S) to keep the animation."
+            : "Share link copied — it opens this exact setup.",
       ok ? "info" : "error",
     );
     setTimeout(() => setCopied("idle"), 2500);

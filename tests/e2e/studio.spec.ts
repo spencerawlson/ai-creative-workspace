@@ -506,6 +506,33 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(raise).toHaveValue(String(smooth));
   });
 
+  test("an animated share link opens the animation in a fresh browser", async ({
+    page,
+    browser,
+  }) => {
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await page.getByTestId("timeline-autokey").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await scrub.fill("2");
+    await page.getByTestId("pose-preset-arms-up").click();
+    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    // The address bar becomes a compressed, animated link.
+    await expect.poll(() => sParam(page)).toMatch(/^z/);
+    const url = new URL(page.url());
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await openStudio(page2, url.pathname + url.search);
+    await expect(page2.getByTestId("timeline-key-0.00")).toBeVisible();
+    await expect(page2.getByTestId("timeline-key-2.00")).toBeVisible();
+    await page2.getByTestId("timeline-scrub").fill("2");
+    await showPanel(page2, "scene");
+    await expect(page2.getByTestId("node-pose")).toContainText("Arms up");
+    await other.close();
+  });
+
   test("tapping the figure opens the pose controls for that body part", async ({
     page,
   }) => {

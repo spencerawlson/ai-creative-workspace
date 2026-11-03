@@ -22,7 +22,7 @@ import {
 } from "@/lib/studio/history";
 import { loadAutosave, saveAutosave } from "@/lib/studio/persistence";
 import { defaultScene } from "@/lib/studio/presets";
-import { decodeScene, encodeScene } from "@/lib/studio/share";
+import { decodeSceneLink, encodeSceneLink } from "@/lib/studio/share";
 import type { CameraPlacement } from "@/lib/studio/schema";
 
 export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
@@ -117,18 +117,30 @@ export function useStudio() {
 
   // Startup: a share link wins, then the last autosave, then defaults.
   useEffect(() => {
+    let cancelled = false;
     const param = new URLSearchParams(window.location.search).get("s");
     if (param) {
-      const shared = decodeScene(param);
-      if (shared) {
-        send({ type: "replace", scene: shared, label: "Open shared link" });
-        notify("Opened a shared lighting setup.");
-      } else {
-        notify(
-          "That share link is damaged or from a newer version — showing the default setup.",
-          "error",
-        );
-      }
+      // Animated links are compressed, so opening one is async.
+      void decodeSceneLink(param).then((shared) => {
+        if (cancelled) return;
+        if (shared) {
+          send({ type: "replace", scene: shared, label: "Open shared link" });
+          notify(
+            shared.animation.keys.length > 0
+              ? "Opened a shared animation. Press Space to play it."
+              : "Opened a shared lighting setup.",
+          );
+        } else {
+          notify(
+            "That share link is damaged or from a newer version — showing the default setup.",
+            "error",
+          );
+        }
+        setHydrated(true);
+      });
+      return () => {
+        cancelled = true;
+      };
     } else {
       const saved = loadAutosave();
       if (saved) {
@@ -142,28 +154,38 @@ export function useStudio() {
       }
     }
     setHydrated(true);
+    return () => {
+      cancelled = true;
+    };
   }, [notify]);
 
   // Keep the address bar a live share link, and autosave locally.
   useEffect(() => {
     if (!hydrated) return;
-    const t = setTimeout(() => {
+    let stale = false;
+    const t = setTimeout(async () => {
+      const now = Date.now();
+      if (saveAutosave({ savedAt: now, name, scene })) setSavedAt(now);
+      const { param } = await encodeSceneLink(scene);
+      if (stale) return; // a newer scene is on its way
       const url = new URL(window.location.href);
-      const param = encodeScene(scene);
       if (url.searchParams.get("s") !== param) {
         url.searchParams.set("s", param);
         window.history.replaceState(null, "", url.toString());
       }
-      const now = Date.now();
-      if (saveAutosave({ savedAt: now, name, scene })) setSavedAt(now);
     }, 400);
-    return () => clearTimeout(t);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
   }, [hydrated, scene, name]);
 
-  const shareUrl = useCallback(() => {
+  /** The share link, and whether it carries the animation. */
+  const shareUrl = useCallback(async () => {
+    const link = await encodeSceneLink(scene);
     const url = new URL(window.location.href);
-    url.searchParams.set("s", encodeScene(scene));
-    return url.toString();
+    url.searchParams.set("s", link.param);
+    return { ...link, url: url.toString() };
   }, [scene]);
 
   return useMemo(
