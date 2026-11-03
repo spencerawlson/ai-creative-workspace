@@ -178,6 +178,18 @@ export function LightingStudio() {
     [studio, keyCamera],
   );
 
+  // A typed move was added: show it from its start and play it.
+  const playFrom = useCallback(
+    (t: number) => {
+      // After the move's keys are in (the dispatch is applied first).
+      requestAnimationFrame(() => {
+        seek(t);
+        setPlayRequest((n) => n + 1);
+      });
+    },
+    [seek],
+  );
+
   // Every dispatch reads this to auto-key at the current time.
   useEffect(() => {
     studio.timeline.current = {
@@ -432,6 +444,8 @@ export function LightingStudio() {
       onView={changeView}
       showHandles={showHandles}
       onShowHandles={setShowHandles}
+      time={time}
+      onPlayFrom={playFrom}
     />
   );
   const panels: Record<Tool, React.ReactNode> = {

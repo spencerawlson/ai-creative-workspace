@@ -261,7 +261,7 @@ export const MOTIONS: Motion[] = [
     frames: [
       f(
         0,
-        both({ shoulderL: { raise: 48, forward: 0 }, elbowL: { bend: 0 } }),
+        both({ shoulderL: { raise: 56, forward: 0 }, elbowL: { bend: 0 } }),
         {
           hands: { L: "open", R: "open" },
         },
@@ -394,7 +394,10 @@ export const MOTIONS: Motion[] = [
     frames: [
       f(
         0,
-        both({ shoulderL: { raise: 15, forward: 70 }, elbowL: { bend: 50 } }),
+        both({
+          shoulderL: { raise: -12, forward: 62, twist: -20 },
+          elbowL: { bend: 45 },
+        }),
         {
           hands: { L: "open", R: "open" },
         },
@@ -495,8 +498,8 @@ export const MOTIONS: Motion[] = [
     frames: [
       f(0, {
         ...both({
-          shoulderL: { raise: -10, forward: 35, twist: -10 },
-          elbowL: { bend: 100 },
+          shoulderL: { raise: -14, forward: 22, twist: -10 },
+          elbowL: { bend: 78 },
           wristL: { twist: 50 },
         }),
         head: { nod: 30 },
@@ -626,8 +629,8 @@ export const MOTIONS: Motion[] = [
     sided: true,
     frames: [
       f(0, {
-        shoulderR: { raise: 70, forward: 35, twist: -20 },
-        elbowR: { bend: 135 },
+        shoulderR: { raise: 80, forward: 30, twist: 30 },
+        elbowR: { bend: 142 },
         wristR: { lift: -10 },
       }),
     ],
@@ -726,8 +729,8 @@ export const MOTIONS: Motion[] = [
     sided: true,
     frames: [
       f(0, {
-        shoulderR: { raise: 5, forward: 25, twist: -40 },
-        elbowR: { bend: 140 },
+        shoulderR: { raise: 30, forward: 30, twist: 60 },
+        elbowR: { bend: 145 },
         head: { tilt: -10 },
       }),
     ],
@@ -1528,7 +1531,6 @@ export const MOTIONS: Motion[] = [
         spine: { bend: 45 },
         head: { nod: 30 },
         ...both({
-          hipL: { forward: 25 },
           shoulderL: { raise: -18, forward: 30 },
         }),
       }),
@@ -1536,7 +1538,6 @@ export const MOTIONS: Motion[] = [
         spine: { bend: 45 },
         head: { nod: 30 },
         ...both({
-          hipL: { forward: 25 },
           shoulderL: { raise: -18, forward: 30 },
         }),
       }),
@@ -1575,16 +1576,16 @@ export const MOTIONS: Motion[] = [
         head: { nod: 15 },
       }),
       f(0.6, {
-        shoulderR: { raise: -5, forward: 45, twist: -30 },
-        elbowR: { bend: 140 },
+        shoulderR: { raise: -5, forward: 58, twist: -35 },
+        elbowR: { bend: 143 },
         wristR: { bend: -10 },
         shoulderL: { raise: -15, forward: 25 },
         elbowL: { bend: 85 },
         head: { nod: 5 },
       }),
       f(1.0, {
-        shoulderR: { raise: -5, forward: 45, twist: -30 },
-        elbowR: { bend: 140 },
+        shoulderR: { raise: -5, forward: 58, twist: -35 },
+        elbowR: { bend: 143 },
         wristR: { bend: -10 },
         shoulderL: { raise: -15, forward: 25 },
         elbowL: { bend: 85 },

@@ -14,6 +14,7 @@ import {
   type Dof,
   type JointId,
 } from "@/lib/studio/pose";
+import { MotionSearch } from "./MotionSearch";
 import type { Studio } from "./useStudio";
 import { figureLabel } from "@/lib/studio/figures";
 import type { Figure } from "@/lib/studio/schema";
@@ -36,11 +37,15 @@ export function PoseInspector({
   figure,
   selection,
   onSelect,
+  time = 0,
+  onPlayFrom,
 }: {
   studio: Studio;
   figure: Figure;
   selection: Selection;
   onSelect: (s: Selection, figure?: string) => void;
+  time?: number;
+  onPlayFrom?: (t: number) => void;
 }) {
   const { scene, dispatch, seal } = studio;
   const target = { figure: figure.id };
@@ -68,6 +73,12 @@ export function PoseInspector({
         }
       />
       <div className="px-3 py-3">
+        <MotionSearch
+          studio={studio}
+          figure={figure}
+          time={time}
+          onPlayFrom={onPlayFrom}
+        />
         <SectionTitle>Poses</SectionTitle>
         <div
           className="grid grid-cols-2 gap-1.5 py-1.5"
