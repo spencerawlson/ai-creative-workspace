@@ -12,19 +12,59 @@ import type { ViewportHandle } from "./StudioViewport";
 
 export type VideoFormat = { mimeType: string; extension: "mp4" | "webm" };
 
-/** The best format this browser can record, or null if it can't. */
-export function videoFormat(): VideoFormat | null {
+const CANDIDATES: VideoFormat[] = [
+  { mimeType: "video/mp4;codecs=avc1", extension: "mp4" },
+  { mimeType: "video/mp4", extension: "mp4" },
+  { mimeType: "video/webm;codecs=vp9", extension: "webm" },
+  { mimeType: "video/webm;codecs=vp8", extension: "webm" },
+  { mimeType: "video/webm", extension: "webm" },
+];
+
+let picked: Promise<VideoFormat | null> | null = null;
+
+/** The best format this browser can really record, or null. Some
+ * browsers (e.g. Chromium builds without H.264) say they support MP4
+ * but record nothing, so each candidate is tried on a tiny canvas
+ * first. The answer is remembered. */
+export function videoFormat(): Promise<VideoFormat | null> {
+  picked ??= pick();
+  return picked;
+}
+
+async function pick(): Promise<VideoFormat | null> {
   if (typeof MediaRecorder === "undefined") return null;
-  const candidates: VideoFormat[] = [
-    { mimeType: "video/mp4;codecs=avc1", extension: "mp4" },
-    { mimeType: "video/mp4", extension: "mp4" },
-    { mimeType: "video/webm;codecs=vp9", extension: "webm" },
-    { mimeType: "video/webm;codecs=vp8", extension: "webm" },
-    { mimeType: "video/webm", extension: "webm" },
-  ];
-  return (
-    candidates.find((c) => MediaRecorder.isTypeSupported(c.mimeType)) ?? null
-  );
+  for (const c of CANDIDATES) {
+    if (!MediaRecorder.isTypeSupported(c.mimeType)) continue;
+    if (await records(c.mimeType)) return c;
+  }
+  return null;
+}
+
+async function records(mimeType: string): Promise<boolean> {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext("2d")!;
+    const stream = canvas.captureStream(0);
+    const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    const rec = new MediaRecorder(stream, { mimeType });
+    let bytes = 0;
+    rec.ondataavailable = (e) => (bytes += e.data.size);
+    const stopped = new Promise<void>((r) => (rec.onstop = () => r()));
+    rec.start();
+    for (let i = 0; i < 3; i++) {
+      g.fillStyle = `rgb(${i * 80},90,160)`;
+      g.fillRect(0, 0, 64, 64);
+      track.requestFrame();
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    rec.stop();
+    await stopped;
+    track.stop();
+    return bytes > 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function recordVideo(opts: {
@@ -38,7 +78,7 @@ export async function recordVideo(opts: {
   onProgress?: (done: number) => void;
   signal?: AbortSignal;
 }): Promise<{ blob: Blob; format: VideoFormat; slowFrames: number }> {
-  const format = videoFormat();
+  const format = await videoFormat();
   if (!format) throw new Error("This browser can't record video.");
   const { viewport, scene, width, height, fps } = opts;
   const canvas = viewport.beginCapture(width, height);
@@ -84,6 +124,10 @@ export async function recordVideo(opts: {
     recorder.stop();
     await stopped;
     track.stop();
+    if (chunks.length === 0)
+      throw new Error(
+        "The browser recorded an empty video. Try another browser.",
+      );
     return {
       blob: new Blob(chunks, { type: format.mimeType.split(";")[0] }),
       format,

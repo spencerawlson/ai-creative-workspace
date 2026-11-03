@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import type { ViewportHandle } from "./StudioViewport";
-import { recordVideo, videoFormat } from "./recordVideo";
+import { recordVideo, videoFormat, type VideoFormat } from "./recordVideo";
 import { downloadBlob, slug, type Studio } from "./useStudio";
 import { Button, Dialog, Kbd, Segmented, Slider, Toggle } from "./ui";
 
@@ -289,7 +289,11 @@ export function VideoExportDialog({
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
-  const format = typeof window === "undefined" ? null : videoFormat();
+  // Which format this browser really records (checked once, async).
+  const [format, setFormat] = useState<VideoFormat | null | undefined>();
+  useEffect(() => {
+    if (open) void videoFormat().then(setFormat);
+  }, [open]);
   const { duration, keys } = studio.scene.animation;
   const size = VIDEO_SIZES[sizeId];
 
@@ -414,11 +418,13 @@ export function VideoExportDialog({
         </div>
       )}
       <p className="mt-2 text-2xs text-ink-400" data-testid="video-summary">
-        {!format
-          ? "This browser can't record video. Try a current Chrome, Edge, Firefox or Safari."
-          : keys.length === 0
-            ? "There's no animation yet: set keyframes on the timeline first."
-            : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()}. Recording plays the animation in real time; on a slow device parts of the video may run slower. Light handles are hidden.`}
+        {format === undefined
+          ? "Checking which video format this browser can record…"
+          : !format
+            ? "This browser can't record video. Try a current Chrome, Edge, Firefox or Safari."
+            : keys.length === 0
+              ? "There's no animation yet: set keyframes on the timeline first."
+              : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()}. Recording plays the animation in real time; on a slow device parts of the video may run slower. Light handles are hidden.`}
       </p>
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">
