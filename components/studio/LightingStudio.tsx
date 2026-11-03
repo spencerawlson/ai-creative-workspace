@@ -38,7 +38,7 @@ import { StudioViewport, type ViewportHandle } from "./StudioViewport";
 import { Timeline } from "./Timeline";
 import { GraphEditor } from "./GraphEditor";
 import { evaluate } from "@/lib/studio/animation";
-import { Button, IconButton, cx } from "./ui";
+import { Button, IconButton, Tip, cx } from "./ui";
 import {
   copyText,
   downloadBlob,
@@ -48,7 +48,7 @@ import {
 } from "./useStudio";
 
 type Tool = "scene" | "presets" | "history";
-type MobileTab = "presets" | "scene" | "edit" | "history";
+type MobileTab = "presets" | "scene" | "edit" | "animate" | "history";
 
 const TOOLS: Array<{ id: Tool; label: string; icon: typeof Layers }> = [
   { id: "scene", label: "Scene", icon: Layers },
@@ -447,6 +447,34 @@ export function LightingStudio() {
     history: <HistoryPanel studio={studio} />,
   };
 
+  const timelineProps = {
+    studio,
+    graphOpen,
+    onGraph: setGraphOpen,
+    onVideo: () => setVideoOpen(true),
+    viewport,
+    time,
+    onSeek: seek,
+    autoKey,
+    onAutoKey: setAutoKey,
+    keyCamera,
+    onKeyCamera: setKeyCamera,
+    loop,
+    onLoop: setLoop,
+    preview: previewing,
+    onPreview: setPreviewing,
+    playRequest,
+  };
+  const phoneTimeline = <Timeline {...timelineProps} expanded />;
+  // Phones, other tabs, once there's an animation: one slim row above
+  // the tabs, so scrubbing and posing sit together.
+  const miniTimeline =
+    !isDesktop &&
+    !previewing &&
+    mobileTab !== "animate" &&
+    scene.animation.keys.length > 0 ? (
+      <Timeline {...timelineProps} mini />
+    ) : null;
   const timeline = (
     <Timeline
       studio={studio}
@@ -554,7 +582,9 @@ export function LightingStudio() {
               : cx(
                   "relative shrink-0 md:h-auto md:min-w-0 md:flex-1",
                   // Phones: a shorter view while the graph editor is open.
-                  graphOpen ? "h-[30dvh]" : "h-[46dvh]",
+                  graphOpen && mobileTab === "animate"
+                    ? "h-[30dvh]"
+                    : "h-[46dvh]",
                 ),
           )}
           data-testid={previewing ? "preview-screen" : undefined}
@@ -615,12 +645,15 @@ export function LightingStudio() {
           </aside>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col bg-ink-900">
+            {miniTimeline}
             <div
               role="tablist"
               aria-label="Panels"
               className="flex shrink-0 border-b border-ink-800"
             >
-              {(["presets", "scene", "edit", "history"] as const).map((t) => (
+              {(
+                ["presets", "scene", "edit", "animate", "history"] as const
+              ).map((t) => (
                 <button
                   key={t}
                   role="tab"
@@ -629,7 +662,7 @@ export function LightingStudio() {
                   data-testid={`tab-${t}`}
                   onClick={() => setMobileTab(t)}
                   className={cx(
-                    "h-11 flex-1 text-xs font-medium",
+                    "h-11 min-w-0 flex-1 truncate px-0.5 text-xs font-medium",
                     mobileTab === t
                       ? "border-b-2 border-accent text-ink-100"
                       : "text-ink-400",
@@ -639,36 +672,40 @@ export function LightingStudio() {
                 </button>
               ))}
             </div>
-            {/* Phones: the graph editor takes the panel's place rather
-                than squeezing in under it. */}
-            {graphOpen && !previewing ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <GraphEditor
-                  studio={studio}
-                  figure={figure}
-                  selection={validSelection}
-                  time={time}
-                  onSeek={seek}
-                  fill
-                />
+            {mobileTab === "animate" ? (
+              // Phones: the timeline lives in its own tab, with every
+              // control, and the graph editor fills the rest of it.
+              <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
+                {phoneTimeline}
+                {graphOpen && !previewing ? (
+                  <GraphEditor
+                    studio={studio}
+                    figure={figure}
+                    selection={validSelection}
+                    time={time}
+                    onSeek={seek}
+                    fill
+                  />
+                ) : (
+                  <Tip className="px-3 py-2">
+                    Pose and light the scene, move the time, and set a key (or
+                    turn on Auto-key). The graph button opens the curves; the
+                    clapperboard plays a full-screen preview.
+                  </Tip>
+                )}
               </div>
-            ) : null}
-            <div
-              role="tabpanel"
-              className={cx(
-                "min-h-0 flex-1 overflow-y-auto",
-                graphOpen && !previewing && "hidden",
-              )}
-            >
-              {mobileTab === "edit" ? inspector : panels[mobileTab]}
-            </div>
+            ) : (
+              <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
+                {mobileTab === "edit" ? inspector : panels[mobileTab]}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {!previewing && (
+      {!previewing && isDesktop && (
         <div className="shrink-0">
-          {graphOpen && isDesktop && (
+          {graphOpen && (
             <GraphEditor
               studio={studio}
               figure={figure}

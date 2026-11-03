@@ -36,6 +36,7 @@ import {
   Slider,
   Toggle,
   cx,
+  Tip,
 } from "./ui";
 
 type Props = {
@@ -349,10 +350,10 @@ function ModelInspector({ studio, figure, onSelect }: Props) {
           onChange={(rotation) => place({ rotation })}
           onCommitEnd={seal}
         />
-        <p className="mt-1 text-2xs leading-relaxed text-ink-400">
+        <Tip className="mt-1">
           With this panel open, drag a figure in the viewport to move it across
           the floor.
-        </p>
+        </Tip>
         <SectionTitle>
           {many ? "Material (all figures)" : "Material"}
         </SectionTitle>
@@ -602,10 +603,10 @@ function SceneInspector({ studio, viewport }: Props) {
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-ink-300">{note}</p>
         </section>
-        <p className="mt-3 text-2xs text-ink-400">
+        <Tip className="mt-3">
           Select a light, the mannequin, the camera or the backdrop — in the
           scene list or by clicking it in the viewport — to edit it here.
-        </p>
+        </Tip>
 
         <SectionTitle>Shadows</SectionTitle>
         <Segmented
@@ -621,10 +622,10 @@ function SceneInspector({ studio, viewport }: Props) {
             dispatch({ type: "updateShadows", patch: { quality } })
           }
         />
-        <p className="text-2xs text-ink-400">
+        <Tip className="">
           {casters} light{casters === 1 ? "" : "s"} casting shadows. Each one
           re-renders the figure; on phones keep it to one or two at Medium.
-        </p>
+        </Tip>
 
         <SectionTitle>Performance</SectionTitle>
         <Button
@@ -681,11 +682,11 @@ function SceneInspector({ studio, viewport }: Props) {
             </dt>
           </dl>
         )}
-        <p className="mt-2 text-2xs text-ink-400">
+        <Tip className="mt-2">
           Frame rate is capped by the display refresh rate. The viewport renders
           only when something changes, and drops to 1× resolution while moving
           if frames get slow.
-        </p>
+        </Tip>
       </div>
     </>
   );

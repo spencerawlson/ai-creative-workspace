@@ -35,7 +35,7 @@ import {
 import { figureLabel } from "@/lib/studio/figures";
 import { useSelectNewFigure } from "./useSelectNewFigure";
 import type { Studio } from "./useStudio";
-import { IconButton, PanelHeader, cx } from "./ui";
+import { IconButton, PanelHeader, Tip, cx } from "./ui";
 
 export const KIND_ICONS: Record<LightKind, LucideIcon> = {
   directional: Diamond,
@@ -330,10 +330,10 @@ export function PresetsPanel({ studio }: { studio: Studio }) {
     <div data-testid="presets-panel">
       <PanelHeader title="Lighting presets" />
       <div className="px-2 py-2">
-        <p className="px-1 pb-2 text-2xs text-ink-400">
+        <Tip className="px-1 pb-2">
           A preset replaces the lights only — mannequin, material, camera and
           backdrop stay. Undo with Ctrl+Z.
-        </p>
+        </Tip>
         <ul className="space-y-1" aria-label="Lighting presets">
           {PRESETS.map((p, i) => {
             const active = scene.preset === p.id;
@@ -463,10 +463,10 @@ export function HistoryPanel({ studio }: { studio: Studio }) {
           );
         })}
       </ol>
-      <p className="px-3 pb-3 text-2xs text-ink-400">
+      <Tip className="px-3 pb-3">
         Last {history.entries.length} of up to 100 steps. Slider drags count as
         one step. Click a step to jump to it.
-      </p>
+      </Tip>
     </div>
   );
 }

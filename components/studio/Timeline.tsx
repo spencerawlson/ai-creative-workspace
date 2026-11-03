@@ -46,6 +46,8 @@ export function Timeline({
   onPreview,
   graphOpen = false,
   onGraph,
+  mini = false,
+  expanded = false,
   onVideo,
   playRequest = 0,
 }: {
@@ -65,6 +67,10 @@ export function Timeline({
   preview?: boolean;
   onPreview: (v: boolean) => void;
   graphOpen?: boolean;
+  /** Phones, outside the Animate tab: one slim row (play, scrub, key). */
+  mini?: boolean;
+  /** Phones, in the Animate tab: every control, no "More". */
+  expanded?: boolean;
   onGraph?: (v: boolean) => void;
   /** Open the video export dialog. */
   onVideo?: () => void;
@@ -75,7 +81,8 @@ export function Timeline({
   const { duration, keys } = scene.animation;
   const [playing, setPlaying] = useState(false);
   // Phones: the secondary controls fold away behind "More".
-  const [more, setMore] = useState(false);
+  const [moreToggle, setMore] = useState(false);
+  const more = expanded || moreToggle;
   const extra = more ? undefined : "hidden sm:inline-flex";
   const [playT, setPlayT] = useState(time);
   const shown = playing ? playT : time;
@@ -160,6 +167,52 @@ export function Timeline({
     const u = (clientX - r.left - THUMB) / Math.max(1, r.width - 2 * THUMB);
     return Math.round(Math.min(1, Math.max(0, u)) * duration * 100) / 100;
   };
+
+  if (mini)
+    // Phones, while animating, outside the Animate tab: one row so you
+    // can scrub and pose without switching tabs.
+    return (
+      <div
+        data-testid="timeline"
+        className="flex items-center gap-1 border-t border-ink-800 bg-ink-900/95 px-2 py-0.5"
+      >
+        <IconButton
+          icon={playing ? Pause : Play}
+          size="sm"
+          label={playing ? "Pause" : "Play"}
+          onClick={toggle}
+          data-testid="timeline-play"
+        />
+        <input
+          type="range"
+          aria-label="Time"
+          min={0}
+          max={duration}
+          step={0.01}
+          value={shown}
+          disabled={playing}
+          onChange={(e) => onSeek(Number(e.target.value))}
+          className="h-8 min-w-0 flex-1 cursor-pointer accent-accent"
+          data-testid="timeline-scrub"
+        />
+        <IconButton
+          icon={Diamond}
+          size="sm"
+          label={onKey ? "Update keyframe" : "Set keyframe"}
+          disabled={playing}
+          onClick={() =>
+            dispatch({ type: "setKey", t: time, camera: camera() })
+          }
+          data-testid="timeline-set-key"
+        />
+        <span
+          className="w-11 shrink-0 text-right font-mono text-2xs tabular-nums text-ink-200"
+          data-testid="timeline-time"
+        >
+          {shown.toFixed(1)} s
+        </span>
+      </div>
+    );
 
   return (
     <div
@@ -411,8 +464,8 @@ export function Timeline({
         size="sm"
         label={more ? "Fewer timeline controls" : "More timeline controls"}
         aria-expanded={more}
-        className="sm:hidden"
-        onClick={() => setMore(!more)}
+        className={expanded ? "hidden" : "sm:hidden"}
+        onClick={() => setMore(!moreToggle)}
         data-testid="timeline-more"
       />
     </div>

@@ -17,7 +17,7 @@ import {
 import type { Studio } from "./useStudio";
 import { figureLabel } from "@/lib/studio/figures";
 import type { Figure } from "@/lib/studio/schema";
-import { Button, PanelHeader, SectionTitle, Slider, cx } from "./ui";
+import { Button, PanelHeader, SectionTitle, Slider, Tip, cx } from "./ui";
 
 /** `pose:<joint>` (from a tap on the figure or a body-part button) picks
  * the body part; plain "pose" opens the right arm. */
@@ -151,11 +151,11 @@ export function PoseInspector({
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-2xs text-ink-400">
+        <Tip className="mt-1.5">
           Left and right are the mannequin&apos;s own. In the viewport, drag a
           body part to pose it; grab a palm to move the whole arm, a finger to
           curl it. Pick a hand here to see and drag its finger joints.
-        </p>
+        </Tip>
 
         {hand && (
           <>

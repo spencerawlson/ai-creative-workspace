@@ -11,6 +11,8 @@ import {
   openStudio,
   sParam,
   showPanel,
+  poseValue,
+  showInspector,
   timelineControl,
 } from "./helpers";
 
@@ -429,28 +431,38 @@ test.describe("Lighting Studio — critical journeys", () => {
   }, info) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-group-armR").click();
     await page.getByTestId("pose-preset-neutral").click();
-    await expect(page.getByTestId("timeline-key-0.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-0.00"),
+    ).toBeVisible();
 
     // Auto-key: an edit at 2 s keys 2 s.
     await scrub.fill("2");
     const raise = page.getByTestId("pose-shoulderR-raise");
+    await showInspector(page);
     await raise.fill("120");
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
 
     // Between keys the pose is interpolated (eased: halfway is halfway).
     await scrub.fill("1");
+    await showInspector(page);
     await expect(raise).toHaveValue("60");
 
     // The edit and its key were one undo step.
     await page.getByTestId("undo").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toHaveCount(0);
+    await expect(await timelineControl(page, "timeline-key-2.00")).toHaveCount(
+      0,
+    );
     await page.getByTestId("redo").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
 
     // Play moves the time.
     const clock = page.getByTestId("timeline-time");
@@ -483,13 +495,13 @@ test.describe("Lighting Studio — critical journeys", () => {
     await dragOnPage(page, info, from, { x: from.x, y: from.y + 40 });
     await scrub.fill("2");
     await expect
-      .poll(async () => Number(await raise.inputValue()))
+      .poll(async () => poseValue(page, "shoulderR", "raise"))
       .toBeLessThan(110);
 
     // Tangent handle: tilt the curve through the 2 s key; the value
     // between the keys changes.
     await scrub.fill("1.5");
-    const smooth = Number(await raise.inputValue());
+    const smooth = poseValue(page, "shoulderR", "raise");
     await point.click();
     const handle = page.getByTestId(
       "graph-tangent-fig-1.shoulderR.raise@2.00-in",
@@ -499,12 +511,12 @@ test.describe("Lighting Studio — critical journeys", () => {
     await dragOnPage(page, info, hc, { x: hc.x, y: hc.y + 60 });
     await scrub.fill("1.5");
     await expect
-      .poll(async () => Number(await raise.inputValue()))
+      .poll(async () => poseValue(page, "shoulderR", "raise"))
       .not.toBe(smooth);
     // Reset brings the smooth curve back.
     await page.getByTestId("graph-tangent-reset").click();
     await scrub.fill("1.5");
-    await expect(raise).toHaveValue(String(smooth));
+    await expect.poll(() => poseValue(page, "shoulderR", "raise")).toBe(smooth);
   });
 
   test("an animated share link opens the animation in a fresh browser", async ({
@@ -513,21 +525,27 @@ test.describe("Lighting Studio — critical journeys", () => {
   }) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
     await scrub.fill("2");
     await page.getByTestId("pose-preset-arms-up").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
     // The address bar becomes a compressed, animated link.
     await expect.poll(() => sParam(page)).toMatch(/^z/);
     const url = new URL(page.url());
     const other = await browser.newContext();
     const page2 = await other.newPage();
     await openStudio(page2, url.pathname + url.search);
-    await expect(page2.getByTestId("timeline-key-0.00")).toBeVisible();
-    await expect(page2.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page2, "timeline-key-0.00"),
+    ).toBeVisible();
+    await expect(
+      await timelineControl(page2, "timeline-key-2.00"),
+    ).toBeVisible();
     await page2.getByTestId("timeline-scrub").fill("2");
     await showPanel(page2, "scene");
     await expect(page2.getByTestId("node-pose")).toContainText("Arms up");
@@ -538,13 +556,15 @@ test.describe("Lighting Studio — critical journeys", () => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
     await (await timelineControl(page, "timeline-duration")).fill("1");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
     await scrub.fill("1");
     await page.getByTestId("pose-preset-arms-up").click();
-    await expect(page.getByTestId("timeline-key-1.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-1.00"),
+    ).toBeVisible();
 
     await (await timelineControl(page, "timeline-video")).click();
     await expect(page.getByTestId("video-dialog")).toBeVisible();

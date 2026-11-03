@@ -154,13 +154,50 @@ export async function dragOnPage(
   }
 }
 
-/** A timeline control; on phones the secondary ones sit behind "More". */
+/** A timeline control. Phones keep most of the timeline in the Animate
+ * tab; tablets fold some controls behind "More". */
 export async function timelineControl(page: Page, id: string) {
   const control = page.getByTestId(id);
-  if (!(await control.isVisible())) {
-    const more = page.getByTestId("timeline-more");
-    if ((await more.getAttribute("aria-expanded")) !== "true")
-      await more.click();
+  if (await control.isVisible()) return control;
+  const animate = page.getByTestId("tab-animate");
+  if (await animate.isVisible()) {
+    await animate.click();
+    if (await control.isVisible()) return control;
   }
+  const more = page.getByTestId("timeline-more");
+  if (
+    (await more.isVisible()) &&
+    (await more.getAttribute("aria-expanded")) !== "true"
+  )
+    await more.click();
   return control;
+}
+
+/** Phones: back to the Inspect tab (sliders); elsewhere it's always on. */
+export async function showInspector(page: Page) {
+  const tab = page.getByTestId("tab-edit");
+  if (await tab.isVisible()) await tab.click();
+}
+
+/** A pose angle of the first figure, as the viewport shows it now. */
+export async function poseValue(
+  page: Page,
+  joint: string,
+  dof: string,
+): Promise<number> {
+  return page.evaluate(
+    ({ joint, dof }) =>
+      (
+        window as unknown as {
+          __studioEngine: {
+            doc: {
+              figures: {
+                pose: { joints: Record<string, Record<string, number>> };
+              }[];
+            };
+          };
+        }
+      ).__studioEngine.doc.figures[0].pose.joints[joint][dof],
+    { joint, dof },
+  );
 }
