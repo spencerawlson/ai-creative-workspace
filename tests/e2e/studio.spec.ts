@@ -570,7 +570,7 @@ test.describe("Lighting Studio — critical journeys", () => {
       true,
     );
     expect(bytes.length).toBeGreaterThan(5000);
-    await expect(page.getByTestId("video-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("video-dialog")).toBeHidden();
   });
 
   test("tapping the figure opens the pose controls for that body part", async ({

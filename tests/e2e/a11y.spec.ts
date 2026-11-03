@@ -34,6 +34,14 @@ test("dialogs are accessible", async ({ page }) => {
   expect(await axe(page)).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("export-dialog")).toBeHidden();
+  // The video dialog needs an animation: set one key.
+  await page.getByTestId("timeline-set-key").click();
+  await page.getByTestId("timeline-video").click();
+  await expect(page.getByTestId("video-dialog")).toBeVisible();
+  await expect(page.getByTestId("video-summary")).not.toContainText("Checking");
+  expect(await axe(page)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("video-dialog")).toBeHidden();
 });
 
 test("keyboard: viewport is focusable and orbits with arrow keys", async ({
