@@ -7,6 +7,10 @@
  * frame is dropped. (MediaRecorder, tried first, drops frames while its
  * encoder starts up — the first ~2 s of a short animation went missing.)
  *
+ * An optional sound (an audio file the user picks, decoded in the
+ * browser) is cut to the animation's length and encoded alongside: AAC
+ * in MP4 or Opus, whichever the browser can encode for the container.
+ *
  * mediabunny is loaded only when a video is exported. */
 
 import { evaluate } from "@/lib/studio/animation";
@@ -37,6 +41,33 @@ export function videoFormat(): Promise<VideoFormat | null> {
   return picked;
 }
 
+/** The first `seconds` of a sound (all of it if shorter). */
+export function trimAudio(buffer: AudioBuffer, seconds: number): AudioBuffer {
+  const length = Math.min(
+    buffer.length,
+    Math.ceil(seconds * buffer.sampleRate),
+  );
+  if (length === buffer.length) return buffer;
+  const out = new AudioBuffer({
+    length,
+    numberOfChannels: buffer.numberOfChannels,
+    sampleRate: buffer.sampleRate,
+  });
+  for (let c = 0; c < buffer.numberOfChannels; c++)
+    out.copyToChannel(buffer.getChannelData(c).subarray(0, length), c);
+  return out;
+}
+
+/** Decode an audio file the user picked (never uploaded). */
+export async function decodeAudioFile(file: File): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(2, 1, 48000);
+  try {
+    return await ctx.decodeAudioData(await file.arrayBuffer());
+  } catch {
+    throw new Error(`Couldn't read “${file.name}” as sound.`);
+  }
+}
+
 export async function recordVideo(opts: {
   viewport: ViewportHandle;
   scene: SceneDoc;
@@ -45,6 +76,8 @@ export async function recordVideo(opts: {
   fps: number;
   /** Move the camera along its keys (as playback does). */
   keyCamera: boolean;
+  /** Sound for the video, from the start; cut to the animation. */
+  audio?: AudioBuffer;
   onProgress?: (done: number) => void;
   signal?: AbortSignal;
 }): Promise<{ blob: Blob; format: VideoFormat }> {
@@ -55,20 +88,34 @@ export async function recordVideo(opts: {
   const canvas = viewport.beginCapture(width, height);
   if (!canvas) throw new Error("The 3D view is not ready yet.");
   const target = new mb.BufferTarget();
-  const output = new mb.Output({
-    format:
-      format.extension === "mp4"
-        ? new mb.Mp4OutputFormat()
-        : new mb.WebMOutputFormat(),
-    target,
-  });
+  const container =
+    format.extension === "mp4"
+      ? new mb.Mp4OutputFormat()
+      : new mb.WebMOutputFormat();
+  const output = new mb.Output({ format: container, target });
   try {
     const source = new mb.CanvasSource(canvas, {
       codec: format.codec,
       quality: mb.QUALITY_HIGH,
     });
     output.addVideoTrack(source, { frameRate: fps });
+    let sound: InstanceType<typeof mb.AudioBufferSource> | null = null;
+    if (opts.audio) {
+      const { numberOfChannels, sampleRate } = opts.audio;
+      const codec = await mb.getFirstEncodableAudioCodec(
+        container.getSupportedAudioCodecs(),
+        { numberOfChannels, sampleRate },
+      );
+      if (!codec)
+        throw new Error(
+          "This browser can't encode sound for this video format.",
+        );
+      sound = new mb.AudioBufferSource({ codec, quality: mb.QUALITY_HIGH });
+      output.addAudioTrack(sound);
+    }
     await output.start();
+    if (sound && opts.audio)
+      await sound.add(trimAudio(opts.audio, scene.animation.duration));
 
     // Frames 0 .. duration inclusive, each 1/fps long.
     const frames = Math.round(scene.animation.duration * fps) + 1;

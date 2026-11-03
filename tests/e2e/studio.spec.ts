@@ -621,6 +621,73 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("video-dialog")).toBeHidden();
   });
 
+  test("a video can carry a sound file, cut to the animation", async ({
+    page,
+  }) => {
+    await openStudio(page);
+    await (await timelineControl(page, "timeline-duration")).fill("1");
+    await page.getByTestId("lighting-scene").click();
+    await page.getByTestId("motion-input").fill("nod");
+    await page.getByTestId("motion-input").press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText("Nod yes");
+
+    // A 3 s, 440 Hz tone as a WAV file.
+    const rate = 44100;
+    const n = rate * 3;
+    const wav = Buffer.alloc(44 + n * 2);
+    wav.write("RIFF", 0);
+    wav.writeUInt32LE(36 + n * 2, 4);
+    wav.write("WAVEfmt ", 8);
+    wav.writeUInt32LE(16, 16);
+    wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(rate, 24);
+    wav.writeUInt32LE(rate * 2, 28);
+    wav.writeUInt16LE(2, 32);
+    wav.writeUInt16LE(16, 34);
+    wav.write("data", 36);
+    wav.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++)
+      wav.writeInt16LE(
+        Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / rate)),
+        44 + i * 2,
+      );
+
+    await (await timelineControl(page, "timeline-video")).click();
+    await expect(page.getByTestId("video-dialog")).toBeVisible();
+    await page.getByTestId("video-fps-24").click();
+    await page.getByTestId("video-sound-input").setInputFiles({
+      name: "tone.wav",
+      mimeType: "audio/wav",
+      buffer: wav,
+    });
+    await expect(page.getByTestId("video-sound-name")).toContainText(
+      "tone.wav · 3.0 s",
+    );
+    const download = page.waitForEvent("download", { timeout: 100_000 });
+    await page.getByTestId("video-confirm").click();
+    const file = await download;
+    const bytes = await import("node:fs").then(async (fs) =>
+      fs.promises.readFile(await file.path()),
+    );
+    // Read the container back: one video and one sound track, the sound
+    // cut to the animation's length (here 2 s: the nod's length).
+    const mb = await import("mediabunny");
+    const input = new mb.Input({
+      source: new mb.BufferSource(bytes),
+      formats: mb.ALL_FORMATS,
+    });
+    expect(await input.getVideoTracks()).toHaveLength(1);
+    const [audio] = await input.getAudioTracks();
+    expect(audio).toBeDefined();
+    const length = await audio.computeDuration();
+    const animation = Number(
+      await (await timelineControl(page, "timeline-duration")).inputValue(),
+    );
+    expect(length).toBeGreaterThan(animation - 0.2);
+    expect(length).toBeLessThan(animation + 0.2);
+  });
+
   test("hands and feet: hand shapes, the finger picker, the ankle", async ({
     page,
   }, info) => {
