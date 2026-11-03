@@ -12,7 +12,7 @@ import {
 import { parseQuery, searchMotions, stem } from "@/lib/studio/motionSearch";
 import { neutralJoints } from "@/lib/studio/pose";
 import { defaultScene } from "@/lib/studio/presets";
-import { LIMITS, SceneSchema, type SceneDoc } from "@/lib/studio/schema";
+import { SceneSchema, type SceneDoc } from "@/lib/studio/schema";
 import { decodeSceneLink, encodeSceneLink } from "@/lib/studio/share";
 
 const apply = (s: SceneDoc, ...actions: SceneAction[]) =>
