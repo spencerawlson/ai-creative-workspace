@@ -51,7 +51,7 @@ describe("v2 share codec", () => {
     );
     expect(s?.preset).toBe("rembrandt");
     expect(s?.lights[1].intensity).toBe(0.35);
-    expect(s?.model).toBe("male");
+    expect(s?.figures[0].model).toBe("male");
   });
 
   it("opens v1 custom links with their encoded values", () => {

@@ -78,7 +78,7 @@ describe("history", () => {
     h = drag(90, 100 * COALESCE_MS);
     expect(h.entries).toHaveLength(3);
     h = historyReducer(h, { type: "undo" });
-    expect(present(h).pose.joints.elbowL.bend).toBe(50);
+    expect(present(h).figures[0].pose.joints.elbowL.bend).toBe(50);
   });
 
   it("committing after undo drops the redo branch", () => {

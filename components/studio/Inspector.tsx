@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Copy, Gauge, Trash2 } from "lucide-react";
+import { figureLabel } from "@/lib/studio/figures";
+import { useSelectNewFigure } from "./useSelectNewFigure";
 import { CUSTOM_NOTE, PRESETS } from "@/lib/lighting";
 import type {
   BenchmarkResult,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/studio/presets";
 import {
   LIMITS,
+  type Figure,
   type LightPatch,
   type SceneDoc,
   type StudioLight,
@@ -37,8 +40,10 @@ import {
 
 type Props = {
   studio: Studio;
+  /** The figure the mannequin and pose controls act on. */
+  figure: Figure;
   selection: Selection;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, figure?: string) => void;
   viewport: React.RefObject<ViewportHandle | null>;
   view: CameraView;
   onView: (v: CameraView) => void;
@@ -261,24 +266,96 @@ function LightInspector({
   );
 }
 
-function ModelInspector({ studio }: Props) {
+function ModelInspector({ studio, figure, onSelect }: Props) {
   const { scene, dispatch, seal } = studio;
   const m = scene.material;
+  const many = scene.figures.length > 1;
+  const expectNewFigure = useSelectNewFigure(scene.figures, onSelect);
+  const place = (patch: { x?: number; z?: number; rotation?: number }) =>
+    dispatch({ type: "updateFigure", figure: figure.id, patch });
   return (
     <>
-      <PanelHeader title="Mannequin" />
+      <PanelHeader title={many ? figureLabel(scene, figure.id) : "Mannequin"}>
+        <IconButton
+          icon={Copy}
+          size="sm"
+          label="Duplicate figure"
+          disabled={scene.figures.length >= LIMITS.maxFigures}
+          data-testid="figure-duplicate"
+          onClick={() => {
+            expectNewFigure();
+            dispatch({ type: "duplicateFigure", figure: figure.id });
+          }}
+        />
+        <IconButton
+          icon={Trash2}
+          size="sm"
+          label="Remove figure"
+          disabled={!many}
+          data-testid="figure-remove"
+          onClick={() => {
+            dispatch({ type: "removeFigure", figure: figure.id });
+            onSelect(null);
+          }}
+        />
+      </PanelHeader>
       <div className="px-3 py-3">
         <Segmented
           label="Figure"
-          value={scene.model}
+          value={figure.model}
           testIdPrefix="model"
           options={[
             { value: "male", label: "Male" },
             { value: "female", label: "Female" },
           ]}
-          onChange={(model) => dispatch({ type: "setModel", model })}
+          onChange={(model) =>
+            dispatch({ type: "setModel", model, figure: figure.id })
+          }
         />
-        <SectionTitle>Material</SectionTitle>
+        <SectionTitle>Placement</SectionTitle>
+        <Slider
+          label="Left / right"
+          value={figure.x}
+          min={LIMITS.figureX[0]}
+          max={LIMITS.figureX[1]}
+          step={0.05}
+          unit=" m"
+          testId="figure-x"
+          hint="As seen from the front"
+          onChange={(x) => place({ x })}
+          onCommitEnd={seal}
+        />
+        <Slider
+          label="Forward / back"
+          value={figure.z}
+          min={LIMITS.figureZ[0]}
+          max={LIMITS.figureZ[1]}
+          step={0.05}
+          unit=" m"
+          testId="figure-z"
+          hint="Positive comes towards the camera"
+          onChange={(z) => place({ z })}
+          onCommitEnd={seal}
+        />
+        <Slider
+          label="Turn"
+          value={figure.rotation}
+          min={LIMITS.rotation[0]}
+          max={LIMITS.rotation[1]}
+          step={1}
+          unit="°"
+          testId="figure-rotation"
+          hint="0° faces the camera"
+          onChange={(rotation) => place({ rotation })}
+          onCommitEnd={seal}
+        />
+        <p className="mt-1 text-2xs leading-relaxed text-ink-400">
+          With this panel open, drag a figure in the viewport to move it across
+          the floor.
+        </p>
+        <SectionTitle>
+          {many ? "Material (all figures)" : "Material"}
+        </SectionTitle>
         <div
           className="grid grid-cols-4 gap-1.5 py-1.5"
           role="group"

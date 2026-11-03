@@ -3,7 +3,7 @@
  */
 
 import { PRESETS, type LightState } from "@/lib/lighting";
-import { defaultPose } from "./pose";
+import { newFigure } from "./figures";
 import type {
   BackdropSettings,
   CameraSettings,
@@ -208,13 +208,12 @@ export function defaultScene(): SceneDoc {
   return {
     version: 2,
     preset: PRESETS[0].id,
-    model: "male",
     lights: presetLights(PRESETS[0].id)!,
     camera: { ...DEFAULT_CAMERA },
     material: materialFromPreset("studio-grey")!,
     backdrop: backdropFromPreset("studio-dark")!,
     shadows: { quality: "medium" },
-    pose: defaultPose(),
+    figures: [newFigure("fig-1", "male", { x: 0, z: 0 })],
   };
 }
 

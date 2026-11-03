@@ -91,6 +91,10 @@ export function LightingStudio() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [selection, setSelection] = useState<Selection>(null);
+  // The figure the mannequin and pose controls act on.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const figure =
+    scene.figures.find((f) => f.id === activeId) ?? scene.figures[0];
   const [tool, setTool] = useState<Tool>("scene");
   const [panelPref, setPanelOpen] = useState<boolean | null>(null);
   const panelOpen = panelPref ?? isWide;
@@ -113,8 +117,9 @@ export function LightingStudio() {
       : selection;
 
   const select = useCallback(
-    (s: Selection) => {
+    (s: Selection, figureId?: string) => {
       setSelection(s);
+      if (figureId) setActiveId(figureId);
       if (!isDesktop && s !== null) setMobileTab("edit");
     },
     [isDesktop],
@@ -132,8 +137,23 @@ export function LightingStudio() {
   );
 
   const onPoseDrag = useCallback(
-    (patches: Partial<Record<JointId, Record<string, number>>>) =>
-      dispatch({ type: "updateJoints", patches }, { gesture: true }),
+    (
+      figureId: string,
+      patches: Partial<Record<JointId, Record<string, number>>>,
+    ) =>
+      dispatch(
+        { type: "updateJoints", patches, figure: figureId },
+        { gesture: true },
+      ),
+    [dispatch],
+  );
+
+  const onFigureMove = useCallback(
+    (figureId: string, at: { x: number; z: number }) =>
+      dispatch(
+        { type: "updateFigure", figure: figureId, patch: at },
+        { gesture: true },
+      ),
     [dispatch],
   );
 
@@ -233,7 +253,8 @@ export function LightingStudio() {
         case "M":
           dispatch({
             type: "setModel",
-            model: scene.model === "male" ? "female" : "male",
+            model: figure.model === "male" ? "female" : "male",
+            figure: figure.id,
           });
           break;
         case "t":
@@ -294,6 +315,7 @@ export function LightingStudio() {
     saveProject,
     dispatch,
     scene,
+    figure,
     validSelection,
     changeView,
     panelOpen,
@@ -302,6 +324,7 @@ export function LightingStudio() {
   const inspector = (
     <Inspector
       studio={studio}
+      figure={figure}
       selection={validSelection}
       onSelect={select}
       viewport={viewport}
@@ -315,6 +338,7 @@ export function LightingStudio() {
     scene: (
       <ScenePanel
         studio={studio}
+        figure={figure}
         selection={validSelection}
         onSelect={select}
       />
@@ -414,6 +438,9 @@ export function LightingStudio() {
             onLightDragEnd={seal}
             onPoseDrag={onPoseDrag}
             onPoseDragEnd={seal}
+            activeFigure={figure.id}
+            onFigureMove={onFigureMove}
+            onFigureMoveEnd={seal}
           />
           <ViewportOverlay
             posing={isPoseSelection(validSelection)}

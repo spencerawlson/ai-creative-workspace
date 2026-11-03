@@ -7,10 +7,13 @@
  *     mt: [preset, color, roughness, metalness],
  *     b: [preset, color, style, shadowOpacity],
  *     q: shadowQuality,
- *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]] }
+ *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
+ *     fg?: [[model, x, z, rotation, posePreset?, [joint angles]?], ...] }
  *
- * `po` is omitted for the scan's A-pose, so unposed links are unchanged
- * and links made before posing existed open in the A-pose.
+ * One figure standing in the centre facing the camera is written as
+ * `m` (+ `po`, omitted for the scan's A-pose), exactly as before several
+ * figures existed, so those links are unchanged and old links still
+ * open. Anything else is written as `fg`, one row per figure.
  *
  * Links made by M3 (v1: three lights, no `v`) still open: they are
  * decoded by the original strict v1 decoder and upgraded with defaults.
@@ -21,7 +24,7 @@
 import { decodeSetup } from "@/lib/share";
 import { defaultScene, fromLegacyLight, presetLights } from "./presets";
 import { flattenJoints, isNeutral, unflattenJoints } from "./pose";
-import { LIGHT_KINDS, SceneSchema, type SceneDoc } from "./schema";
+import { LIGHT_KINDS, SceneSchema, type Figure, type SceneDoc } from "./schema";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -32,7 +35,6 @@ export function encodeScene(scene: SceneDoc): string {
   const payload = {
     v: 2,
     p: scene.preset,
-    m: scene.model,
     l: scene.lights.map((l) => [
       l.id,
       l.label,
@@ -66,14 +68,7 @@ export function encodeScene(scene: SceneDoc): string {
       round2(scene.backdrop.shadowOpacity),
     ],
     q: scene.shadows.quality,
-    ...(isNeutral(scene.pose.joints)
-      ? {}
-      : {
-          po: [
-            scene.pose.preset,
-            flattenJoints(scene.pose.joints).map((v) => Math.round(v)),
-          ],
-        }),
+    ...encodeFigures(scene.figures),
   };
   return toBase64Url(JSON.stringify(payload));
 }
@@ -95,7 +90,6 @@ export function decodeScene(param: string | null): SceneDoc | null {
   const candidate = {
     version: 2,
     preset: p.p,
-    model: p.m,
     lights: arr(p.l).map((row) => {
       const r = arr(row);
       return {
@@ -132,17 +126,61 @@ export function decodeScene(param: string | null): SceneDoc | null {
       shadowOpacity: arr(p.b)[3],
     },
     shadows: { quality: p.q },
-    ...("po" in p
-      ? {
-          pose: {
-            preset: arr(p.po)[0],
-            joints: unflattenJoints(arr(arr(p.po)[1])),
-          },
-        }
-      : {}),
+    ...decodeFigures(p, arr),
   };
   const checked = SceneSchema.safeParse(candidate);
   return checked.success ? checked.data : null;
+}
+
+const poseRow = (f: Figure) =>
+  isNeutral(f.pose.joints)
+    ? []
+    : [f.pose.preset, flattenJoints(f.pose.joints).map((v) => Math.round(v))];
+
+function encodeFigures(figures: Figure[]) {
+  const [only] = figures;
+  if (figures.length === 1 && !only.x && !only.z && !only.rotation) {
+    const po = poseRow(only);
+    return { m: only.model, ...(po.length ? { po } : {}) };
+  }
+  return {
+    fg: figures.map((f) => [
+      f.model,
+      round2(f.x),
+      round2(f.z),
+      Math.round(f.rotation),
+      ...poseRow(f),
+    ]),
+  };
+}
+
+function decodeFigures(
+  p: Record<string, unknown>,
+  arr: (v: unknown) => unknown[],
+) {
+  const pose = (preset: unknown, angles: unknown) => ({
+    preset,
+    joints: unflattenJoints(arr(angles)),
+  });
+  if ("fg" in p)
+    return {
+      figures: arr(p.fg).map((row, i) => {
+        const r = arr(row);
+        return {
+          id: `fig-${i + 1}`,
+          model: r[0],
+          x: r[1],
+          z: r[2],
+          rotation: r[3],
+          ...(r.length > 4 ? { pose: pose(r[4], r[5]) } : {}),
+        };
+      }),
+    };
+  // One figure, old layout: SceneSchema upgrades `model` + `pose`.
+  return {
+    model: p.m,
+    ...("po" in p ? { pose: pose(arr(p.po)[0], arr(p.po)[1]) } : {}),
+  };
 }
 
 function upgradeV1(param: string): SceneDoc | null {

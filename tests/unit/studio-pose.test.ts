@@ -31,14 +31,22 @@ const apply = (s: SceneDoc, a: unknown) => {
 describe("pose model", () => {
   it("defaults to the scan's A-pose", () => {
     const s = scene();
-    expect(s.pose.preset).toBe("neutral");
-    expect(flattenJoints(s.pose.joints).every((v) => v === 0)).toBe(true);
+    expect(s.figures[0].pose.preset).toBe("neutral");
+    expect(flattenJoints(s.figures[0].pose.joints).every((v) => v === 0)).toBe(
+      true,
+    );
   });
 
   it("scenes saved before posing existed still load, in the A-pose", () => {
-    const { pose: _pose, ...old } = scene();
-    const parsed = SceneSchema.parse(old);
-    expect(parsed.pose).toEqual({ preset: "neutral", joints: neutralJoints() });
+    // The old layout: one top-level mannequin, no pose, no figures.
+    const { figures: _figures, ...rest } = scene();
+    const parsed = SceneSchema.parse({ ...rest, model: "female" });
+    expect(parsed.figures).toHaveLength(1);
+    expect(parsed.figures[0].model).toBe("female");
+    expect(parsed.figures[0].pose).toEqual({
+      preset: "neutral",
+      joints: neutralJoints(),
+    });
   });
 
   it("every preset is valid and within joint limits", () => {
@@ -95,8 +103,8 @@ describe("pose model", () => {
 describe("pose actions", () => {
   it("applies presets, and refuses unknown ones", () => {
     const s = apply(scene(), { type: "applyPosePreset", presetId: "arms-up" });
-    expect(s.pose.preset).toBe("arms-up");
-    expect(s.pose.joints.shoulderL.raise).toBe(140);
+    expect(s.figures[0].pose.preset).toBe("arms-up");
+    expect(s.figures[0].pose.joints.shoulderL.raise).toBe(140);
     expect(s.preset).toBe(scene().preset); // lighting preset untouched
     expect(
       tryApplyAction(scene(), { type: "applyPosePreset", presetId: "nope" }).ok,
@@ -109,8 +117,12 @@ describe("pose actions", () => {
       joint: "wristR",
       patch: { lift: 30 },
     });
-    expect(s.pose.preset).toBe("custom");
-    expect(s.pose.joints.wristR).toEqual({ bend: 0, lift: 30, twist: 0 });
+    expect(s.figures[0].pose.preset).toBe("custom");
+    expect(s.figures[0].pose.joints.wristR).toEqual({
+      bend: 0,
+      lift: 30,
+      twist: 0,
+    });
   });
 
   it("rejects out-of-range values and movements a joint doesn't have", () => {
@@ -145,14 +157,14 @@ describe("pose actions", () => {
       presetId: "hand-raised",
     });
     const m = apply(raised, { type: "mirrorPose" });
-    expect(m.pose.joints.shoulderL.raise).toBe(120);
+    expect(m.figures[0].pose.joints.shoulderL.raise).toBe(120);
     const reset = applyAction(m, {
       type: "applyPosePreset",
       presetId: "neutral",
     });
-    expect(reset.ok && flattenJoints(reset.scene.pose.joints)).toEqual(
-      flattenJoints(neutralJoints()),
-    );
+    expect(
+      reset.ok && flattenJoints(reset.scene.figures[0].pose.joints),
+    ).toEqual(flattenJoints(neutralJoints()));
   });
 
   it("slider drags on one joint coalesce; labels read well", () => {
@@ -178,7 +190,7 @@ describe("pose in share links", () => {
       { type: "updateJoint", joint: "head", patch: { turn: 25 } },
     );
     const back = decodeScene(encodeScene(s));
-    expect(back?.pose).toEqual(s.pose);
+    expect(back?.figures[0].pose).toEqual(s.figures[0].pose);
   });
 
   it("leaves unposed links exactly as before (no pose field)", () => {
@@ -186,7 +198,9 @@ describe("pose in share links", () => {
       encodeScene(scene()).replace(/-/g, "+").replace(/_/g, "/"),
     );
     expect(json).not.toContain('"po"');
-    expect(decodeScene(encodeScene(scene()))?.pose.preset).toBe("neutral");
+    expect(decodeScene(encodeScene(scene()))?.figures[0].pose.preset).toBe(
+      "neutral",
+    );
   });
 
   it("rejects a link with a tampered pose", () => {

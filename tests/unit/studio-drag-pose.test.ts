@@ -109,13 +109,13 @@ describe("updateJoints action", () => {
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.scene.pose.preset).toBe("custom");
-    expect(r.scene.pose.joints.shoulderR).toEqual({
+    expect(r.scene.figures[0].pose.preset).toBe("custom");
+    expect(r.scene.figures[0].pose.joints.shoulderR).toEqual({
       raise: 90,
       forward: 10,
       twist: 0,
     });
-    expect(r.scene.pose.joints.elbowR.bend).toBe(30);
+    expect(r.scene.figures[0].pose.joints.elbowR.bend).toBe(30);
   });
 
   it("rejects out-of-range angles, unknown movements and empty patches", () => {

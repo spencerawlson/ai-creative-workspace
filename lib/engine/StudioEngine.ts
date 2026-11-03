@@ -22,6 +22,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
 import type { JointId } from "@/lib/studio/pose";
@@ -99,7 +100,8 @@ export interface EngineOverrides {
 }
 
 export interface EngineCallbacks {
-  onSelect?: (selection: Selection) => void;
+  /** `figure`: the figure tapped or grabbed, when there is one. */
+  onSelect?: (selection: Selection, figure?: string) => void;
   onLightDrag?: (
     id: string,
     patch: { azimuth: number; elevation: number },
@@ -107,9 +109,13 @@ export interface EngineCallbacks {
   onLightDragEnd?: (id: string) => void;
   /** A body part is being dragged: new angles (degrees) per joint. */
   onPoseDrag?: (
+    figure: string,
     patches: Partial<Record<JointId, Record<string, number>>>,
   ) => void;
   onPoseDragEnd?: () => void;
+  /** A figure is being dragged across the floor (metres). */
+  onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
+  onFigureMoveEnd?: () => void;
   onStatus?: (status: EngineStatus) => void;
 }
 
@@ -164,6 +170,20 @@ interface ModelRig {
   lines: THREE.LineSegments;
   /** Each line: from a bone's joint to a child bone or a tip offset. */
   segments: Array<[BoneName, BoneName | THREE.Vector3]>;
+}
+
+/** One figure on stage: a clone of a prepared model with its own
+ * skeleton; geometry and materials are shared with the template. */
+interface FigureInstance {
+  id: string;
+  url: string;
+  /** Placed and turned per the document; holds `object`. */
+  root: THREE.Group;
+  object: THREE.Object3D;
+  headHeight: number;
+  rig: ModelRig | null;
+  /** The pose last applied (by identity), to skip unchanged figures. */
+  joints: unknown;
 }
 
 interface CachedModel {
@@ -232,10 +252,13 @@ export class StudioEngine {
   private envMap: THREE.Texture | null = null;
 
   private rigs = new Map<string, LightRig>();
+  /** Prepared models by URL: templates, never on stage themselves. */
   private models = new Map<string, CachedModel>();
-  private modelUrl: string | null = null;
-  private loadToken = 0;
-  private headHeight = 1.72;
+  private loading = new Set<string>();
+  private failed = new Set<string>();
+  private instances = new Map<string, FigureInstance>();
+  private activeFigure: string | null = null;
+  private statusKey = "";
   private view: CameraView = "full";
 
   private doc: SceneDoc | null = null;
@@ -251,12 +274,25 @@ export class StudioEngine {
   /** A body part held in pose mode. `moved` stays false for a tap. */
   private poseDrag: {
     pointerId: number;
+    figure: string;
     vars: DragVar[];
     x: number[];
     reach: (x: number[]) => THREE.Vector3;
     origin: THREE.Vector3;
     start: THREE.Vector3;
     plane: THREE.Plane;
+    down: { x: number; y: number };
+    moved: boolean;
+  } | null = null;
+  /** A figure held in mannequin mode, sliding across the floor. */
+  private moveDrag: {
+    pointerId: number;
+    figure: string;
+    /** The pointer moves across this plane, through the grabbed point. */
+    plane: THREE.Plane;
+    /** Where the press met `plane`, and the figure's position then. */
+    start: THREE.Vector3;
+    from: THREE.Vector3;
     down: { x: number; y: number };
     moved: boolean;
   } | null = null;
@@ -379,15 +415,13 @@ export class StudioEngine {
     this.doc = doc;
     this.overrides = overrides;
 
-    if (!prev || prev.model !== doc.model)
-      this.loadModel(MODEL_URLS[doc.model]);
     if (!prev || prev.lights !== doc.lights || prev.shadows !== doc.shadows) {
       this.shadowQuality = doc.shadows.quality;
       this.syncLights(doc.lights);
     }
     if (!prev || prev.material !== doc.material) this.syncMaterial(doc);
     if (!prev || prev.backdrop !== doc.backdrop) this.syncBackdrop(doc);
-    if (!prev || prev.pose !== doc.pose) this.syncPose();
+    if (!prev || prev.figures !== doc.figures) this.syncFigures();
 
     const fov = overrides.fov ?? focalToVerticalFov(doc.camera.focalMm);
     if (this.camera.fov !== fov) {
@@ -420,7 +454,7 @@ export class StudioEngine {
         .clone()
         .sub(this.controls.target)
         .normalize();
-      this.controls.target.set(0, this.headHeight, 0);
+      this.controls.target.copy(this.activeHead());
       this.camera.position
         .copy(this.controls.target)
         .addScaledVector(dir, 0.75);
@@ -501,6 +535,7 @@ export class StudioEngine {
       this.interacting ||
       this.dragging ||
       this.poseDrag ||
+      this.moveDrag ||
       this.benchmark
     ) {
       this.invalidate();
@@ -545,6 +580,7 @@ export class StudioEngine {
       this.interacting ||
       this.dragging ||
       this.poseDrag ||
+      this.moveDrag ||
       this.benchmark;
     if (continuous && this.lastFrameAt) {
       const dt = now - this.lastFrameAt;
@@ -841,41 +877,208 @@ export class StudioEngine {
 
   // ----------------------------------------------------------------- model
 
+  /** Download and prepare a model once; figures are clones of it. */
   private loadModel(url: string): void {
-    const token = ++this.loadToken;
-    const cached = this.models.get(url);
-    if (cached) {
-      this.showModel(url, cached);
+    if (this.models.has(url) || this.loading.has(url) || this.failed.has(url))
       return;
-    }
-    this.callbacks.onStatus?.({ model: "loading" });
+    this.loading.add(url);
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     loader.load(
       url,
       (gltf) => {
+        this.loading.delete(url);
         const model = this.prepareModel(gltf.scene);
         if (this.disposed) {
           disposeModel(model, this.material);
           return;
         }
         this.models.set(url, model);
-        if (token === this.loadToken) this.showModel(url, model);
+        this.syncFigures();
       },
       undefined,
       () => {
-        if (this.disposed || token !== this.loadToken) return;
-        // Keep the previous figure (if any) rather than a wrong one.
-        this.callbacks.onStatus?.({
-          model: "error",
-          message:
-            "The mannequin could not be downloaded. Check your connection and try again.",
-        });
+        this.loading.delete(url);
+        if (this.disposed) return;
+        // Figures already on stage keep their model rather than vanish.
+        this.failed.add(url);
+        this.syncFigures();
       },
     );
   }
 
   retryModel(): void {
-    if (this.doc) this.loadModel(MODEL_URLS[this.doc.model]);
+    this.failed.clear();
+    this.syncFigures();
+  }
+
+  /** Bring the stage in line with the document's figures: load models
+   * as needed, add, remove or swap clones, place them and apply their
+   * poses. A figure whose new model is still downloading keeps the old
+   * one meanwhile, so nothing is ever half-swapped. */
+  private syncFigures(): void {
+    const doc = this.doc;
+    if (!doc || this.disposed) return;
+    for (const inst of [...this.instances.values()])
+      if (!doc.figures.some((f) => f.id === inst.id)) this.removeInstance(inst);
+    let waiting = false;
+    let failed = false;
+    for (const f of doc.figures) {
+      const url = MODEL_URLS[f.model];
+      const template = this.models.get(url);
+      let inst = this.instances.get(f.id);
+      if (!template) {
+        if (this.failed.has(url)) failed = true;
+        else waiting = true;
+        this.loadModel(url);
+      } else if (!inst || inst.url !== url) {
+        if (inst) this.removeInstance(inst);
+        inst = this.instantiate(f.id, url, template);
+        if (this.view === "face" && inst === this.active) this.aimAtFace();
+      }
+      if (!inst) continue;
+      inst.root.position.set(f.x, 0, f.z);
+      inst.root.rotation.y = THREE.MathUtils.degToRad(f.rotation);
+      if (inst.rig && inst.joints !== f.pose.joints) {
+        applyPose(inst.rig.bones, f.pose.joints, inst.rig.dirs);
+        inst.joints = f.pose.joints;
+      }
+    }
+    this.setStatus(
+      failed
+        ? {
+            model: "error",
+            message:
+              "The mannequin could not be downloaded. Check your connection and try again.",
+          }
+        : { model: waiting ? "loading" : "ready" },
+    );
+    this.invalidate();
+  }
+
+  private setStatus(status: EngineStatus): void {
+    const key = `${status.model}:${status.message ?? ""}`;
+    if (key === this.statusKey) return;
+    this.statusKey = key;
+    this.callbacks.onStatus?.(status);
+  }
+
+  /** A figure on stage: a clone of a prepared model with its own
+   * skeleton, pick capsules and joint overlay; geometry is shared. */
+  private instantiate(
+    id: string,
+    url: string,
+    template: CachedModel,
+  ): FigureInstance {
+    const object = cloneSkinned(template.object);
+    const root = new THREE.Group();
+    root.userData.figureId = id;
+    root.add(object);
+    let rig: ModelRig | null = null;
+    if (template.rig) {
+      const t = template.rig;
+      const bones = {} as Record<BoneName, THREE.Bone>;
+      const rings = new Map<string, THREE.Mesh>();
+      const picks = new Map<string, THREE.Mesh>();
+      // Cloning copies properties but not the raycast overrides.
+      object.traverse((o) => {
+        if ((o as THREE.Bone).isBone)
+          bones[o.name as BoneName] = o as THREE.Bone;
+        if ((o as THREE.SkinnedMesh).isSkinnedMesh)
+          (o as THREE.Mesh).raycast = () => {};
+        if (o.name === "pose-dot-ring") {
+          (o as THREE.Mesh).raycast = () => {};
+          rings.set(o.userData.joint as string, o as THREE.Mesh);
+        }
+        if (o.name === "pose-dot")
+          picks.set(o.userData.joint as string, o as THREE.Mesh);
+      });
+      const lines = new THREE.LineSegments(
+        t.lines.geometry.clone(),
+        t.lines.material,
+      );
+      lines.renderOrder = t.lines.renderOrder;
+      lines.frustumCulled = false;
+      lines.visible = false;
+      lines.raycast = () => {};
+      this.skeletonRoot.add(lines);
+      rig = {
+        ...t,
+        bones,
+        lines,
+        dots: t.dots.map((d) => ({
+          ...d,
+          ring: rings.get(d.def.joint)!,
+          pick: picks.get(d.def.joint)!,
+        })),
+      };
+    }
+    this.figure.add(root);
+    const inst: FigureInstance = {
+      id,
+      url,
+      root,
+      object,
+      headHeight: template.headHeight,
+      rig,
+      joints: null,
+    };
+    this.instances.set(id, inst);
+    return inst;
+  }
+
+  private removeInstance(inst: FigureInstance): void {
+    this.figure.remove(inst.root);
+    if (inst.rig) {
+      this.skeletonRoot.remove(inst.rig.lines);
+      inst.rig.lines.geometry.dispose();
+    }
+    this.instances.delete(inst.id);
+    if (this.poseDrag?.figure === inst.id) this.poseDrag = null;
+    if (this.moveDrag?.figure === inst.id) this.moveDrag = null;
+  }
+
+  /** The figure being posed or edited: the one the UI picked, else the
+   * first on stage. */
+  private get active(): FigureInstance | null {
+    const id = this.activeFigure ?? this.doc?.figures[0]?.id;
+    return (id && this.instances.get(id)) || null;
+  }
+
+  setActiveFigure(id: string | null): void {
+    this.activeFigure = id;
+    this.invalidate();
+  }
+
+  /** World position the face camera aims at, on the active figure. */
+  private activeHead(): THREE.Vector3 {
+    const a = this.active;
+    return a
+      ? a.root.localToWorld(new THREE.Vector3(0, a.headHeight, 0))
+      : new THREE.Vector3(0, 1.72, 0);
+  }
+
+  /** Face view framed on the active figure, from its front-left. */
+  private aimAtFace(): void {
+    const head = this.activeHead();
+    const turn = this.active?.root.rotation.y ?? 0;
+    this.controls.target.copy(head);
+    this.camera.position
+      .copy(head)
+      .add(
+        new THREE.Vector3(0.35, 0.13, 0.65).applyAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          turn,
+        ),
+      );
+    this.controls.update();
+  }
+
+  /** The figure an object (pick capsule, joint dot) belongs to. */
+  private instanceOf(obj: THREE.Object3D | null): FigureInstance | null {
+    for (let o = obj; o; o = o.parent)
+      if (o.userData.figureId)
+        return this.instances.get(o.userData.figureId as string) ?? null;
+    return null;
   }
 
   private prepareModel(root: THREE.Object3D): CachedModel {
@@ -1052,6 +1255,8 @@ export class StudioEngine {
       const end =
         def.effector === "tip" ? rig.tipOf[def.bone]! : at(def.effector);
       const ring = new THREE.Mesh(ringGeometry, dotMaterial);
+      ring.name = "pose-dot-ring";
+      ring.userData.joint = def.joint;
       ring.renderOrder = 21;
       ring.visible = false;
       ring.raycast = () => {};
@@ -1090,76 +1295,59 @@ export class StudioEngine {
     return { dots, dotMaterial, activeDotMaterial, lines, segments };
   }
 
-  /** Show the skeleton overlay (pose mode): joint circles facing the
-   * camera at a constant on-screen size, the selected one green. */
+  /** Show the skeleton overlay (pose mode) on the active figure only:
+   * joint circles facing the camera at a constant on-screen size, the
+   * selected one green. */
   private layoutDots(show: boolean): void {
-    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
-    const rig = model?.rig;
-    if (!model || !rig) return;
-    rig.lines.visible = show;
-    for (const d of rig.dots) d.ring.visible = show;
-    if (!show) return;
-    const active = this.selection?.startsWith("pose:")
+    const active = this.active;
+    const joint = this.selection?.startsWith("pose:")
       ? this.selection.slice(5)
       : null;
-    const scale = model.object.scale.x;
-    const p = new THREE.Vector3();
-    const q = new THREE.Quaternion();
-    for (const d of rig.dots) {
-      const bone = rig.bones[d.def.bone];
-      const dist = this.camera.position.distanceTo(bone.getWorldPosition(p));
-      const on = d.def.joint === active;
-      const r = Math.max(0.0035, dist * 0.0035) * (on ? 1.3 : 1);
-      d.ring.scale.setScalar(r / scale);
-      // Generous touch target around a small circle.
-      d.pick.scale.setScalar(Math.max(r * 4.5, 0.02) / scale);
-      // Face the camera whatever the bone's rotation.
-      d.ring.quaternion
-        .copy(bone.getWorldQuaternion(q).invert())
-        .multiply(this.camera.quaternion);
-      d.ring.material = on ? rig.activeDotMaterial : rig.dotMaterial;
+    for (const inst of this.instances.values()) {
+      const rig = inst.rig;
+      if (!rig) continue;
+      const on = show && inst === active;
+      rig.lines.visible = on;
+      for (const d of rig.dots) d.ring.visible = on;
+      if (!on) continue;
+      const scale = inst.object.scale.x;
+      const p = new THREE.Vector3();
+      const q = new THREE.Quaternion();
+      for (const d of rig.dots) {
+        const bone = rig.bones[d.def.bone];
+        const dist = this.camera.position.distanceTo(bone.getWorldPosition(p));
+        const selected = d.def.joint === joint;
+        const r = Math.max(0.0035, dist * 0.0035) * (selected ? 1.3 : 1);
+        d.ring.scale.setScalar(r / scale);
+        // Generous touch target around a small circle.
+        d.pick.scale.setScalar(Math.max(r * 4.5, 0.02) / scale);
+        // Face the camera whatever the bone's rotation.
+        d.ring.quaternion
+          .copy(bone.getWorldQuaternion(q).invert())
+          .multiply(this.camera.quaternion);
+        d.ring.material = selected ? rig.activeDotMaterial : rig.dotMaterial;
+      }
+      const pos = rig.lines.geometry.attributes
+        .position as THREE.BufferAttribute;
+      const b = new THREE.Vector3();
+      rig.segments.forEach(([from, to], i) => {
+        const bone = rig.bones[from];
+        bone.getWorldPosition(p);
+        if (to instanceof THREE.Vector3) bone.localToWorld(b.copy(to));
+        else rig.bones[to].getWorldPosition(b);
+        pos.setXYZ(i * 2, p.x, p.y, p.z);
+        pos.setXYZ(i * 2 + 1, b.x, b.y, b.z);
+      });
+      pos.needsUpdate = true;
     }
-    const pos = rig.lines.geometry.attributes.position as THREE.BufferAttribute;
-    const b = new THREE.Vector3();
-    rig.segments.forEach(([from, to], i) => {
-      const bone = rig.bones[from];
-      bone.getWorldPosition(p);
-      if (to instanceof THREE.Vector3) bone.localToWorld(b.copy(to));
-      else rig.bones[to].getWorldPosition(b);
-      pos.setXYZ(i * 2, p.x, p.y, p.z);
-      pos.setXYZ(i * 2 + 1, b.x, b.y, b.z);
-    });
-    pos.needsUpdate = true;
-  }
-
-  private syncPose(): void {
-    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
-    if (!model?.rig || !this.doc) return;
-    applyPose(model.rig.bones, this.doc.pose.joints, model.rig.dirs);
-    this.invalidate();
-  }
-
-  private showModel(url: string, model: CachedModel): void {
-    this.figure.clear();
-    this.figure.add(model.object);
-    this.skeletonRoot.clear();
-    if (model.rig) this.skeletonRoot.add(model.rig.lines);
-    this.modelUrl = url;
-    this.headHeight = model.headHeight;
-    this.syncPose();
-    if (this.view === "face") {
-      this.controls.target.set(0, this.headHeight, 0);
-      this.camera.position.set(0.35, this.headHeight + 0.13, 0.65);
-      this.controls.update();
-    }
-    this.callbacks.onStatus?.({ model: "ready" });
-    this.invalidate();
   }
 
   /** For automated tests: where each posable joint (and each hand's
-   * middle) is on screen, in client pixels. */
-  jointsOnScreen(): Record<string, { x: number; y: number }> {
-    const rig = this.currentRig;
+   * middle) of a figure (default: the active one) is on screen, in
+   * client pixels, plus `body`: the middle of the chest. */
+  jointsOnScreen(figure?: string): Record<string, { x: number; y: number }> {
+    const inst = figure ? this.instances.get(figure) : this.active;
+    const rig = inst?.rig;
     if (!rig) return {};
     const rect = this.renderer.domElement.getBoundingClientRect();
     const out: Record<string, { x: number; y: number }> = {};
@@ -1179,12 +1367,10 @@ export class StudioEngine {
           `hand${d.def.bone.slice(-1)}`,
           bone.localToWorld(d.effector.clone().multiplyScalar(0.5)),
         );
+      if (d.def.bone === "spine")
+        put("body", bone.localToWorld(d.effector.clone().multiplyScalar(0.5)));
     }
     return out;
-  }
-
-  get loadedModelUrl(): string | null {
-    return this.modelUrl;
   }
 
   // -------------------------------------------------------------- pointer
@@ -1213,14 +1399,26 @@ export class StudioEngine {
     return this.selection === "pose" || !!this.selection?.startsWith("pose:");
   }
 
-  private get currentRig(): ModelRig | null {
-    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
-    return model?.rig ?? null;
+  /** Figures can be dragged across the floor while the mannequin
+   * controls are open. */
+  private get moveMode(): boolean {
+    return this.selection === "model";
   }
 
-  /** What a press in pose mode would grab: a joint dot first (they sit
-   * on top), then a body part. Null if nothing draggable is there. */
+  /** The body part (pick capsule) under the pointer, on any figure. */
+  private pickBodyPart(): THREE.Intersection | null {
+    return (
+      this.raycaster
+        .intersectObject(this.figure, true)
+        .find((h) => h.object.name === "pose-pick") ?? null
+    );
+  }
+
+  /** What a press in pose mode would grab: one of the active figure's
+   * joint dots (they sit on top), then a body part of any figure. Null
+   * if nothing draggable is there. */
   private pickPoseTarget(e: PointerEvent): {
+    figure: string;
     joint: string;
     vars: DragVar[];
     grabbed: THREE.Object3D;
@@ -1229,17 +1427,18 @@ export class StudioEngine {
     /** Where the press landed, world space. */
     at: THREE.Vector3;
   } | null {
-    const rig = this.currentRig;
-    if (!rig || !this.poseMode) return null;
+    if (!this.poseMode) return null;
     const ray = this.pointerRay(e);
-    const partHit = this.raycaster
-      .intersectObject(this.figure, true)
-      .find((h) => h.object.name === "pose-pick");
-    const dotHit = this.raycaster.intersectObjects(
-      rig.dots.map((d) => d.pick),
-      false,
-    )[0];
-    const dot = dotHit && rig.dots.find((d) => d.pick === dotHit.object);
+    const partHit = this.pickBodyPart();
+    const active = this.active;
+    const rig = active?.rig;
+    const dotHit = rig
+      ? this.raycaster.intersectObjects(
+          rig.dots.map((d) => d.pick),
+          false,
+        )[0]
+      : undefined;
+    const dot = dotHit && rig?.dots.find((d) => d.pick === dotHit.object);
     // A dot's generous touch target only counts off the body: over a body
     // part, the press must land near the circle itself. (On a phone the
     // whole hand sits inside the wrist dot's target.)
@@ -1247,9 +1446,10 @@ export class StudioEngine {
       dot &&
       ray.distanceToPoint(dot.ring.getWorldPosition(new THREE.Vector3())) <
         dot.ring.getWorldScale(new THREE.Vector3()).x * 2;
-    if (dot && (!partHit || onCircle)) {
+    if (active && rig && dot && (!partHit || onCircle)) {
       const grabbed = rig.bones[dot.def.bone];
       return {
+        figure: active.id,
         joint: dot.def.joint,
         vars: dot.def.vars,
         grabbed,
@@ -1257,16 +1457,17 @@ export class StudioEngine {
         at: grabbed.getWorldPosition(new THREE.Vector3()),
       };
     }
-    const hit = partHit;
-    if (!hit) return null;
-    const vars = dragVariables(hit.object.userData.bone as BoneName);
+    const owner = partHit && this.instanceOf(partHit.object);
+    if (!partHit || !owner) return null;
+    const vars = dragVariables(partHit.object.userData.bone as BoneName);
     if (vars.length === 0) return null;
     return {
-      joint: hit.object.userData.joint as string,
+      figure: owner.id,
+      joint: partHit.object.userData.joint as string,
       vars,
-      grabbed: hit.object.parent!,
-      origin: hit.point.clone(),
-      at: hit.point.clone(),
+      grabbed: partHit.object.parent!,
+      origin: partHit.point.clone(),
+      at: partHit.point.clone(),
     };
   }
 
@@ -1274,21 +1475,20 @@ export class StudioEngine {
     e: PointerEvent,
     t: NonNullable<ReturnType<StudioEngine["pickPoseTarget"]>>,
   ): boolean {
-    const rig = this.currentRig;
-    if (!rig || !this.doc) return false;
+    const inst = this.instances.get(t.figure);
+    const figure = this.doc?.figures.find((f) => f.id === t.figure);
+    if (!inst?.rig || !figure) return false;
     this.figure.updateMatrixWorld(true);
-    const joints = this.doc.pose.joints as Record<
-      string,
-      Record<string, number>
-    >;
+    const joints = figure.pose.joints as Record<string, Record<string, number>>;
     this.poseDrag = {
       pointerId: e.pointerId,
+      figure: t.figure,
       vars: t.vars,
       x: t.vars.map((v) => joints[v.joint][v.dof]),
       reach: makeReach(
-        rig.bones,
-        rig.dirs,
-        this.doc.pose.joints,
+        inst.rig.bones,
+        inst.rig.dirs,
+        figure.pose.joints,
         t.vars,
         t.grabbed,
         t.grabbed.worldToLocal(t.origin.clone()),
@@ -1307,38 +1507,69 @@ export class StudioEngine {
     return true;
   }
 
+  /** Grab a figure to slide it across the floor (mannequin controls). */
+  private startMoveDrag(e: PointerEvent): FigureInstance | null {
+    if (!this.moveMode) return null;
+    this.pointerRay(e);
+    const hit = this.pickBodyPart();
+    const owner = this.instanceOf(hit?.object ?? null);
+    if (!hit || !owner) return null;
+    // Looking down on the set, the pointer slides over a level plane
+    // through the grabbed point (like the floor). Near eye level that
+    // plane is seen edge-on, so use one facing the camera instead; only
+    // the horizontal part of the motion moves the figure either way.
+    const view = this.camera.getWorldDirection(new THREE.Vector3());
+    const normal =
+      Math.abs(view.y) > 0.35 ? new THREE.Vector3(0, 1, 0) : view.negate();
+    this.moveDrag = {
+      pointerId: e.pointerId,
+      figure: owner.id,
+      plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point),
+      start: hit.point.clone(),
+      from: owner.root.position.clone(),
+      down: { x: e.clientX, y: e.clientY },
+      moved: false,
+    };
+    return owner;
+  }
+
+  private grab(e: PointerEvent, selection: Selection, figure?: string): void {
+    // Hold it: keep OrbitControls from starting a rotate.
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    this.renderer.domElement.setPointerCapture(e.pointerId);
+    this.selection = selection;
+    if (figure) this.activeFigure = figure;
+    this.updateHandleStyles();
+    this.callbacks.onSelect?.(selection, figure);
+    this.invalidate();
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
     // A second finger during a drag must not start an orbit.
-    if (this.dragging || this.poseDrag) {
+    if (this.dragging || this.poseDrag || this.moveDrag) {
       e.stopImmediatePropagation();
       return;
     }
     this.downAt = { x: e.clientX, y: e.clientY };
     const id = this.pickLight(e);
-    if (!id) {
-      const target = this.pickPoseTarget(e);
-      if (!target || !this.startPoseDrag(e, target)) return;
-      // Hold the body part: keep OrbitControls from starting a rotate.
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      this.renderer.domElement.setPointerCapture(e.pointerId);
-      this.renderer.domElement.style.cursor = "grabbing";
-      const sel: Selection = `pose:${target.joint}`;
-      this.selection = sel;
-      this.callbacks.onSelect?.(sel);
-      this.invalidate();
+    if (id) {
+      this.dragging = { id, pointerId: e.pointerId };
+      this.grab(e, id);
       return;
     }
-    // Grab the handle: keep OrbitControls from starting a rotate.
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    this.dragging = { id, pointerId: e.pointerId };
-    this.renderer.domElement.setPointerCapture(e.pointerId);
-    this.selection = id;
-    this.updateHandleStyles();
-    this.callbacks.onSelect?.(id);
-    this.invalidate();
+    const target = this.pickPoseTarget(e);
+    if (target && this.startPoseDrag(e, target)) {
+      this.renderer.domElement.style.cursor = "grabbing";
+      this.grab(e, `pose:${target.joint}`, target.figure);
+      return;
+    }
+    const moving = this.startMoveDrag(e);
+    if (moving) {
+      this.renderer.domElement.style.cursor = "grabbing";
+      this.grab(e, "model", moving.id);
+    }
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -1362,15 +1593,44 @@ export class StudioEngine {
       drag.vars.forEach((v, i) => {
         (patches[v.joint] ??= {})[v.dof] = Math.round(drag.x[i] * 10) / 10;
       });
-      this.callbacks.onPoseDrag?.(patches);
+      this.callbacks.onPoseDrag?.(drag.figure, patches);
       this.invalidate();
       return;
     }
+    const move = this.moveDrag;
+    if (move) {
+      if (e.pointerId !== move.pointerId) return;
+      if (
+        !move.moved &&
+        Math.hypot(e.clientX - move.down.x, e.clientY - move.down.y) < 4
+      )
+        return;
+      move.moved = true;
+      const p = this.pointerRay(e).intersectPlane(
+        move.plane,
+        new THREE.Vector3(),
+      );
+      if (!p) return;
+      const delta = p.sub(move.start).setY(0);
+      const at = move.from.clone().add(delta);
+      const clamp = (v: number, [lo, hi]: readonly [number, number]) =>
+        Math.round(THREE.MathUtils.clamp(v, lo, hi) * 100) / 100;
+      this.callbacks.onFigureMove?.(move.figure, {
+        x: clamp(at.x, LIMITS.figureX),
+        z: clamp(at.z, LIMITS.figureZ),
+      });
+      return;
+    }
     if (!this.dragging) {
-      // Hover feedback: a grab cursor over anything draggable.
-      if (e.pointerType === "mouse" && e.buttons === 0 && this.currentRig) {
-        const over = !!this.pickPoseTarget(e);
-        this.renderer.domElement.style.cursor = over ? "grab" : "";
+      // Hover feedback: what a press here would do.
+      if (e.pointerType === "mouse" && e.buttons === 0) {
+        let cursor = "";
+        if (this.poseMode && this.pickPoseTarget(e)) cursor = "grab";
+        else if (this.moveMode) {
+          this.pointerRay(e);
+          if (this.pickBodyPart()) cursor = "move";
+        }
+        this.renderer.domElement.style.cursor = cursor;
       }
       return;
     }
@@ -1390,7 +1650,19 @@ export class StudioEngine {
       this.renderer.domElement.style.cursor = "";
       if (drag.moved) this.callbacks.onPoseDragEnd?.();
       // Bones back in step with the document (a tap changed nothing).
-      this.syncPose();
+      const inst = this.instances.get(drag.figure);
+      if (inst) inst.joints = null;
+      this.syncFigures();
+      return;
+    }
+    const move = this.moveDrag;
+    if (move && e.pointerId === move.pointerId) {
+      this.moveDrag = null;
+      this.downAt = null;
+      this.renderer.domElement.releasePointerCapture?.(e.pointerId);
+      this.renderer.domElement.style.cursor = "";
+      if (move.moved) this.callbacks.onFigureMoveEnd?.();
+      this.invalidate();
       return;
     }
     if (this.dragging && e.pointerId === this.dragging.pointerId) {
@@ -1410,16 +1682,22 @@ export class StudioEngine {
     const hit = this.raycaster
       .intersectObjects([this.figure, this.cyc], true)
       .find((h) => h.object.name !== "pose-dot" || this.poseMode);
+    const owner = hit ? this.instanceOf(hit.object) : null;
+    const part =
+      hit?.object.name === "pose-pick" || hit?.object.name === "pose-dot";
     const sel: Selection = !hit
       ? null
-      : hit.object.name === "pose-pick" || hit.object.name === "pose-dot"
-        ? `pose:${hit.object.userData.joint as string}`
-        : hit.object.name === "model"
-          ? "model"
-          : "backdrop";
+      : owner && this.moveMode
+        ? "model"
+        : part
+          ? `pose:${hit.object.userData.joint as string}`
+          : owner
+            ? "model"
+            : "backdrop";
     this.selection = sel;
+    if (owner) this.activeFigure = owner.id;
     this.updateHandleStyles();
-    this.callbacks.onSelect?.(sel);
+    this.callbacks.onSelect?.(sel, owner?.id);
     this.invalidate();
   };
 
@@ -1571,6 +1849,7 @@ export class StudioEngine {
     this.controls.removeEventListener("end", this.onControlsEnd);
     this.controls.dispose();
     for (const [id, rig] of [...this.rigs]) this.removeRig(id, rig);
+    for (const inst of [...this.instances.values()]) this.removeInstance(inst);
     for (const model of this.models.values())
       disposeModel(model, this.material);
     this.models.clear();

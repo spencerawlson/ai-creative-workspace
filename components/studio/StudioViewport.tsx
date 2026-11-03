@@ -48,6 +48,9 @@ export function StudioViewport({
   onLightDragEnd,
   onPoseDrag,
   onPoseDragEnd,
+  activeFigure = null,
+  onFigureMove,
+  onFigureMoveEnd,
   className,
   label = "3D lighting studio viewport",
 }: {
@@ -58,16 +61,21 @@ export function StudioViewport({
   viewNonce: number;
   selection?: Selection;
   showHandles?: boolean;
-  onSelect?: (s: Selection) => void;
+  onSelect?: (s: Selection, figure?: string) => void;
   onLightDrag?: (
     id: string,
     patch: { azimuth: number; elevation: number },
   ) => void;
   onLightDragEnd?: (id: string) => void;
   onPoseDrag?: (
+    figure: string,
     patches: Partial<Record<JointId, Record<string, number>>>,
   ) => void;
   onPoseDragEnd?: () => void;
+  /** The figure being posed or edited (joint overlay, face view). */
+  activeFigure?: string | null;
+  onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
+  onFigureMoveEnd?: () => void;
   className?: string;
   label?: string;
 }) {
@@ -88,6 +96,9 @@ export function StudioViewport({
     onLightDragEnd,
     onPoseDrag,
     onPoseDragEnd,
+    activeFigure,
+    onFigureMove,
+    onFigureMoveEnd,
   });
   latest.current = {
     scene,
@@ -101,6 +112,9 @@ export function StudioViewport({
     onLightDragEnd,
     onPoseDrag,
     onPoseDragEnd,
+    activeFigure,
+    onFigureMove,
+    onFigureMoveEnd,
   };
 
   useEffect(() => {
@@ -113,11 +127,13 @@ export function StudioViewport({
         if (cancelled) return;
         try {
           engine = new StudioEngine(container, {
-            onSelect: (s) => latest.current.onSelect?.(s),
+            onSelect: (s, f) => latest.current.onSelect?.(s, f),
             onLightDrag: (id, p) => latest.current.onLightDrag?.(id, p),
             onLightDragEnd: (id) => latest.current.onLightDragEnd?.(id),
-            onPoseDrag: (p) => latest.current.onPoseDrag?.(p),
+            onPoseDrag: (f, p) => latest.current.onPoseDrag?.(f, p),
             onPoseDragEnd: () => latest.current.onPoseDragEnd?.(),
+            onFigureMove: (f, at) => latest.current.onFigureMove?.(f, at),
+            onFigureMoveEnd: () => latest.current.onFigureMoveEnd?.(),
             onStatus: (s) => {
               setStatus(s.model);
               setMessage(s.message ?? null);
@@ -134,6 +150,7 @@ export function StudioViewport({
         const p = latest.current;
         engine.setShowHandles(p.showHandles);
         engine.setSelection(p.selection);
+        engine.setActiveFigure(p.activeFigure);
         engine.update(p.scene, p.overrides);
         if (p.viewNonce > 0 || p.view !== "full") engine.setView(p.view);
       })
@@ -158,6 +175,10 @@ export function StudioViewport({
   useEffect(() => {
     engineRef.current?.setShowHandles(showHandles);
   }, [showHandles]);
+
+  useEffect(() => {
+    engineRef.current?.setActiveFigure(activeFigure);
+  }, [activeFigure]);
 
   useEffect(() => {
     if (viewNonce > 0) engineRef.current?.setView(view);

@@ -36,7 +36,7 @@ export function LightingScene({
     () => ({
       ...defaultScene(),
       preset: "custom",
-      model,
+      figures: [{ ...defaultScene().figures[0], model }],
       lights: lights.map(fromLegacyLight),
     }),
     [lights, model],
