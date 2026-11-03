@@ -18,13 +18,15 @@ lib/studio/             Framework-free scene model (pure TS, unit-tested)
   actions.ts            SceneAction union, reducer, labels, coalescing
   history.ts            Undo/redo over SceneDocs
   presets.ts            Lighting, material, backdrop presets; defaults
+  figures.ts            Figure helpers: lookup, labels, ids, free spots
   pose.ts               Mannequin joints, limits, pose presets, mirror
   share.ts              ?s= link codec v2 (reads M3 v1 links)
   persistence.ts        Local autosave + .lighting.json project files
 lib/engine/StudioEngine.ts
                         Imperative Three.js renderer: render-on-demand,
                         handles/picking/drag, export, benchmark, disposal
-lib/engine/posing.ts    Pose angles -> bone rotations (unit-tested)
+lib/engine/posing.ts    Pose angles -> bone rotations; drag-to-pose
+                        solver (damped least squares; unit-tested)
 lib/lighting.ts         Six curated presets, Kelvin→RGB, light geometry
 scripts/optimize-models.mjs
                         Source scans → rigged, compressed public/models/*.glb
@@ -54,7 +56,19 @@ goes through the same actions, history, autosave and share links as
 lighting. The engine turns angles into bone rotations
 (`lib/engine/posing.ts`). Taps on the figure hit invisible per-bone
 capsules, not the 481k-triangle skinned mesh, and select
-`pose:<joint>`.
+`pose:<joint>`. In pose mode, dragging a body part or a joint circle
+runs a small damped-least-squares solver over that joint's existing
+angles, inside their limits; one drag is one undo step (a "gesture"
+commit, sealed on release).
+
+**Figures.** A scene holds 1–4 `figures` (model, x/z on the floor,
+rotation, pose). Scenes saved with the older single top-level
+`model` + `pose` upgrade on parse; a lone centred figure is shared with
+the old link layout. The engine loads each GLB once as a template and
+puts `SkeletonUtils` clones on stage, each with its own skeleton,
+capsules and overlay but shared geometry and materials. Pose and model
+actions carry an optional `figure` (omitted = the first). The UI keeps
+an "active figure" that the mannequin and pose controls act on.
 
 ## 2. Persistent workspace (Designed — not built)
 

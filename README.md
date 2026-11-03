@@ -9,12 +9,17 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
 - Drag light handles in the viewport, or edit them in the inspector.
 - Six curated presets with notes: Three-point, Rembrandt, Split,
   Butterfly, Low-key, High-key.
-- Male and female mannequins, eight material presets plus custom colour,
-  roughness and metalness.
+- Up to four figures in a scene, male or female, each placed, turned
+  and posed on its own: add, duplicate, remove, or drag one across the
+  floor. Eight material presets plus custom colour, roughness and
+  metalness.
 - Pose the mannequin: head, torso, shoulders, elbows, wrists, hips and
   knees, each with named movements (raise, bend, lift, twist…) and
   anatomical limits. Seven pose presets (Hand raised, Hand to chin,
   Hand on hip…), mirror, and tap a body part to jump to its controls.
+  Or pose directly in the viewport with a mouse or a finger: drag a
+  body part, or a joint circle of the Maya-style skeleton overlay;
+  grabbing a hand lifts the whole arm.
 - Six backdrops (shadow catcher or seamless sweep), camera focal length,
   exposure in EV, Filmic/AgX/Neutral tone mapping.
 - Undo/redo with a history panel, keyboard shortcuts (press `?`).
