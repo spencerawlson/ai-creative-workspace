@@ -1,5 +1,6 @@
-// Auto-rigs a scanned A-pose mannequin: fits a 13-bone skeleton to the
-// mesh and bakes skin weights, so the figure can be posed at runtime.
+// Auto-rigs a scanned A-pose mannequin: fits a 45-bone skeleton (body,
+// feet, thumbs and fingers) to the mesh and bakes skin weights, so the
+// figure can be posed at runtime.
 //
 // The scans ship as one static, welded mesh (positions + normals only).
 // Rigging is done offline because it needs the whole mesh at once:
@@ -43,7 +44,25 @@ export const BONES = [
   ["kneeL", "hipL"],
   ["hipR", "pelvis"],
   ["kneeR", "hipR"],
+  // Version 2: feet, thumbs and fingers (three bones each).
+  ...["L", "R"].flatMap((s) => [
+    [`ankle${s}`, `knee${s}`],
+    [`thumb1${s}`, `wrist${s}`],
+    [`thumb2${s}`, `thumb1${s}`],
+    [`thumb3${s}`, `thumb2${s}`],
+    ...["index", "middle", "ring", "pinky"].flatMap((f) => [
+      [`${f}1${s}`, `wrist${s}`],
+      [`${f}2${s}`, `${f}1${s}`],
+      [`${f}3${s}`, `${f}2${s}`],
+    ]),
+  ]),
 ];
+
+const FINGER_NAMES = ["index", "middle", "ring", "pinky"];
+/** Bones found in the hand pass rather than by plane + capsule. */
+const HAND_BONE = /^(thumb|index|middle|ring|pinky)/;
+/** Where the knuckles are, as a fraction of wrist -> fingertip. */
+const KNUCKLE_AT = 0.52;
 
 /** Rounds of neighbour averaging applied to the skin weights. */
 const SMOOTH_ITERATIONS = Number(process.env.RIG_SMOOTH ?? 12);
@@ -53,6 +72,11 @@ const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const len = (a) => Math.sqrt(dot(a, a));
+const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
 const norm = (a) => mul(a, 1 / (len(a) || 1));
 const smoothstep = (e0, e1, x) => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -283,8 +307,9 @@ export function rigMesh(pos, index) {
     let toe = null;
     for (const p of legPts(floor, atH(0.05)))
       if (!toe || p[2] > toe[2]) toe = p;
-    joints[`ankle${side}`] = ankle; // not a bone; used for the leg capsule
-    tips[`knee${side}`] = toe;
+    joints[`ankle${side}`] = ankle;
+    tips[`knee${side}`] = toe; // version 1 rigs end the leg here
+    tips[`ankle${side}`] = toe;
   }
 
   // Trunk: waist (spine pivot) and neck from horizontal sections.
@@ -388,11 +413,15 @@ export function rigMesh(pos, index) {
     ];
     capsules[`hip${s}`] = legCaps;
     capsules[`knee${s}`] = legCaps.slice(1);
+    capsules[`ankle${s}`] = legCaps.slice(2);
     dirs[`hip${s}`] = norm(sub(kn, hp));
     dirs[`knee${s}`] = norm(sub(an, kn));
+    // The foot: everything below the ankle, heel included.
+    dirs[`ankle${s}`] = norm(sub(an, kn));
     blend[`hip${s}`] = 0.04 * H;
     blend[`knee${s}`] = 0.025 * H;
-    seeds[`hip${s}`] = seeds[`knee${s}`] = nearest(toe);
+    blend[`ankle${s}`] = 0.012 * H;
+    seeds[`hip${s}`] = seeds[`knee${s}`] = seeds[`ankle${s}`] = nearest(toe);
   }
   dirs.spine = [0, 1, 0];
   dirs.neck = [0, 1, 0];
@@ -423,7 +452,7 @@ export function rigMesh(pos, index) {
 
   const regions = {};
   for (const [b, parent] of BONES) {
-    if (parent === null) continue;
+    if (parent === null || HAND_BONE.test(b)) continue;
     // Limbs stay on their own side of the midline, so close-together
     // thighs don't claim each other's inner surface at the crotch.
     const side = b.endsWith("L") ? 1 : b.endsWith("R") ? -1 : 0;
@@ -461,6 +490,7 @@ export function rigMesh(pos, index) {
     .sort((a, b) => depth(a) - depth(b));
   for (const b of byDepth) {
     const r = regions[b];
+    if (!r) continue; // hand bones: see the hand pass
     for (let i = 0; i < n; i++) if (r[i]) label[i] = boneIdx[b];
   }
 
@@ -517,6 +547,265 @@ export function rigMesh(pos, index) {
         frontier.push(w);
       }
     }
+  }
+
+  // ---- 3b. hands: thumb and four fingers ------------------------------
+  // Some of the scan's fingers touch (the mesh fuses them), so a finger
+  // can't be found by connectivity alone. The thumb is the piece that
+  // splits away from the rest of the hand first; past the knuckles every
+  // other vertex goes to a finger by where it lies *across* the hand,
+  // where the four fingers form four bands. Where two fingers are fused,
+  // the skin between them stretches a little when they move apart.
+  const palm = {};
+  const handStats = {};
+  for (const s of ["L", "R"]) {
+    const w = joints[`wrist${s}`];
+    const handTip = tips[`wrist${s}`];
+    const L = len(sub(handTip, w));
+    const u = norm(sub(handTip, w));
+    const wristLabel = boneIdx[`wrist${s}`];
+    const hand = [];
+    for (let i = 0; i < n; i++) if (label[i] === wristLabel) hand.push(i);
+    const along = (i) => dot(sub(P(i), w), u);
+    const tipV = nearest(handTip);
+
+    // Connected pieces of the hand past `frac` of its length.
+    const pieces = (frac) => {
+      const mark = new Int32Array(n).fill(-1);
+      const lists = [];
+      for (const start of hand) {
+        if (mark[start] >= 0 || along(start) <= frac * L) continue;
+        const id = lists.length;
+        const list = [start];
+        mark[start] = id;
+        for (let q = 0; q < list.length; q++) {
+          const v = list[q];
+          for (let k = deg[v]; k < deg[v + 1]; k++) {
+            const x = adj[k];
+            if (mark[x] < 0 && label[x] === wristLabel && along(x) > frac * L) {
+              mark[x] = id;
+              list.push(x);
+            }
+          }
+        }
+        lists.push(list);
+      }
+      return { lists, mark };
+    };
+    let thumb = null;
+    for (let f = 0.3; f <= 0.62 && !thumb; f += 0.02) {
+      const { lists, mark } = pieces(f);
+      const main = mark[tipV] >= 0 ? lists[mark[tipV]] : null;
+      if (!main) continue;
+      const others = lists
+        .filter((l) => l !== main && l.length > 0.01 * hand.length)
+        .sort((a, b) => b.length - a.length);
+      if (others.length) thumb = others[0];
+    }
+    if (!thumb) throw new Error(`No thumb found on the ${s} hand`);
+    const isThumb = new Uint8Array(n);
+    for (const i of thumb) isThumb[i] = 1;
+
+    // Across the fingers: the main spread of the finger zone, square to
+    // the hand's axis, pointing towards the thumb.
+    const perp = (i) => {
+      const d = sub(P(i), w);
+      return sub(d, mul(u, dot(d, u)));
+    };
+    const zone = hand.filter(
+      (i) => !isThumb[i] && along(i) > 0.6 * L && along(i) < 0.85 * L,
+    );
+    const m = mul(zone.map(perp).reduce(add, [0, 0, 0]), 1 / zone.length);
+    const C = [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ];
+    for (const i of zone) {
+      const q = sub(perp(i), m);
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++) C[r][c] += q[r] * q[c];
+    }
+    let across = norm([1, 0.4, 0.3]);
+    for (let it = 0; it < 60; it++)
+      across = norm([dot(C[0], across), dot(C[1], across), dot(C[2], across)]);
+    const cOf = (i) => dot(perp(i), across);
+    const mean = (list, fn) =>
+      list.reduce((acc, i) => acc + fn(i), 0) / list.length;
+    if (mean(thumb, cOf) < mean(zone, cOf)) across = mul(across, -1);
+    // The palm faces the body's midline in the scan's A-pose.
+    let normal = norm(cross(u, across));
+    const sideSign = s === "L" ? 1 : -1;
+    if (normal[0] * sideSign > 0) normal = mul(normal, -1);
+
+    // Four bands across the hand, cut at the webs between the fingers.
+    // Seen flat in the palm's plane, the hand's outline reaches out to a
+    // fingertip and dips back at each web, even where two fingers are
+    // fused, so the three deepest dips between the four longest reaches
+    // are the cuts. (K-means on the vertices, tried first, drifted off
+    // the fingers on the slimmer female hand.)
+    const reach = hand.filter((i) => !isThumb[i] && along(i) > 0.5 * L);
+    const cs = reach.map(cOf);
+    const cLo = Math.min(...cs);
+    const cHi = Math.max(...cs);
+    const NB = 64;
+    const profile = new Array(NB).fill(0);
+    reach.forEach((i, k) => {
+      const b = Math.min(
+        NB - 1,
+        Math.floor(((cs[k] - cLo) / (cHi - cLo)) * NB),
+      );
+      profile[b] = Math.max(profile[b], along(i) / L);
+    });
+    const smooth = profile.map((_, b) => {
+      let acc = 0;
+      let n0 = 0;
+      for (let d = -1; d <= 1; d++)
+        if (profile[b + d] !== undefined) {
+          acc += profile[b + d];
+          n0++;
+        }
+      return acc / n0;
+    });
+    const minGap = Math.ceil((0.08 * L) / ((cHi - cLo) / NB));
+    const peaks = [];
+    // Only real tops count: a bin on the side of a long finger can be
+    // higher than the short little finger's tip.
+    const isTop = (b) =>
+      [-2, -1, 1, 2].every(
+        (d) => smooth[b + d] === undefined || smooth[b] >= smooth[b + d],
+      );
+    for (const b of [...smooth.keys()].sort((x, y) => smooth[y] - smooth[x])) {
+      if (peaks.length === 4) break;
+      if (isTop(b) && peaks.every((p) => Math.abs(p - b) >= minGap))
+        peaks.push(b);
+    }
+    if (peaks.length < 4)
+      throw new Error(`Found ${peaks.length} fingertips on the ${s} hand`);
+    peaks.sort((x, y) => x - y);
+    const cutBins = [0, 1, 2].map((k) => {
+      let best = peaks[k] + 1;
+      for (let b = peaks[k] + 1; b < peaks[k + 1]; b++)
+        if (smooth[b] < smooth[best]) best = b;
+      return best;
+    });
+    const cuts = cutBins.map((b) => cLo + ((b + 0.5) / NB) * (cHi - cLo));
+    const centers = peaks.map((b) => cLo + ((b + 0.5) / NB) * (cHi - cLo));
+    // 0 = index (highest, towards the thumb) .. 3 = little finger.
+    const fingerOf = (i) => {
+      const c = cOf(i);
+      return c > cuts[2] ? 0 : c > cuts[1] ? 1 : c > cuts[0] ? 2 : 3;
+    };
+
+    const centroid = (list) =>
+      mul(list.map(P).reduce(add, [0, 0, 0]), 1 / Math.max(1, list.length));
+    const fingerJoints = [];
+    FINGER_NAMES.forEach((name, f) => {
+      const verts = hand.filter(
+        (i) => !isThumb[i] && along(i) > 0.45 * L && fingerOf(i) === f,
+      );
+      let tipI = verts[0];
+      for (const i of verts) if (along(i) > along(tipI)) tipI = i;
+      const tip = P(tipI);
+      // Knuckle: a cross-section where the finger leaves the palm.
+      const mcp = centroid(
+        verts.filter((i) => Math.abs(along(i) / L - KNUCKLE_AT) < 0.02),
+      );
+      const df = norm(sub(tip, mcp));
+      const Lf = len(sub(tip, mcp));
+      const at = (t) =>
+        centroid(
+          verts.filter(
+            (i) => Math.abs(dot(sub(P(i), mcp), df) / Lf - t) < 0.04,
+          ),
+        );
+      // Phalanx lengths roughly 1 : 0.6 : 0.45 of the finger.
+      const pip = at(0.49);
+      const dip = at(0.78);
+      joints[`${name}1${s}`] = mcp;
+      joints[`${name}2${s}`] = pip;
+      joints[`${name}3${s}`] = dip;
+      tips[`${name}3${s}`] = tip;
+      fingerJoints.push([mcp, pip, dip, tip]);
+    });
+
+    // Thumb: from where its piece leaves the hand to its far end.
+    let tTip = thumb[0];
+    for (const i of thumb)
+      if (len(sub(P(i), w)) > len(sub(P(tTip), w))) tTip = i;
+    const thumbTip = P(tTip);
+    const byDist = [...thumb].sort(
+      (a, b) => len(sub(P(a), w)) - len(sub(P(b), w)),
+    );
+    const base = centroid(
+      byDist.slice(0, Math.max(10, Math.floor(0.15 * thumb.length))),
+    );
+    const dT = norm(sub(thumbTip, base));
+    const LT = len(sub(thumbTip, base));
+    const ip = centroid(
+      thumb.filter(
+        (i) => Math.abs(dot(sub(P(i), base), dT) / LT - 0.55) < 0.06,
+      ),
+    );
+    // Its base joint sits inside the palm, a third of the way to the wrist.
+    const cmc = add(w, mul(sub(base, w), 0.35));
+    joints[`thumb1${s}`] = cmc;
+    joints[`thumb2${s}`] = base;
+    joints[`thumb3${s}`] = ip;
+    tips[`thumb3${s}`] = thumbTip;
+
+    // Labels within the hand.
+    const idx = (b) => boneIdx[`${b}${s}`];
+    const dCmc = norm(sub(base, cmc));
+    for (const i of hand) {
+      const p = P(i);
+      if (isThumb[i]) {
+        label[i] = dot(sub(p, ip), dT) > 0 ? idx("thumb3") : idx("thumb2");
+        continue;
+      }
+      // The ball of the thumb belongs to the thumb's base joint.
+      if (
+        cOf(i) > cuts[2] &&
+        dot(sub(p, cmc), dCmc) > 0 &&
+        segDist(p, cmc, base) < 0.16 * L
+      ) {
+        label[i] = idx("thumb1");
+        continue;
+      }
+      if (along(i) < 0.45 * L) continue; // palm
+      const f = fingerOf(i);
+      const [j1, j2, j3, tip] = fingerJoints[f];
+      const name = FINGER_NAMES[f];
+      label[i] =
+        dot(sub(p, j3), norm(sub(tip, j3))) > 0
+          ? idx(`${name}3`)
+          : dot(sub(p, j2), norm(sub(j3, j2))) > 0
+            ? idx(`${name}2`)
+            : dot(sub(p, j1), norm(sub(j2, j1))) > 0
+              ? idx(`${name}1`)
+              : wristLabel;
+    }
+
+    // Joint planes, blends and capsules for the weights pass.
+    const bone = (b, j, next, r, bl) => {
+      dirs[`${b}${s}`] = norm(sub(next, j));
+      blend[`${b}${s}`] = bl * H;
+      capsules[`${b}${s}`] = [[j, next, r * H]];
+    };
+    FINGER_NAMES.forEach((name, f) => {
+      const [j1, j2, j3, tip] = fingerJoints[f];
+      bone(`${name}1`, j1, j2, 0.012, 0.005);
+      bone(`${name}2`, j2, j3, 0.01, 0.004);
+      bone(`${name}3`, j3, tip, 0.01, 0.003);
+    });
+    bone("thumb1", cmc, base, 0.03, 0.008);
+    bone("thumb2", base, ip, 0.012, 0.005);
+    bone("thumb3", ip, thumbTip, 0.011, 0.004);
+    palm[s] = { normal, thumb: across };
+    handStats[s] = {
+      thumb: thumb.length,
+      bands: centers.map((c) => +(c / L).toFixed(3)),
+    };
   }
 
   // ---- 4. weights -------------------------------------------------------
@@ -595,6 +884,8 @@ export function rigMesh(pos, index) {
     crotchY,
     armRadius,
     labelCounts: Object.fromEntries(BONES.map(([b], k) => [b, counts[k]])),
+    hands: handStats,
   };
-  return { joints, tips, jointIdx, weights, stats };
+  if (process.env.RIG_LABELS) stats.label = label; // debug: per-vertex bone
+  return { joints, tips, palm, jointIdx, weights, stats };
 }

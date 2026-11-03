@@ -8,7 +8,12 @@
  * the shoulder is doing. */
 
 import * as THREE from "three";
-import { JOINTS, type JointId, type PoseJoints } from "@/lib/studio/pose";
+import {
+  FINGERS,
+  JOINTS,
+  type JointId,
+  type PoseJoints,
+} from "@/lib/studio/pose";
 
 export const BONE_NAMES = [
   "pelvis",
@@ -24,11 +29,26 @@ export const BONE_NAMES = [
   "kneeL",
   "hipR",
   "kneeR",
+  // Version 2 rigs: feet and fingers (bone name = pose joint name).
+  ...(["L", "R"] as const).flatMap(
+    (s) =>
+      [
+        `ankle${s}`,
+        `thumb1${s}`,
+        `thumb2${s}`,
+        `thumb3${s}`,
+        ...FINGERS.flatMap((f) =>
+          ([1, 2, 3] as const).map((k) => `${f}${k}${s}` as const),
+        ),
+      ] as const,
+  ),
 ] as const;
 export type BoneName = (typeof BONE_NAMES)[number];
+/** Bones every rig has; the rest arrived with feet and fingers. */
+export const CORE_BONES = BONE_NAMES.slice(0, 13);
 
-/** Which bone each pose joint drives. */
-export const JOINT_BONE: Record<JointId, BoneName> = {
+/** Which bone each pose joint drives (feet and fingers: same name). */
+export const JOINT_BONE = {
   head: "neck",
   spine: "spine",
   shoulderL: "shoulderL",
@@ -41,7 +61,8 @@ export const JOINT_BONE: Record<JointId, BoneName> = {
   kneeL: "kneeL",
   hipR: "hipR",
   kneeR: "kneeR",
-};
+  ...Object.fromEntries(BONE_NAMES.slice(13).map((b) => [b, b])),
+} as Record<JointId, BoneName>;
 
 /** Bind-pose limb directions, measured from the rig. */
 export interface RigDirections {
@@ -51,6 +72,11 @@ export interface RigDirections {
   forearmR: THREE.Vector3;
   thighL: THREE.Vector3;
   thighR: THREE.Vector3;
+  /** Version 2 rigs: each finger bone's direction (to the next joint
+   * or its tip) and, per hand, which way the palm faces and which way
+   * is towards the thumb, all in the bind pose. */
+  bones?: Partial<Record<BoneName, THREE.Vector3>>;
+  palm?: Record<"L" | "R", { normal: THREE.Vector3; thumb: THREE.Vector3 }>;
 }
 
 const X = new THREE.Vector3(1, 0, 0);
@@ -146,6 +172,30 @@ export function jointQuaternion(
       // The shin swings backwards.
       return compose([[X, v("bend")]]);
   }
+  if (joint.startsWith("ankle"))
+    // Point: toes down (+Z towards -Y, about +X). Tilt: sole inward.
+    return compose([
+      [X, v("point")],
+      [Z.clone().multiplyScalar(-side), v("tilt")],
+    ]);
+  // Fingers and thumb: axes from the finger's own direction and the
+  // palm. Rotating `d` about d x target turns it towards `target`.
+  const d = dirs.bones?.[joint as BoneName];
+  const palm = dirs.palm?.[s];
+  if (!d || !palm) return new THREE.Quaternion();
+  const towards = (target: THREE.Vector3) =>
+    d.clone().cross(target).normalize();
+  if (joint.startsWith("thumb1"))
+    return compose([
+      [towards(palm.thumb.clone().negate()), v("across")],
+      [towards(palm.normal.clone().negate()), v("out")],
+    ]);
+  if (/^(index|middle|ring|pinky)1/.test(joint))
+    return compose([
+      [towards(palm.normal), v("curl")],
+      [towards(palm.thumb), v("spread")],
+    ]);
+  return compose([[towards(palm.normal), v("curl")]]);
 }
 
 /** Set every driven bone's rotation from a pose. */
@@ -193,6 +243,20 @@ const DRAG_CHAINS: Partial<Record<BoneName, Array<[JointId, string[]]>>> = {
   kneeL: [["kneeL", ["bend"]]],
   hipR: [["hipR", ["forward", "out"]]],
   kneeR: [["kneeR", ["bend"]]],
+  // Feet and fingers: the joint at the part's own base.
+  ...Object.fromEntries(
+    (["L", "R"] as const).flatMap((s) => [
+      [`ankle${s}`, [[`ankle${s}`, ["point", "tilt"]]]],
+      [`thumb1${s}`, [[`thumb1${s}`, ["across", "out"]]]],
+      [`thumb2${s}`, [[`thumb2${s}`, ["curl"]]]],
+      [`thumb3${s}`, [[`thumb3${s}`, ["curl"]]]],
+      ...FINGERS.flatMap((f) => [
+        [`${f}1${s}`, [[`${f}1${s}`, ["curl", "spread"]]]],
+        [`${f}2${s}`, [[`${f}2${s}`, ["curl"]]]],
+        [`${f}3${s}`, [[`${f}3${s}`, ["curl"]]]],
+      ]),
+    ]),
+  ),
 };
 
 /** The angles a drag on `bone` changes, root-most joint first; empty if
@@ -209,6 +273,9 @@ export interface JointDot {
   joint: JointId;
   effector: BoneName | "tip";
   vars: DragVar[];
+  /** Finger and thumb dots: shown only while that hand is being posed
+   * (15 dots per hand would crowd a full-body view, worse on a phone). */
+  detail?: "L" | "R";
 }
 
 export const JOINT_DOTS: JointDot[] = (
@@ -225,13 +292,28 @@ export const JOINT_DOTS: JointDot[] = (
     ["hipL", "hipL", "kneeL", ["forward", "out"]],
     ["kneeL", "kneeL", "tip", ["bend"]],
     ["hipR", "hipR", "kneeR", ["forward", "out"]],
+    // On version 2 rigs the shin ends at the ankle, then the foot.
     ["kneeR", "kneeR", "tip", ["bend"]],
+    ...(["L", "R"] as const).flatMap((s) => [
+      [`ankle${s}`, `ankle${s}`, "tip", ["point", "tilt"]],
+      [`thumb1${s}`, `thumb1${s}`, `thumb2${s}`, ["across", "out"]],
+      [`thumb2${s}`, `thumb2${s}`, `thumb3${s}`, ["curl"]],
+      [`thumb3${s}`, `thumb3${s}`, "tip", ["curl"]],
+      ...FINGERS.flatMap((f) => [
+        [`${f}1${s}`, `${f}1${s}`, `${f}2${s}`, ["curl", "spread"]],
+        [`${f}2${s}`, `${f}2${s}`, `${f}3${s}`, ["curl"]],
+        [`${f}3${s}`, `${f}3${s}`, "tip", ["curl"]],
+      ]),
+    ]),
   ] as Array<[BoneName, JointId, BoneName | "tip", string[]]>
 ).map(([bone, joint, effector, dofs]) => ({
   bone,
   joint,
   effector,
   vars: toVars([[joint, dofs]]),
+  ...(/^(thumb|index|middle|ring|pinky)/.test(bone)
+    ? { detail: bone.slice(-1) as "L" | "R" }
+    : {}),
 }));
 
 function toVars(chain: Array<[JointId, string[]]>): DragVar[] {

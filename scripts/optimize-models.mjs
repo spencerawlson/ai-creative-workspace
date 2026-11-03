@@ -95,7 +95,9 @@ function rig() {
     node.setSkin(skin);
     // Limb tips (fingertips, toes, crown) let the runtime size its
     // picking capsules without reading the mesh.
-    node.setExtras({ rig: { version: 1, tips: r.tips } });
+    // Version 2: feet and fingers; `palm` gives each hand's frame (which
+    // way the palm faces, which way is towards the thumb) for posing.
+    node.setExtras({ rig: { version: 2, tips: r.tips, palm: r.palm } });
     root.listScenes()[0].addChild(nodes.pelvis);
     console.log(`  rigged: ${JSON.stringify(r.stats.labelCounts)}`);
   };

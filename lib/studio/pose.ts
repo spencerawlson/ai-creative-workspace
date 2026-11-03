@@ -30,6 +30,82 @@ const HIP = {
 const KNEE = {
   bend: { label: "Bend", min: 0, max: 140 },
 } as const satisfies Record<string, Dof>;
+const ANKLE = {
+  point: { label: "Point", min: -30, max: 45, hint: "Toes down" },
+  tilt: { label: "Tilt", min: -25, max: 25, hint: "Sole inward" },
+} as const satisfies Record<string, Dof>;
+/** Knuckle (MCP): curls the whole finger and moves it sideways. */
+const KNUCKLE = {
+  curl: { label: "Curl", min: -20, max: 90, hint: "Towards the palm" },
+  spread: { label: "Sideways", min: -20, max: 20, hint: "Towards the thumb" },
+} as const satisfies Record<string, Dof>;
+const MIDDLE_JOINT = {
+  curl: { label: "Curl", min: 0, max: 110 },
+} as const satisfies Record<string, Dof>;
+const END_JOINT = {
+  curl: { label: "Curl", min: 0, max: 80 },
+} as const satisfies Record<string, Dof>;
+const THUMB_BASE = {
+  across: { label: "Across", min: -20, max: 50, hint: "Towards the fingers" },
+  out: { label: "Out", min: -10, max: 60, hint: "Away from the palm" },
+} as const satisfies Record<string, Dof>;
+const THUMB_JOINT = {
+  curl: { label: "Curl", min: -10, max: 70 },
+} as const satisfies Record<string, Dof>;
+
+export const FINGERS = ["index", "middle", "ring", "pinky"] as const;
+export type Finger = (typeof FINGERS)[number];
+const FINGER_NAMES: Record<Finger | "thumb", string> = {
+  thumb: "thumb",
+  index: "index finger",
+  middle: "middle finger",
+  ring: "ring finger",
+  pinky: "little finger",
+};
+
+/** Ankles and every finger joint of one side, in a fixed order. */
+function handAndFoot<S extends "L" | "R">(side: S) {
+  const sideName = side === "L" ? "Left" : "Right";
+  const finger = <F extends Finger>(f: F) => ({
+    [`${f}1${side}`]: {
+      label: `${sideName} ${FINGER_NAMES[f]}: knuckle`,
+      dofs: KNUCKLE,
+    },
+    [`${f}2${side}`]: {
+      label: `${sideName} ${FINGER_NAMES[f]}: middle`,
+      dofs: MIDDLE_JOINT,
+    },
+    [`${f}3${side}`]: {
+      label: `${sideName} ${FINGER_NAMES[f]}: tip`,
+      dofs: END_JOINT,
+    },
+  });
+  return {
+    [`ankle${side}`]: { label: `${sideName} ankle`, dofs: ANKLE },
+    [`thumb1${side}`]: { label: `${sideName} thumb: base`, dofs: THUMB_BASE },
+    [`thumb2${side}`]: {
+      label: `${sideName} thumb: middle`,
+      dofs: THUMB_JOINT,
+    },
+    [`thumb3${side}`]: { label: `${sideName} thumb: tip`, dofs: THUMB_JOINT },
+    ...finger("index"),
+    ...finger("middle"),
+    ...finger("ring"),
+    ...finger("pinky"),
+  } as {
+    [K in `ankle${S}`]: { label: string; dofs: typeof ANKLE };
+  } & {
+    [K in `thumb1${S}`]: { label: string; dofs: typeof THUMB_BASE };
+  } & {
+    [K in `thumb${2 | 3}${S}`]: { label: string; dofs: typeof THUMB_JOINT };
+  } & {
+    [K in `${Finger}1${S}`]: { label: string; dofs: typeof KNUCKLE };
+  } & {
+    [K in `${Finger}2${S}`]: { label: string; dofs: typeof MIDDLE_JOINT };
+  } & {
+    [K in `${Finger}3${S}`]: { label: string; dofs: typeof END_JOINT };
+  };
+}
 
 export const JOINTS = {
   head: {
@@ -58,6 +134,10 @@ export const JOINTS = {
   kneeL: { label: "Left knee", dofs: KNEE },
   hipR: { label: "Right hip", dofs: HIP },
   kneeR: { label: "Right knee", dofs: KNEE },
+  // Added later; kept last so older flattened poses (share links) still
+  // line up, missing values reading as 0.
+  ...handAndFoot("L"),
+  ...handAndFoot("R"),
 } as const satisfies Record<
   string,
   { label: string; dofs: Record<string, Dof> }
@@ -69,14 +149,28 @@ export type JointValues<J extends JointId = JointId> = {
   [K in keyof (typeof JOINTS)[J]["dofs"]]: number;
 };
 
+/** The 15 joints of one hand: thumb first, then the fingers. */
+export function handJoints<S extends "L" | "R">(side: S) {
+  return [
+    `thumb1${side}`,
+    `thumb2${side}`,
+    `thumb3${side}`,
+    ...FINGERS.flatMap((f) =>
+      ([1, 2, 3] as const).map((k) => `${f}${k}${side}` as const),
+    ),
+  ] as Array<`thumb${1 | 2 | 3}${S}` | `${Finger}${1 | 2 | 3}${S}`>;
+}
+
 /** Body-part groups, for the inspector and for tap-to-pose. */
 export const POSE_GROUPS = [
   { id: "head", label: "Head", joints: ["head"] },
   { id: "torso", label: "Torso", joints: ["spine"] },
   { id: "armL", label: "Left arm", joints: ["shoulderL", "elbowL", "wristL"] },
   { id: "armR", label: "Right arm", joints: ["shoulderR", "elbowR", "wristR"] },
-  { id: "legL", label: "Left leg", joints: ["hipL", "kneeL"] },
-  { id: "legR", label: "Right leg", joints: ["hipR", "kneeR"] },
+  { id: "handL", label: "Left hand", joints: handJoints("L") },
+  { id: "handR", label: "Right hand", joints: handJoints("R") },
+  { id: "legL", label: "Left leg", joints: ["hipL", "kneeL", "ankleL"] },
+  { id: "legR", label: "Right leg", joints: ["hipR", "kneeR", "ankleR"] },
 ] as const satisfies ReadonlyArray<{
   id: string;
   label: string;
@@ -114,10 +208,23 @@ function jointSchema(id: JointId) {
     .strict();
 }
 
+/** Joints added after poses were first saved: optional on input. */
+const LATER = (id: string) => /^(ankle|thumb|index|middle|ring|pinky)/.test(id);
+
 export const PoseJointsSchema = z
   .object(
     Object.fromEntries(
-      JOINT_IDS.map((id) => [id, jointSchema(id)]),
+      JOINT_IDS.map((id) => [
+        id,
+        LATER(id)
+          ? jointSchema(id).default(
+              () =>
+                Object.fromEntries(
+                  Object.keys(JOINTS[id].dofs).map((k) => [k, 0]),
+                ) as never,
+            )
+          : jointSchema(id),
+      ]),
     ) as unknown as {
       [J in JointId]: z.ZodType<JointValues<J>>;
     },
@@ -296,8 +403,98 @@ export function unflattenJoints(values: unknown[]): unknown {
     JOINT_IDS.map((id) => [
       id,
       Object.fromEntries(
-        Object.keys(JOINTS[id].dofs).map((k) => [k, values[i++]]),
+        // Older, shorter lists (before ankles/fingers): missing = 0.
+        Object.keys(JOINTS[id].dofs).map((k) => {
+          const v = values[i++];
+          return [k, i > values.length ? 0 : v];
+        }),
       ),
     ]),
   );
+}
+
+// --------------------------------------------------------------- hands
+
+export interface HandShape {
+  id: string;
+  name: string;
+  /** Angles for one hand's joints, by joint name without the side. */
+  joints: Record<string, Record<string, number>>;
+}
+
+const curlAll = (k: number, m: number, t: number) =>
+  Object.fromEntries(
+    FINGERS.flatMap((f) => [
+      [`${f}1`, { curl: k, spread: 0 }],
+      [`${f}2`, { curl: m }],
+      [`${f}3`, { curl: t }],
+    ]),
+  );
+
+/** Quick shapes for one hand's fingers and thumb. */
+export const HAND_SHAPES: HandShape[] = [
+  {
+    id: "relaxed",
+    name: "Relaxed",
+    joints: {
+      ...curlAll(15, 20, 10),
+      thumb1: { across: 10, out: 10 },
+      thumb2: { curl: 10 },
+      thumb3: { curl: 10 },
+    },
+  },
+  {
+    id: "fist",
+    name: "Fist",
+    joints: {
+      ...curlAll(85, 100, 70),
+      thumb1: { across: 40, out: 10 },
+      thumb2: { curl: 40 },
+      thumb3: { curl: 50 },
+    },
+  },
+  {
+    id: "point",
+    name: "Point",
+    joints: {
+      ...curlAll(85, 100, 70),
+      index1: { curl: 0, spread: 0 },
+      index2: { curl: 0 },
+      index3: { curl: 0 },
+      thumb1: { across: 35, out: 5 },
+      thumb2: { curl: 35 },
+      thumb3: { curl: 40 },
+    },
+  },
+  {
+    id: "open",
+    name: "Open",
+    joints: {
+      index1: { curl: -10, spread: 12 },
+      middle1: { curl: -10, spread: 4 },
+      ring1: { curl: -10, spread: -4 },
+      pinky1: { curl: -10, spread: -12 },
+      ...Object.fromEntries(
+        FINGERS.flatMap((f) => [
+          [`${f}2`, { curl: 0 }],
+          [`${f}3`, { curl: 0 }],
+        ]),
+      ),
+      thumb1: { across: -15, out: 40 },
+      thumb2: { curl: 0 },
+      thumb3: { curl: 0 },
+    },
+  },
+];
+
+/** A hand shape as joint patches for one side (one undoable action). */
+export function handShapePatches(
+  side: "L" | "R",
+  id: string,
+): Partial<Record<JointId, Record<string, number>>> | null {
+  const shape = HAND_SHAPES.find((h) => h.id === id);
+  if (!shape) return null;
+  return Object.fromEntries(
+    Object.entries(shape.joints).map(([j, v]) => [`${j}${side}`, v]),
+  ) as Partial<Record<JointId, Record<string, number>>>;
 }

@@ -147,7 +147,12 @@ export function Slider({
         onKeyUp={onCommitEnd}
       />
       {hint && (
-        <p id={`${id}-hint`} className="mt-1 text-2xs text-ink-400">
+        // Phones: hints stay for screen readers but don't double every
+        // slider's height.
+        <p
+          id={`${id}-hint`}
+          className="sr-only mt-1 text-2xs text-ink-400 sm:not-sr-only"
+        >
           {hint}
         </p>
       )}
@@ -380,5 +385,29 @@ export function Dialog({
         </div>
       )}
     </dialog>
+  );
+}
+
+/** Help text: shown as is on larger screens; on phones folded into a
+ * "Tips" line, so the controls come first on a small screen. */
+export function Tip({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <>
+      <p className={cx("hidden text-2xs text-ink-400 sm:block", className)}>
+        {children}
+      </p>
+      <details className={cx("text-2xs text-ink-400 sm:hidden", className)}>
+        <summary className="cursor-pointer select-none py-1 text-ink-300">
+          Tips
+        </summary>
+        <p className="pb-1">{children}</p>
+      </details>
+    </>
   );
 }

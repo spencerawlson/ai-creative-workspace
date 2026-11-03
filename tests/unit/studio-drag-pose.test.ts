@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import {
   BONE_NAMES,
+  CORE_BONES,
   JOINT_DOTS,
   dragVariables,
   makeReach,
@@ -20,7 +21,7 @@ import { defaultScene } from "@/lib/studio/presets";
 /** A small world-aligned skeleton laid out like the scanned A-pose
  * (figure faces +Z, its left is +X), built the same way the rig is. */
 function skeleton() {
-  const at: Record<BoneName, [number, number, number]> = {
+  const at: Partial<Record<BoneName, [number, number, number]>> = {
     pelvis: [0, 1.0, 0],
     spine: [0, 1.15, 0],
     neck: [0, 1.5, 0],
@@ -50,19 +51,19 @@ function skeleton() {
     kneeR: "hipR",
   };
   const bones = {} as Record<BoneName, THREE.Bone>;
-  for (const name of BONE_NAMES) {
+  for (const name of CORE_BONES) {
     const b = new THREE.Bone();
     b.name = name;
-    const p = new THREE.Vector3(...at[name]);
+    const p = new THREE.Vector3(...at[name]!);
     const up = parent[name];
     if (up) {
-      b.position.copy(p.sub(new THREE.Vector3(...at[up])));
+      b.position.copy(p.sub(new THREE.Vector3(...at[up]!)));
       bones[up].add(b);
     } else b.position.copy(p);
     bones[name] = b;
   }
   bones.pelvis.updateMatrixWorld(true);
-  const v = (n: BoneName) => new THREE.Vector3(...at[n]);
+  const v = (n: BoneName) => new THREE.Vector3(...at[n]!);
   const dir = (a: BoneName, b: BoneName) => v(b).sub(v(a)).normalize();
   const dirs: RigDirections = {
     upperArmL: dir("shoulderL", "elbowL"),

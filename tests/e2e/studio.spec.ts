@@ -11,6 +11,9 @@ import {
   openStudio,
   sParam,
   showPanel,
+  poseValue,
+  showInspector,
+  timelineControl,
 } from "./helpers";
 
 test.describe("Lighting Studio — critical journeys", () => {
@@ -428,28 +431,38 @@ test.describe("Lighting Studio — critical journeys", () => {
   }, info) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-group-armR").click();
     await page.getByTestId("pose-preset-neutral").click();
-    await expect(page.getByTestId("timeline-key-0.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-0.00"),
+    ).toBeVisible();
 
     // Auto-key: an edit at 2 s keys 2 s.
     await scrub.fill("2");
     const raise = page.getByTestId("pose-shoulderR-raise");
+    await showInspector(page);
     await raise.fill("120");
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
 
     // Between keys the pose is interpolated (eased: halfway is halfway).
     await scrub.fill("1");
+    await showInspector(page);
     await expect(raise).toHaveValue("60");
 
     // The edit and its key were one undo step.
     await page.getByTestId("undo").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toHaveCount(0);
+    await expect(await timelineControl(page, "timeline-key-2.00")).toHaveCount(
+      0,
+    );
     await page.getByTestId("redo").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
 
     // Play moves the time.
     const clock = page.getByTestId("timeline-time");
@@ -459,13 +472,13 @@ test.describe("Lighting Studio — critical journeys", () => {
     await page.getByTestId("timeline-play").click();
 
     // Preview screen: full window, Esc closes it.
-    await page.getByTestId("timeline-preview").click();
+    await (await timelineControl(page, "timeline-preview")).click();
     await expect(page.getByTestId("preview-screen")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("preview-screen")).toHaveCount(0);
 
     // Graph editor: drag the 2 s point down to lower that key's value.
-    await page.getByTestId("timeline-graph").click();
+    await (await timelineControl(page, "timeline-graph")).click();
     await expect(page.getByTestId("graph-editor")).toBeVisible();
     const point = page.getByTestId("graph-key-fig-1.shoulderR.raise@2.00");
     // Grab it once the panel has settled (it lays out as it opens).
@@ -482,13 +495,13 @@ test.describe("Lighting Studio — critical journeys", () => {
     await dragOnPage(page, info, from, { x: from.x, y: from.y + 40 });
     await scrub.fill("2");
     await expect
-      .poll(async () => Number(await raise.inputValue()))
+      .poll(async () => poseValue(page, "shoulderR", "raise"))
       .toBeLessThan(110);
 
     // Tangent handle: tilt the curve through the 2 s key; the value
     // between the keys changes.
     await scrub.fill("1.5");
-    const smooth = Number(await raise.inputValue());
+    const smooth = await poseValue(page, "shoulderR", "raise");
     await point.click();
     const handle = page.getByTestId(
       "graph-tangent-fig-1.shoulderR.raise@2.00-in",
@@ -498,12 +511,12 @@ test.describe("Lighting Studio — critical journeys", () => {
     await dragOnPage(page, info, hc, { x: hc.x, y: hc.y + 60 });
     await scrub.fill("1.5");
     await expect
-      .poll(async () => Number(await raise.inputValue()))
+      .poll(async () => poseValue(page, "shoulderR", "raise"))
       .not.toBe(smooth);
     // Reset brings the smooth curve back.
     await page.getByTestId("graph-tangent-reset").click();
     await scrub.fill("1.5");
-    await expect(raise).toHaveValue(String(smooth));
+    await expect.poll(() => poseValue(page, "shoulderR", "raise")).toBe(smooth);
   });
 
   test("an animated share link opens the animation in a fresh browser", async ({
@@ -512,21 +525,27 @@ test.describe("Lighting Studio — critical journeys", () => {
   }) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
     await scrub.fill("2");
     await page.getByTestId("pose-preset-arms-up").click();
-    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-2.00"),
+    ).toBeVisible();
     // The address bar becomes a compressed, animated link.
     await expect.poll(() => sParam(page)).toMatch(/^z/);
     const url = new URL(page.url());
     const other = await browser.newContext();
     const page2 = await other.newPage();
     await openStudio(page2, url.pathname + url.search);
-    await expect(page2.getByTestId("timeline-key-0.00")).toBeVisible();
-    await expect(page2.getByTestId("timeline-key-2.00")).toBeVisible();
+    await expect(
+      await timelineControl(page2, "timeline-key-0.00"),
+    ).toBeVisible();
+    await expect(
+      await timelineControl(page2, "timeline-key-2.00"),
+    ).toBeVisible();
     await page2.getByTestId("timeline-scrub").fill("2");
     await showPanel(page2, "scene");
     await expect(page2.getByTestId("node-pose")).toContainText("Arms up");
@@ -536,16 +555,18 @@ test.describe("Lighting Studio — critical journeys", () => {
   test("exports the animation as a video file", async ({ page }) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
-    await page.getByTestId("timeline-duration").fill("1");
-    await page.getByTestId("timeline-autokey").click();
+    await (await timelineControl(page, "timeline-duration")).fill("1");
+    await (await timelineControl(page, "timeline-autokey")).click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
     await scrub.fill("1");
     await page.getByTestId("pose-preset-arms-up").click();
-    await expect(page.getByTestId("timeline-key-1.00")).toBeVisible();
+    await expect(
+      await timelineControl(page, "timeline-key-1.00"),
+    ).toBeVisible();
 
-    await page.getByTestId("timeline-video").click();
+    await (await timelineControl(page, "timeline-video")).click();
     await expect(page.getByTestId("video-dialog")).toBeVisible();
     await page.getByTestId("video-fps-24").click();
     await expect(page.getByTestId("video-summary")).toContainText(
@@ -594,6 +615,44 @@ test.describe("Lighting Studio — critical journeys", () => {
       expect(meta.d).toBeLessThan(1.2);
     }
     await expect(page.getByTestId("video-dialog")).toBeHidden();
+  });
+
+  test("hands and feet: hand shapes, the finger picker, the ankle", async ({
+    page,
+  }, info) => {
+    await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-group-handR").click();
+    const viewport = page.getByTestId("lighting-scene");
+    const before = await viewport.screenshot();
+    await page.getByTestId("hand-shape-fist").click();
+    // The fist really curls the fingers on screen.
+    await expect
+      .poll(async () => Buffer.compare(before, await viewport.screenshot()))
+      .not.toBe(0);
+    await page.getByTestId("pose-finger-index").click();
+    await expect(page.getByTestId("pose-index1R-curl")).toHaveValue("85");
+    await expect(page.getByTestId("pose-index3R-curl")).toHaveValue("70");
+    // One undo step for the whole hand.
+    await page.getByTestId("undo").click();
+    await expect(page.getByTestId("pose-index1R-curl")).toHaveValue("0");
+    // The rig has every finger joint (dots, picking, dragging use them).
+    const joints = await jointsOnScreen(page);
+    for (const j of ["thumb1R", "index3R", "pinky2L", "ankleL"])
+      expect(joints).toHaveProperty(j);
+    // Feet live with the legs.
+    await page.getByTestId("pose-group-legR").click();
+    const point = page.getByTestId("pose-ankleR-point");
+    await point.fill("30");
+    await expect(point).toHaveValue("30");
+    // Phones: the graph editor fits without sideways scrolling.
+    await (await timelineControl(page, "timeline-graph")).click();
+    await expect(page.getByTestId("graph-editor")).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
+    expect(overflow, info.project.name).toBe(false);
   });
 
   test("tapping the figure opens the pose controls for that body part", async ({

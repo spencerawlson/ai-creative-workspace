@@ -13,13 +13,14 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   and posed on its own: add, duplicate, remove, or drag one across the
   floor. Eight material presets plus custom colour, roughness and
   metalness.
-- Pose the mannequin: head, torso, shoulders, elbows, wrists, hips and
-  knees, each with named movements (raise, bend, lift, twist…) and
-  anatomical limits. Seven pose presets (Hand raised, Hand to chin,
+- Pose the mannequin: head, torso, shoulders, elbows, wrists, hips,
+  knees, ankles, and every finger and thumb joint, each with named
+  movements (raise, bend, curl, point, twist…) and anatomical limits;
+  hand shapes (Relaxed, Fist, Point, Open) in one tap. Seven pose presets (Hand raised, Hand to chin,
   Hand on hip…), mirror, and tap a body part to jump to its controls.
   Or pose directly in the viewport with a mouse or a finger: drag a
   body part, or a joint circle of the Maya-style skeleton overlay;
-  grabbing a hand lifts the whole arm.
+  grabbing a palm lifts the whole arm, grabbing a finger curls it.
 - Keyframe animation of figures, lights and the camera: a timeline with
   play/pause, scrubbing, keys you can drag to retime, Maya-style
   auto-key, loop and length; a full-window preview (V); and a graph
