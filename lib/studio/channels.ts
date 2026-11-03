@@ -69,12 +69,15 @@ export function channelsOf(
   }
   const id = owner.id;
   return [
-    ...(["x", "z", "rotation"] as const).map((field) => ({
+    ...(["x", "z", "y", "rotation"] as const).map((field) => ({
       group: "Placement",
       channel: { kind: "figure", figure: id, field } as Channel,
-      label: { x: "Left / right", z: "Forward / back", rotation: "Turn" }[
-        field
-      ],
+      label: {
+        x: "Left / right",
+        z: "Forward / back",
+        y: "Up / down",
+        rotation: "Turn",
+      }[field],
     })),
     ...(Object.keys(JOINTS) as JointId[]).flatMap((joint) =>
       Object.entries(JOINTS[joint].dofs as Record<string, Dof>).map(
@@ -105,8 +108,20 @@ export function channelRange(ch: Channel): {
             unit: "°",
           }
         : {
-            min: LIMITS[ch.field === "x" ? "figureX" : "figureZ"][0],
-            max: LIMITS[ch.field === "x" ? "figureX" : "figureZ"][1],
+            min: LIMITS[
+              ch.field === "x"
+                ? "figureX"
+                : ch.field === "y"
+                  ? "figureY"
+                  : "figureZ"
+            ][0],
+            max: LIMITS[
+              ch.field === "x"
+                ? "figureX"
+                : ch.field === "y"
+                  ? "figureY"
+                  : "figureZ"
+            ][1],
             step: 0.01,
             unit: " m",
           };

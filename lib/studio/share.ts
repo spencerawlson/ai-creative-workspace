@@ -8,7 +8,10 @@
  *     b: [preset, color, style, shadowOpacity],
  *     q: shadowQuality,
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
- *     fg?: [[model, x, z, rotation, posePreset?, [joint angles]?], ...] }
+ *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...] }
+ *
+ * `y` (up/down) is only written when it isn't 0; older rows have the
+ * pose preset (a string) in that place.
  *
  * One figure standing in the centre facing the camera is written as
  * `m` (+ `po`, omitted for the scan's A-pose), exactly as before several
@@ -161,7 +164,7 @@ const poseRow = (f: Figure) =>
 
 function encodeFigures(figures: Figure[]) {
   const [only] = figures;
-  if (figures.length === 1 && !only.x && !only.z && !only.rotation) {
+  if (figures.length === 1 && !only.x && !only.y && !only.z && !only.rotation) {
     const po = poseRow(only);
     return { m: only.model, ...(po.length ? { po } : {}) };
   }
@@ -171,6 +174,7 @@ function encodeFigures(figures: Figure[]) {
       round2(f.x),
       round2(f.z),
       Math.round(f.rotation),
+      ...(f.y ? [round2(f.y)] : []),
       ...poseRow(f),
     ]),
   };
@@ -188,13 +192,16 @@ function decodeFigures(
     return {
       figures: arr(p.fg).map((row, i) => {
         const r = arr(row);
+        const lifted = typeof r[4] === "number";
+        const at = lifted ? 5 : 4;
         return {
           id: `fig-${i + 1}`,
           model: r[0],
           x: r[1],
           z: r[2],
           rotation: r[3],
-          ...(r.length > 4 ? { pose: pose(r[4], r[5]) } : {}),
+          ...(lifted ? { y: r[4] } : {}),
+          ...(r.length > at ? { pose: pose(r[at], r[at + 1]) } : {}),
         };
       }),
     };
@@ -243,7 +250,9 @@ export const MAX_LINK = 8000;
 const MAX_INFLATED = 256 * 1024;
 
 /** Keyframes, positional and rounded like the rest of the link:
- *   an: [duration, [[t, ease, figures, lights, camera, tangents], ...]]
+ *   an: [duration, [[t, ease, figures, lights, camera, tangents], ...], 2]
+ * A figure row is [x, z, rotation, y, ...joint angles]; links from
+ * before up/down existed have no trailing 2 and no `y` in the row.
  * figures/lights are rows aligned with the scene's own lists (0 where a
  * key doesn't record one); figure ids are renumbered fig-1.. in list
  * order, as the decoder names them. */
@@ -264,6 +273,7 @@ function encodeAnimation(scene: SceneDoc) {
               round2(v.x),
               round2(v.z),
               round1(v.rotation),
+              round2(v.y),
               ...flattenJoints(v.joints).map(round1),
             ]
           : 0;
@@ -297,6 +307,7 @@ function encodeAnimation(scene: SceneDoc) {
           ])
         : 0,
     ]),
+    2,
   ];
 }
 
@@ -306,7 +317,7 @@ function decodeAnimation(
   /** The link's light ids, in order: key light rows are positional. */
   lightIds: unknown[],
 ) {
-  const [duration, keys] = arr(an);
+  const [duration, keys, format] = arr(an);
   const figureIds = (n: number) => `fig-${n + 1}`;
   return {
     duration,
@@ -318,11 +329,12 @@ function decodeAnimation(
         figures: Object.fromEntries(
           arr(figs).flatMap((f, i) => {
             if (!Array.isArray(f)) return [];
-            const [x, z, rotation, ...joints] = f;
+            const [x, z, rotation, ...rest] = f;
+            const [y, ...joints] = format === 2 ? rest : [0, ...rest];
             return [
               [
                 figureIds(i),
-                { x, z, rotation, joints: unflattenJoints(joints) },
+                { x, y, z, rotation, joints: unflattenJoints(joints) },
               ],
             ];
           }),

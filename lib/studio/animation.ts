@@ -48,6 +48,7 @@ export function snapshot(
         f.id,
         {
           x: f.x,
+          y: f.y,
           z: f.z,
           rotation: f.rotation,
           joints: structuredClone(f.pose.joints),
@@ -216,7 +217,7 @@ export function evaluate(
     const angles = JOINT_DOFS.map(({ joint, dof }, i) =>
       r1(curve(s, ja[i], jb[i], { kind: "joint", figure: f.id, joint, dof })),
     );
-    const place = (field: "x" | "z" | "rotation") =>
+    const place = (field: "x" | "y" | "z" | "rotation") =>
       curve(
         s,
         s.a[field],
@@ -229,6 +230,7 @@ export function evaluate(
     return {
       ...f,
       x: r2(place("x")),
+      y: r2(place("y")),
       z: r2(place("z")),
       rotation: r1(wrap180(place("rotation"))),
       pose: {

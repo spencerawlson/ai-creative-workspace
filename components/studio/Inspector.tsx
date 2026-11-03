@@ -272,8 +272,12 @@ function ModelInspector({ studio, figure, onSelect }: Props) {
   const m = scene.material;
   const many = scene.figures.length > 1;
   const expectNewFigure = useSelectNewFigure(scene.figures, onSelect);
-  const place = (patch: { x?: number; z?: number; rotation?: number }) =>
-    dispatch({ type: "updateFigure", figure: figure.id, patch });
+  const place = (patch: {
+    x?: number;
+    y?: number;
+    z?: number;
+    rotation?: number;
+  }) => dispatch({ type: "updateFigure", figure: figure.id, patch });
   return (
     <>
       <PanelHeader title={many ? figureLabel(scene, figure.id) : "Mannequin"}>
@@ -336,6 +340,18 @@ function ModelInspector({ studio, figure, onSelect }: Props) {
           testId="figure-z"
           hint="Positive comes towards the camera"
           onChange={(z) => place({ z })}
+          onCommitEnd={seal}
+        />
+        <Slider
+          label="Up / down"
+          value={figure.y}
+          min={LIMITS.figureY[0]}
+          max={LIMITS.figureY[1]}
+          step={0.01}
+          unit=" m"
+          testId="figure-y"
+          hint="Lift or lower the whole figure (jumps, sitting)"
+          onChange={(y) => place({ y })}
           onCommitEnd={seal}
         />
         <Slider

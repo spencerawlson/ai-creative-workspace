@@ -992,7 +992,7 @@ export class StudioEngine {
         if (this.view === "face" && inst === this.active) this.aimAtFace();
       }
       if (!inst) continue;
-      inst.root.position.set(f.x, 0, f.z);
+      inst.root.position.set(f.x, f.y, f.z);
       inst.root.rotation.y = THREE.MathUtils.degToRad(f.rotation);
       if (inst.rig && inst.joints !== f.pose.joints) {
         applyPose(inst.rig.bones, f.pose.joints, inst.rig.dirs);

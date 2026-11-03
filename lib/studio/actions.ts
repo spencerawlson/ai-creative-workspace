@@ -75,6 +75,7 @@ const figureRef = FigureIdSchema.optional();
 
 const FigurePatchSchema = FigureSchema.pick({
   x: true,
+  y: true,
   z: true,
   rotation: true,
 })
