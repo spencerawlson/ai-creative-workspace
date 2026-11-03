@@ -297,7 +297,10 @@ export function GraphEditor({
       </div>
 
       <div className="flex min-h-40 min-w-0 flex-1 flex-col">
-        <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-ink-800 px-2 py-1">
+        {/* Same height whether or not a key is picked: on a phone the key's
+            controls wrap to two lines, and a toolbar that grew on press
+            shifted the plot under the finger mid-drag. */}
+        <div className="flex h-[4.25rem] shrink-0 flex-wrap content-center items-center gap-x-2 gap-y-1 overflow-hidden border-b border-ink-800 px-2 py-1 sm:h-9 sm:flex-nowrap">
           {pickedKey ? (
             <>
               <span className="text-ink-200">
