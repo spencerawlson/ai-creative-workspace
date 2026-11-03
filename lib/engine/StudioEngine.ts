@@ -201,7 +201,9 @@ interface CachedModel {
 
 /** Tap targets: one invisible capsule per bone, from the joint to the
  * next joint (or limb tip), radius as a fraction of figure height. */
-type Capsule = [BoneName, BoneName | "tip", number, JointId];
+/** [bone, to, radius (x figure height), joint selected, start along
+ * bone->to (default 0)] */
+type Capsule = [BoneName, BoneName | "tip", number, JointId, number?];
 const PICK_CAPSULES: Capsule[] = [
   ["pelvis", "spine", 0.09, "spine"],
   ["spine", "neck", 0.1, "spine"],
@@ -229,7 +231,10 @@ function pickCapsules(full: boolean): Capsule[] {
       [`wrist${s}`, `middle1${s}`, 0.03, `wrist${s}`],
       [`knee${s}`, `ankle${s}`, 0.045, `knee${s}`],
       [`ankle${s}`, "tip", 0.04, `ankle${s}`],
-      [`thumb1${s}`, `thumb2${s}`, 0.014, `thumb1${s}`],
+      // The thumb's base starts halfway out and stays slim: seen from the
+      // front the scan's thumb lies over the palm, and a fat capsule from
+      // inside the palm took every press meant for the palm.
+      [`thumb1${s}`, `thumb2${s}`, 0.009, `thumb1${s}`, 0.5],
       [`thumb2${s}`, `thumb3${s}`, 0.008, `thumb2${s}`],
       [`thumb3${s}`, "tip", 0.008, `thumb3${s}`],
     );
@@ -1290,9 +1295,10 @@ export class StudioEngine {
     const at = (b: BoneName) => root.worldToLocal(rig.at(b));
     const material = new THREE.MeshBasicMaterial();
     const up = new THREE.Vector3(0, 1, 0);
-    for (const [bone, to, radius, joint] of pickCapsules(rig.full)) {
-      const a = at(bone);
+    for (const [bone, to, radius, joint, from = 0] of pickCapsules(rig.full)) {
+      const joint0 = at(bone);
       const b = to === "tip" ? rig.tipOf[bone]! : at(to);
+      const a = joint0.clone().lerp(b, from);
       const r = radius * height;
       const capsule = new THREE.Mesh(
         new THREE.CapsuleGeometry(
@@ -1309,7 +1315,8 @@ export class StudioEngine {
       capsule.visible = false;
       // Bones are world-aligned in the bind pose, so a bone-local offset
       // is the world offset from the joint.
-      capsule.position.copy(a.clone().lerp(b, 0.5).sub(a));
+      // Relative to the bone's own joint (the capsule may start further out).
+      capsule.position.copy(a.clone().lerp(b, 0.5).sub(joint0));
       capsule.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
       rig.bones[bone].add(capsule);
     }
