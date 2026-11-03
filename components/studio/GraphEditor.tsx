@@ -15,6 +15,7 @@ import {
   evaluate,
   keyAt,
   keyValue,
+  splineSlope,
 } from "@/lib/studio/animation";
 import {
   channelRange,
@@ -200,9 +201,16 @@ export function GraphEditor({
   const slopeAt = (k: Keyframe, ch: Channel): number => {
     const own = k.tangents?.[channelId(ch)]?.out;
     if (own !== undefined) return own;
-    if (k.ease !== "linear") return 0;
     const i = keys.indexOf(k);
     const next = keys.slice(i + 1).find((n) => keyValue(n, ch) !== undefined);
+    if (k.ease === "spline") {
+      const prev = keys
+        .slice(0, i)
+        .reverse()
+        .find((n) => keyValue(n, ch) !== undefined);
+      return splineSlope(prev ?? null, k, next ?? null, ch);
+    }
+    if (k.ease !== "linear") return 0;
     return next ? (keyValue(next, ch)! - keyValue(k, ch)!) / (next.t - k.t) : 0;
   };
   function setTangents(t: number, slope: number | null) {

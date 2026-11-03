@@ -120,6 +120,10 @@ interface Segment<T> {
   b: T;
   ka: Keyframe | null;
   kb: Keyframe | null;
+  /** The keys before `ka` and after `kb` that record the same thing
+   * (spline ease looks at them). */
+  pk: Keyframe | null;
+  nk: Keyframe | null;
   raw: number;
 }
 
@@ -130,23 +134,31 @@ function bracket<T>(
 ): Segment<T> | null {
   let before: { k: Keyframe; v: T } | null = null;
   let after: { k: Keyframe; v: T } | null = null;
+  let pk: Keyframe | null = null;
+  let nk: Keyframe | null = null;
   for (const k of keys) {
     const v = pick(k);
     if (v === undefined) continue;
-    if (k.t <= t) before = { k, v };
-    else {
-      after = { k, v };
+    if (after) {
+      nk = k;
       break;
     }
+    if (k.t <= t) {
+      pk = before?.k ?? null;
+      before = { k, v };
+    } else after = { k, v };
   }
+  const held = (v: T) => ({ a: v, b: v, ka: null, kb: null, pk, nk, raw: 0 });
   if (!before && !after) return null;
-  if (!before) return { a: after!.v, b: after!.v, ka: null, kb: null, raw: 0 };
-  if (!after) return { a: before.v, b: before.v, ka: null, kb: null, raw: 0 };
+  if (!before) return held(after!.v);
+  if (!after) return held(before.v);
   return {
     a: before.v,
     b: after.v,
     ka: before.k,
     kb: after.k,
+    pk,
+    nk,
     raw: (t - before.k.t) / (after.k.t - before.k.t),
   };
 }
@@ -154,6 +166,32 @@ function bracket<T>(
 /** Degrees from `a` to `b` the short way round, in [-180, 180). */
 const shortest = (a: number, b: number) =>
   ((((b - a) % 360) + 540) % 360) - 180;
+
+/** The "spline" ease's slope through key `k` (value/s), like Maya's
+ * auto tangents: a smooth curve through its neighbours, flat at the
+ * first and last key and at a peak or dip, and never steep enough to
+ * overshoot a neighbour (Fritsch-Carlson), so it stays within the
+ * keyed values. */
+export function splineSlope(
+  prev: Keyframe | null,
+  k: Keyframe,
+  next: Keyframe | null,
+  ch: Channel,
+  wrap = false,
+): number {
+  const v = keyValue(k, ch);
+  const vp = prev && keyValue(prev, ch);
+  const vn = next && keyValue(next, ch);
+  if (v === undefined || vp == null || vn == null) return 0;
+  const dp = wrap ? shortest(vp, v) : v - vp;
+  const dn = wrap ? shortest(v, vn) : vn - v;
+  if (dp * dn <= 0) return 0;
+  const sp = dp / (k.t - prev!.t);
+  const sn = dn / (next!.t - k.t);
+  const m = (dp + dn) / (next!.t - prev!.t);
+  const limit = 3 * Math.min(Math.abs(sp), Math.abs(sn));
+  return Math.sign(m) * Math.min(Math.abs(m), limit);
+}
 
 /** One value along a segment: a cubic Hermite curve through the two
  * keys. With the default tangents it is exactly the key's ease (flat
@@ -168,14 +206,22 @@ function curve<T>(
   ch: Channel,
   wrap = false,
 ): number {
-  const { ka, kb, raw: u } = seg;
+  const { ka, kb, pk, nk, raw: u } = seg;
   if (!ka || !kb || ka.ease === "step") return va;
   if (wrap) vb = va + shortest(va, vb);
   const dt = kb.t - ka.t;
   const id = channelId(ch);
   const straight = (vb - va) / dt;
-  const m0 = ka.tangents?.[id]?.out ?? (ka.ease === "linear" ? straight : 0);
-  const m1 = kb.tangents?.[id]?.in ?? (ka.ease === "linear" ? straight : 0);
+  const auto = (at: "a" | "b") =>
+    ka.ease === "linear"
+      ? straight
+      : ka.ease === "spline"
+        ? at === "a"
+          ? splineSlope(pk, ka, kb, ch, wrap)
+          : splineSlope(ka, kb, nk, ch, wrap)
+        : 0;
+  const m0 = ka.tangents?.[id]?.out ?? auto("a");
+  const m1 = kb.tangents?.[id]?.in ?? auto("b");
   const u2 = u * u;
   const u3 = u2 * u;
   const v =

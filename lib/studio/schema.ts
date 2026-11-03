@@ -23,7 +23,7 @@ export const LIMITS = {
   rotation: [-180, 180],
   /** Keyframe animation: length in seconds, and at most this many keys. */
   duration: [1, 120],
-  maxKeys: 60,
+  maxKeys: 120,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],
@@ -190,7 +190,10 @@ export type LightKey = z.infer<typeof LightKeySchema>;
 
 /** How values travel from a key to the next: ease in/out, a straight
  * line, or hold until the next key. */
-export const EASES = ["smooth", "linear", "step"] as const;
+/** "spline" passes smoothly through each key (Maya's auto tangents);
+ * "smooth" eases in and out of every key. New eases go last: links
+ * store the index. */
+export const EASES = ["smooth", "linear", "step", "spline"] as const;
 export const EaseSchema = z.enum(EASES);
 export type Ease = z.infer<typeof EaseSchema>;
 

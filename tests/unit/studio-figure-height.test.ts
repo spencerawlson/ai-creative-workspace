@@ -50,7 +50,9 @@ describe("figure up / down", () => {
     });
     expect(evaluate(s, 1).scene.figures[0].y).toBeGreaterThan(0.3);
     expect(evaluate(s, 1).scene.figures[0].y).toBeLessThan(0.7);
-    const labels = channelsOf(s, "fig-1").map((c) => c.label);
+    const labels = channelsOf(s, { kind: "figure", id: "fig-1" }).map(
+      (c) => c.label,
+    );
     expect(labels).toContain("Up / down");
   });
 
