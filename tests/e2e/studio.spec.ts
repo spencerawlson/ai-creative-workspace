@@ -668,6 +668,38 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
   });
 
+  test("type a pose or a move: it is found, applied, played, and undone in one step", async ({
+    page,
+  }) => {
+    await openStudio(page);
+    await page.getByTestId("lighting-scene").click();
+    const box = page.getByTestId("motion-input");
+    await box.click();
+    // Nothing typed: the whole library, by kind.
+    await expect(page.getByTestId("motion-option-eat")).toBeAttached();
+    await box.fill("sit on a chair");
+    await expect(page.getByTestId("motion-option-sit")).toBeVisible();
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toHaveText("Pose: Sit");
+    await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
+
+    // A typo still finds the walk; it becomes keyframes and plays.
+    await box.fill("walkng");
+    await expect(page.getByTestId("motion-option-walk")).toBeVisible();
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText("Walk:");
+    const seen = new Set<number>();
+    await expect
+      .poll(async () => {
+        seen.add(await poseValue(page, "hipL", "forward"));
+        return seen.size;
+      })
+      .toBeGreaterThan(3);
+    // One undo takes the whole move away; the seated pose is back.
+    await page.getByTestId("undo").click();
+    await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
+  });
+
   test("Photography page still renders through the shared engine", async ({
     page,
   }) => {
