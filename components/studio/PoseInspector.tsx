@@ -3,10 +3,13 @@
 import { FlipHorizontal2, RotateCcw } from "lucide-react";
 import type { Selection } from "@/lib/engine/StudioEngine";
 import {
+  FINGERS,
+  HAND_SHAPES,
   JOINTS,
   POSE_GROUPS,
   POSE_PRESETS,
   groupOfJoint,
+  handShapePatches,
   posePreset,
   type Dof,
   type JointId,
@@ -44,6 +47,14 @@ export function PoseInspector({
   const joint = jointFromSelection(selection);
   const groupId = joint ? groupOfJoint(joint) : "armR";
   const group = POSE_GROUPS.find((g) => g.id === groupId)!;
+  // A hand has 15 joints: show one finger's at a time.
+  const hand = groupId === "handL" ? "L" : groupId === "handR" ? "R" : null;
+  const finger = hand
+    ? (joint?.match(/^(thumb|index|middle|ring|pinky)/)?.[1] ?? "thumb")
+    : null;
+  const shown = (group.joints as readonly JointId[]).filter(
+    (id) => !finger || id.startsWith(finger),
+  );
   const preset = posePreset(figure.pose.preset);
   const joints = figure.pose.joints as Record<string, Record<string, number>>;
 
@@ -118,7 +129,7 @@ export function PoseInspector({
 
         <SectionTitle>Body part</SectionTitle>
         <div
-          className="grid grid-cols-3 gap-1 rounded-md bg-ink-800 p-0.5"
+          className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-1 rounded-md bg-ink-800 p-0.5"
           role="group"
           aria-label="Body part"
         >
@@ -130,7 +141,7 @@ export function PoseInspector({
               data-testid={`pose-group-${g.id}`}
               onClick={() => onSelect(`pose:${g.joints[0]}`)}
               className={cx(
-                "h-7 rounded px-1 text-xs font-medium transition-colors",
+                "min-h-8 rounded px-1 text-xs font-medium transition-colors",
                 g.id === groupId
                   ? "bg-ink-600 text-ink-100 shadow-sm"
                   : "text-ink-300 hover:text-ink-100",
@@ -142,17 +153,72 @@ export function PoseInspector({
         </div>
         <p className="mt-1.5 text-2xs text-ink-400">
           Left and right are the mannequin&apos;s own. In the viewport, drag a
-          body part to pose it; grab a hand to move the whole arm.
+          body part to pose it; grab a hand to move the whole arm. Pick a hand
+          here to see and drag its finger joints.
         </p>
 
-        {group.joints.map((id) => (
+        {hand && (
+          <>
+            <SectionTitle>Hand shape</SectionTitle>
+            <div
+              className="grid grid-cols-4 gap-1"
+              role="group"
+              aria-label="Hand shapes"
+            >
+              {HAND_SHAPES.map((h) => (
+                <Button
+                  key={h.id}
+                  size="sm"
+                  variant="ghost"
+                  className="justify-center border border-ink-700"
+                  data-testid={`hand-shape-${h.id}`}
+                  onClick={() =>
+                    dispatch({
+                      type: "updateJoints",
+                      patches: handShapePatches(hand, h.id)!,
+                      ...target,
+                    })
+                  }
+                >
+                  {h.name}
+                </Button>
+              ))}
+            </div>
+            <SectionTitle>Finger</SectionTitle>
+            <div
+              className="grid grid-cols-5 gap-0.5 rounded-md bg-ink-800 p-0.5"
+              role="group"
+              aria-label="Finger"
+            >
+              {(["thumb", ...FINGERS] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={f === finger}
+                  data-testid={`pose-finger-${f}`}
+                  onClick={() => onSelect(`pose:${f}1${hand}`)}
+                  className={cx(
+                    "min-h-8 rounded px-0.5 text-2xs font-medium transition-colors",
+                    f === finger
+                      ? "bg-ink-600 text-ink-100 shadow-sm"
+                      : "text-ink-300 hover:text-ink-100",
+                  )}
+                >
+                  {f === "pinky" ? "Little" : f[0].toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {shown.map((id) => (
           <section
             key={id}
             aria-label={JOINTS[id].label}
             data-testid={`pose-joint-${id}`}
             className={cx(
               "mt-2 rounded-md px-2 pb-1",
-              id === joint && group.joints.length > 1 && "bg-ink-800/60",
+              id === joint && shown.length > 1 && "bg-ink-800/60",
             )}
           >
             <SectionTitle>{JOINTS[id].label}</SectionTitle>
