@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { PoseSchema, defaultPose } from "./pose";
+import { PoseJointsSchema, PoseSchema, defaultPose } from "./pose";
 
 export const LIMITS = {
   maxLights: 8,
@@ -19,6 +19,9 @@ export const LIMITS = {
   figureZ: [-3, 3],
   /** Which way a figure faces, degrees about the vertical (0 = camera). */
   rotation: [-180, 180],
+  /** Keyframe animation: length in seconds, and at most this many keys. */
+  duration: [1, 120],
+  maxKeys: 60,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],
@@ -34,7 +37,10 @@ export const LIMITS = {
   shadowOpacity: [0, 1],
 } as const satisfies Record<string, number | readonly [number, number]>;
 
-type RangeKey = Exclude<keyof typeof LIMITS, "maxLights" | "maxFigures">;
+type RangeKey = Exclude<
+  keyof typeof LIMITS,
+  "maxLights" | "maxFigures" | "maxKeys"
+>;
 
 const num = (key: RangeKey) =>
   z.number().finite().min(LIMITS[key][0]).max(LIMITS[key][1]);
@@ -141,6 +147,71 @@ function upgradeSingleFigure(input: unknown): unknown {
   };
 }
 
+// ------------------------------------------------------------- animation
+
+const vec3 = z.tuple([
+  z.number().finite().min(-100).max(100),
+  z.number().finite().min(-100).max(100),
+  z.number().finite().min(-100).max(100),
+]);
+
+/** Where the viewport camera is and what it looks at (orbit target). */
+export const CameraViewSchema = z.object({
+  position: vec3,
+  target: vec3,
+});
+export type CameraView = z.infer<typeof CameraViewSchema>;
+
+/** What a keyframe records for one figure, light and the camera. The
+ * model, light kinds and ids are structure, not animated. */
+const FigureKeySchema = z.object({
+  x: num("figureX"),
+  z: num("figureZ"),
+  rotation: num("rotation"),
+  joints: PoseJointsSchema,
+});
+const LightKeySchema = LightSchema.pick({
+  on: true,
+  azimuth: true,
+  elevation: true,
+  distance: true,
+  intensity: true,
+  temperature: true,
+  softness: true,
+  spotAngle: true,
+  size: true,
+});
+export type LightKey = z.infer<typeof LightKeySchema>;
+
+export const KeyframeSchema = z.object({
+  /** Seconds from the start. */
+  t: z.number().finite().min(0).max(LIMITS.duration[1]),
+  figures: z.record(FigureIdSchema, FigureKeySchema),
+  lights: z.record(LightSchema.shape.id, LightKeySchema),
+  /** Absent when the camera wasn't keyed. */
+  camera: z
+    .object({ view: CameraViewSchema, focalMm: num("focalMm") })
+    .optional(),
+});
+export type Keyframe = z.infer<typeof KeyframeSchema>;
+
+export const AnimationSchema = z
+  .object({
+    duration: num("duration"),
+    keys: z.array(KeyframeSchema).max(LIMITS.maxKeys),
+  })
+  .refine((a) => a.keys.every((k, i) => i === 0 || k.t > a.keys[i - 1].t), {
+    message: "Keyframes must be in time order",
+    path: ["keys"],
+  })
+  .refine((a) => a.keys.every((k) => k.t <= a.duration), {
+    message: "A keyframe is past the end of the animation",
+    path: ["keys"],
+  });
+export type Animation = z.infer<typeof AnimationSchema>;
+
+export const defaultAnimation = (): Animation => ({ duration: 5, keys: [] });
+
 export const SceneSchema = z
   .preprocess(
     upgradeSingleFigure,
@@ -154,6 +225,8 @@ export const SceneSchema = z
       backdrop: BackdropSchema,
       shadows: ShadowSchema,
       figures: z.array(FigureSchema).min(1).max(LIMITS.maxFigures),
+      /** Optional on input: scenes from before keyframes had none. */
+      animation: AnimationSchema.default(defaultAnimation),
     }),
   )
   .refine((s) => new Set(s.lights.map((l) => l.id)).size === s.lights.length, {

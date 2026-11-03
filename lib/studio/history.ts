@@ -11,9 +11,11 @@ import {
   applyAction,
   coalesceKey,
   describeAction,
+  isAnimatable,
   type SceneAction,
 } from "./actions";
-import type { SceneDoc } from "./schema";
+import { evaluate } from "./animation";
+import type { CameraView, SceneDoc } from "./schema";
 
 export const HISTORY_LIMIT = 100;
 export const COALESCE_MS = 800;
@@ -54,7 +56,18 @@ export const canUndo = (h: HistoryState) => h.index > 0;
 export const canRedo = (h: HistoryState) => h.index < h.entries.length - 1;
 
 export type HistoryCommand =
-  | { type: "commit"; action: SceneAction; now: number; gesture?: boolean }
+  | {
+      type: "commit";
+      action: SceneAction;
+      now: number;
+      gesture?: boolean;
+      /** Auto-key: also key what moves at time `t`, in the same step. */
+      autoKey?: { t: number; camera?: CameraView };
+    }
+  /** Show the animation at time `t`: replaces what moves in the
+   * current entry, without a new undo step (unkeyed changes are dropped,
+   * as in Maya). A no-op without keyframes. */
+  | { type: "showTime"; t: number }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "jump"; index: number }
@@ -70,7 +83,14 @@ export function historyReducer(
   switch (cmd.type) {
     case "commit": {
       const current = present(h);
-      const result = applyAction(current, cmd.action);
+      let result = applyAction(current, cmd.action);
+      if (result.ok && cmd.autoKey && isAnimatable(cmd.action)) {
+        result = applyAction(result.scene, {
+          type: "setKey",
+          t: cmd.autoKey.t,
+          camera: cmd.autoKey.camera,
+        });
+      }
       if (!result.ok) return { ...h, error: result.error };
       if (result.scene === current || sameScene(result.scene, current)) {
         return h.error ? { ...h, error: null } : h;
@@ -123,6 +143,15 @@ export function historyReducer(
       return { ...h, index: cmd.index, lastKey: null, error: null };
     case "seal":
       return h.lastKey === null ? h : { ...h, lastKey: null };
+    case "showTime": {
+      const current = present(h);
+      const shown = evaluate(current, cmd.t).scene;
+      if (shown === current || sameScene(shown, current))
+        return h.lastKey === null ? h : { ...h, lastKey: null };
+      const entries = h.entries.slice();
+      entries[h.index] = { ...entries[h.index], scene: shown };
+      return { ...h, entries, lastKey: null };
+    }
     case "replace":
       return createHistory(cmd.scene, cmd.label);
   }
