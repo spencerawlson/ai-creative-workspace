@@ -321,3 +321,72 @@ describe("graph editor: interpolation and key values", () => {
     );
   });
 });
+
+describe("graph editor: tangents", () => {
+  const elbow = {
+    kind: "joint",
+    figure: "fig-1",
+    joint: "elbowL",
+    dof: "bend",
+  } as const;
+  const at = (s: SceneDoc, t: number) =>
+    channelValue(evaluate(s, t).scene, elbow)!;
+
+  it("default tangents reproduce smooth exactly; a slope bends the curve", () => {
+    const s = twoKeys(); // elbow 0 -> 90 over 0..2 s
+    expect(at(s, 1)).toBe(45);
+    const steep = apply(s, {
+      type: "setKeyTangent",
+      t: 0,
+      channel: elbow,
+      slope: 90, // degrees per second, leaving the first key
+    });
+    expect(at(steep, 0.5)).toBeGreaterThan(at(s, 0.5) + 5);
+    // The other channels are untouched.
+    const x = { kind: "figure", figure: "fig-1", field: "x" } as const;
+    expect(channelValue(evaluate(steep, 0.5).scene, x)).toBe(
+      channelValue(evaluate(s, 0.5).scene, x),
+    );
+    // null resets to the ease.
+    const reset = apply(steep, {
+      type: "setKeyTangent",
+      t: 0,
+      channel: elbow,
+      slope: null,
+    });
+    expect(at(reset, 0.5)).toBe(at(s, 0.5));
+    expect(reset.animation.keys[0].tangents).toBeUndefined();
+  });
+
+  it("an overshooting curve stays inside the joint's limits", () => {
+    const s = apply(twoKeys(), {
+      type: "setKeyTangent",
+      t: 2,
+      channel: elbow,
+      slope: 5000,
+    });
+    for (let t = 0; t <= 2; t += 0.05) {
+      expect(at(s, t)).toBeGreaterThanOrEqual(0);
+      expect(at(s, t)).toBeLessThanOrEqual(145);
+    }
+  });
+
+  it("re-keying keeps tangents; unknown channels are refused", () => {
+    let s = apply(twoKeys(), {
+      type: "setKeyTangent",
+      t: 0,
+      channel: elbow,
+      slope: 30,
+    });
+    s = apply(s, { type: "setKey", t: 0 });
+    expect(s.animation.keys[0].tangents).toBeDefined();
+    expect(
+      applyAction(s, {
+        type: "setKeyTangent",
+        t: 0,
+        channel: { kind: "figure", figure: "fig-9", field: "x" },
+        slope: 1,
+      }).ok,
+    ).toBe(false);
+  });
+});

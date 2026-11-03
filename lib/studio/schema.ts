@@ -194,6 +194,15 @@ export const KeyframeSchema = z.object({
   t: z.number().finite().min(0).max(LIMITS.duration[1]),
   /** Interpolation towards the next key; absent = smooth. */
   ease: EaseSchema.optional(),
+  /** Graph-editor tangents: per channel (see channelId), the curve's
+   * slope through this key, in value units per second. Absent = from
+   * `ease` (smooth: flat, linear: straight to the neighbour). */
+  tangents: z
+    .record(
+      z.string().max(48),
+      z.object({ in: z.number().finite(), out: z.number().finite() }),
+    )
+    .optional(),
   figures: z.record(FigureIdSchema, FigureKeySchema),
   lights: z.record(LightSchema.shape.id, LightKeySchema),
   /** Absent when the camera wasn't keyed. */

@@ -24,7 +24,12 @@ import {
   owners,
   type ChannelOwner,
 } from "@/lib/studio/channels";
-import { EASES, type Channel, type Figure } from "@/lib/studio/schema";
+import {
+  EASES,
+  type Channel,
+  type Figure,
+  type Keyframe,
+} from "@/lib/studio/schema";
 import { jointFromSelection } from "./PoseInspector";
 import type { Studio } from "./useStudio";
 import { Segmented, cx } from "./ui";
@@ -183,6 +188,24 @@ export function GraphEditor({
     return { px: e.clientX - r.left, py: e.clientY - r.top };
   };
 
+  /** The slope (value/s) the curve has through a key, as drawn. */
+  const slopeAt = (k: Keyframe, ch: Channel): number => {
+    const own = k.tangents?.[channelId(ch)]?.out;
+    if (own !== undefined) return own;
+    if (k.ease !== "linear") return 0;
+    const i = keys.indexOf(k);
+    const next = keys.slice(i + 1).find((n) => keyValue(n, ch) !== undefined);
+    return next ? (keyValue(next, ch)! - keyValue(k, ch)!) / (next.t - k.t) : 0;
+  };
+  function setTangents(t: number, slope: number | null) {
+    const key = keyAt(scene.animation, t);
+    if (!key) return;
+    for (const c of visible)
+      if (keyValue(key, c.channel) !== undefined)
+        dispatch({ type: "setKeyTangent", t, channel: c.channel, slope });
+  }
+  const handleDrag = useRef<{ t: number; channel: Channel } | null>(null);
+
   const timeTicks = Array.from(
     { length: Math.floor(duration / (duration > 20 ? 5 : 1)) + 1 },
     (_, i) => i * (duration > 20 ? 5 : 1),
@@ -281,12 +304,31 @@ export function GraphEditor({
                   }
                 />
               </div>
+              <span className="ml-1 text-ink-400">Tangents:</span>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-ink-200 hover:bg-ink-800"
+                title="Flat tangents on the shown curves at this key"
+                data-testid="graph-tangent-flat"
+                onClick={() => setTangents(pickedKey.t, 0)}
+              >
+                Flat
+              </button>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-ink-200 hover:bg-ink-800"
+                title="Back to the key's interpolation"
+                data-testid="graph-tangent-reset"
+                onClick={() => setTangents(pickedKey.t, null)}
+              >
+                Reset
+              </button>
             </>
           ) : (
             <span className="text-ink-400">
               {keys.length === 0
                 ? "No keyframes yet: set one on the timeline (K)."
-                : "Drag a point up/down to change its value, sideways to retime. Click a point for its interpolation."}
+                : "Drag a point up/down to change its value, sideways to retime. Click a point for its interpolation and tangent handles."}
             </span>
           )}
         </div>
@@ -441,6 +483,85 @@ export function GraphEditor({
                   );
                 }),
               )}
+              {/* tangent handles of the picked key */}
+              {pickedKey &&
+                visible.map((c) => {
+                  const v = keyValue(pickedKey, c.channel);
+                  if (v === undefined) return null;
+                  const id = channelId(c.channel);
+                  // Direction of the slope on screen, 40 px each way.
+                  const m = slopeAt(pickedKey, c.channel);
+                  const dx = W / duration;
+                  const dy = (-m * H) / (hi - lo);
+                  const len = Math.hypot(dx, dy) || 1;
+                  const hx = (dx / len) * 40;
+                  const hy = (dy / len) * 40;
+                  const cx0 = x(pickedKey.t);
+                  const cy0 = y(v);
+                  const handle = (
+                    side: "in" | "out",
+                    sx: number,
+                    sy: number,
+                  ) => (
+                    <rect
+                      key={side}
+                      x={sx - 4}
+                      y={sy - 4}
+                      width={8}
+                      height={8}
+                      fill="#0b0c10"
+                      stroke={colour(c.channel)}
+                      strokeWidth={1.5}
+                      className="cursor-grab"
+                      data-testid={`graph-tangent-${id}@${pickedKey.t.toFixed(2)}-${side}`}
+                      aria-label={`${c.label} tangent at ${pickedKey.t.toFixed(2)} s`}
+                      onPointerDown={(e) => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        handleDrag.current = {
+                          t: pickedKey.t,
+                          channel: c.channel,
+                        };
+                      }}
+                      onPointerMove={(e) => {
+                        const d = handleDrag.current;
+                        if (!d) return;
+                        const { px, py } = local(e);
+                        const dt = (px - x(d.t)) / (W / duration);
+                        if (Math.abs(dt) < 1e-3) return;
+                        const slope = (vAt(py) - v) / dt;
+                        dispatch(
+                          {
+                            type: "setKeyTangent",
+                            t: d.t,
+                            channel: d.channel,
+                            slope: Math.round(slope * 1000) / 1000,
+                          },
+                          { gesture: true },
+                        );
+                      }}
+                      onPointerUp={() => {
+                        if (handleDrag.current) seal();
+                        handleDrag.current = null;
+                      }}
+                    />
+                  );
+                  return (
+                    <g key={`tangent-${id}`}>
+                      <line
+                        x1={cx0 - hx}
+                        y1={cy0 - hy}
+                        x2={cx0 + hx}
+                        y2={cy0 + hy}
+                        stroke={colour(c.channel)}
+                        strokeWidth={1}
+                        strokeDasharray="3 2"
+                        pointerEvents="none"
+                      />
+                      {handle("in", cx0 - hx, cy0 - hy)}
+                      {handle("out", cx0 + hx, cy0 + hy)}
+                    </g>
+                  );
+                })}
             </svg>
           )}
         </div>

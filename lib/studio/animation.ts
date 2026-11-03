@@ -12,9 +12,17 @@
  * only covers what existed when it was set, and anything a key doesn't
  * mention keeps its current value. */
 
-import { flattenJoints, unflattenJoints, type PoseJoints } from "./pose";
+import {
+  JOINTS,
+  JOINT_IDS,
+  flattenJoints,
+  unflattenJoints,
+  type PoseJoints,
+} from "./pose";
+import { channelRange } from "./channels";
 import {
   LIMITS,
+  LIGHT_CHANNELS,
   type Animation,
   type CameraPlacement,
   type Channel,
@@ -89,9 +97,11 @@ export function upsertKey(
   if (key.t > anim.duration)
     return { ok: false, error: "That time is past the end of the animation" };
   const others = anim.keys.filter((k) => Math.abs(k.t - key.t) >= KEY_EPSILON);
-  // Re-keying (auto-key does it on every edit) keeps the interpolation.
+  // Re-keying (auto-key does it on every edit) keeps the interpolation
+  // and any graph-editor tangents.
   const old = keyAt(anim, key.t);
   if (old?.ease && !key.ease) key = { ...key, ease: old.ease };
+  if (old?.tangents && !key.tangents) key = { ...key, tangents: old.tangents };
   if (others.length >= LIMITS.maxKeys)
     return { ok: false, error: `At most ${LIMITS.maxKeys} keyframes` };
   return {
@@ -103,28 +113,21 @@ export function upsertKey(
   };
 }
 
-/** Shape of the travel from a key to the next. */
-function shape(kind: Ease | undefined, u: number): number {
-  if (kind === "linear") return u;
-  if (kind === "step") return 0;
-  return u * u * (3 - 2 * u); // smooth: ease in and out
+/** The keys around `t` that record `pick`, and how far between them
+ * (0..1). Outside the keyed range one side is null: the value holds. */
+interface Segment<T> {
+  a: T;
+  b: T;
+  ka: Keyframe | null;
+  kb: Keyframe | null;
+  raw: number;
 }
-const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-/** Degrees, the short way round. */
-function lerpAngle(a: number, b: number, u: number): number {
-  const d = ((((b - a) % 360) + 540) % 360) - 180;
-  return a + d * u;
-}
-/** Back into [-180, 180] (figure turn) or [0, 360) (light azimuth). */
-const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
-const wrap360 = (a: number) => ((a % 360) + 360) % 360;
 
-/** The two keys around `t` that mention `pick`, and how far between. */
 function bracket<T>(
   keys: Keyframe[],
   t: number,
   pick: (k: Keyframe) => T | undefined,
-): { a: T; b: T; u: number } | null {
+): Segment<T> | null {
   let before: { k: Keyframe; v: T } | null = null;
   let after: { k: Keyframe; v: T } | null = null;
   for (const k of keys) {
@@ -137,17 +140,65 @@ function bracket<T>(
     }
   }
   if (!before && !after) return null;
-  if (!before) return { a: after!.v, b: after!.v, u: 0 };
-  if (!after) return { a: before.v, b: before.v, u: 0 };
+  if (!before) return { a: after!.v, b: after!.v, ka: null, kb: null, raw: 0 };
+  if (!after) return { a: before.v, b: before.v, ka: null, kb: null, raw: 0 };
   return {
     a: before.v,
     b: after.v,
-    u: shape(before.k.ease, (t - before.k.t) / (after.k.t - before.k.t)),
+    ka: before.k,
+    kb: after.k,
+    raw: (t - before.k.t) / (after.k.t - before.k.t),
   };
 }
 
+/** Degrees from `a` to `b` the short way round, in [-180, 180). */
+const shortest = (a: number, b: number) =>
+  ((((b - a) % 360) + 540) % 360) - 180;
+
+/** One value along a segment: a cubic Hermite curve through the two
+ * keys. With the default tangents it is exactly the key's ease (flat
+ * slopes give smoothstep; the straight-line slope gives linear); graph
+ * editor tangents bend it. `wrap` angles go the short way round. The
+ * result is clamped to the channel's range, so an overshooting curve
+ * never breaks a joint limit. */
+function curve<T>(
+  seg: Segment<T>,
+  va: number,
+  vb: number,
+  ch: Channel,
+  wrap = false,
+): number {
+  const { ka, kb, raw: u } = seg;
+  if (!ka || !kb || ka.ease === "step") return va;
+  if (wrap) vb = va + shortest(va, vb);
+  const dt = kb.t - ka.t;
+  const id = channelId(ch);
+  const straight = (vb - va) / dt;
+  const m0 = ka.tangents?.[id]?.out ?? (ka.ease === "linear" ? straight : 0);
+  const m1 = kb.tangents?.[id]?.in ?? (ka.ease === "linear" ? straight : 0);
+  const u2 = u * u;
+  const u3 = u2 * u;
+  const v =
+    (2 * u3 - 3 * u2 + 1) * va +
+    (u3 - 2 * u2 + u) * dt * m0 +
+    (-2 * u3 + 3 * u2) * vb +
+    (u3 - u2) * dt * m1;
+  if (wrap) return v;
+  const { min, max } = channelRange(ch);
+  return Math.min(max, Math.max(min, v));
+}
+
+/** Back into [-180, 180] (figure turn) or [0, 360) (light azimuth). */
+const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
+const wrap360 = (a: number) => ((a % 360) + 360) % 360;
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r1 = (n: number) => Math.round(n * 10) / 10;
+
+/** Joint channels in flattenJoints order. */
+const JOINT_DOFS = JOINT_IDS.flatMap((joint) =>
+  Object.keys(JOINTS[joint].dofs).map((dof) => ({ joint, dof })),
+);
 
 /** The scene as it is at time `t`, plus the camera view if any key has
  * one. Values are rounded like the UI's, so evaluating twice at the
@@ -163,17 +214,27 @@ export function evaluate(
     if (!s) return f;
     const ja = flattenJoints(s.a.joints);
     const jb = flattenJoints(s.b.joints);
-    const angles = ja.map((v, i) => r1(lerp(v, jb[i], s.u)));
+    const angles = JOINT_DOFS.map(({ joint, dof }, i) =>
+      r1(curve(s, ja[i], jb[i], { kind: "joint", figure: f.id, joint, dof })),
+    );
+    const place = (field: "x" | "z" | "rotation") =>
+      curve(
+        s,
+        s.a[field],
+        s.b[field],
+        { kind: "figure", figure: f.id, field },
+        field === "rotation",
+      );
     // Keep the preset name only while the pose is exactly that preset.
     const same = flattenJoints(f.pose.joints).every((v, i) => v === angles[i]);
     return {
       ...f,
-      x: r2(lerp(s.a.x, s.b.x, s.u)),
-      z: r2(lerp(s.a.z, s.b.z, s.u)),
-      rotation: r1(wrap180(lerpAngle(s.a.rotation, s.b.rotation, s.u))),
+      x: r2(place("x")),
+      z: r2(place("z")),
+      rotation: r1(wrap180(place("rotation"))),
       pose: {
         preset: same ? f.pose.preset : "custom",
-        // Interpolated between two valid keys: within every limit.
+        // Clamped to every joint's limits by curve().
         joints: unflattenJoints(angles) as PoseJoints,
       },
     };
@@ -181,12 +242,19 @@ export function evaluate(
   const lights = scene.lights.map((l) => {
     const s = bracket<LightKey>(keys, t, (k) => k.lights[l.id]);
     if (!s) return l;
-    const n = (key: Exclude<keyof LightKey, "on">) =>
-      lerp(s.a[key], s.b[key], s.u);
+    const n = (field: (typeof LIGHT_CHANNELS)[number]) =>
+      curve(
+        s,
+        s.a[field],
+        s.b[field],
+        { kind: "light", light: l.id, field },
+        field === "azimuth",
+      );
     return {
       ...l,
-      on: s.u < 1 ? s.a.on : s.b.on,
-      azimuth: r1(wrap360(lerpAngle(s.a.azimuth, s.b.azimuth, s.u))),
+      // Switches change at the next key.
+      on: s.kb && s.raw >= 1 ? s.b.on : s.a.on,
+      azimuth: r1(wrap360(n("azimuth"))),
       elevation: r1(n("elevation")),
       distance: r2(n("distance")),
       intensity: r2(n("intensity")),
@@ -197,12 +265,21 @@ export function evaluate(
     };
   });
   const cam = bracket(keys, t, (k) => k.camera);
+  // The camera path follows the focal-length channel's timing shape.
+  const along = (va: number, vb: number) => {
+    if (!cam || !cam.ka || !cam.kb || cam.ka.ease === "step") return va;
+    const u =
+      cam.ka.ease === "linear"
+        ? cam.raw
+        : cam.raw * cam.raw * (3 - 2 * cam.raw);
+    return va + (vb - va) * u;
+  };
   const view = cam && {
     position: cam.a.view.position.map((v, i) =>
-      lerp(v, cam.b.view.position[i], cam.u),
+      along(v, cam.b.view.position[i]),
     ) as CameraPlacement["position"],
     target: cam.a.view.target.map((v, i) =>
-      lerp(v, cam.b.view.target[i], cam.u),
+      along(v, cam.b.view.target[i]),
     ) as CameraPlacement["target"],
   };
   return {
@@ -213,7 +290,12 @@ export function evaluate(
       camera: cam
         ? {
             ...scene.camera,
-            focalMm: Math.round(lerp(cam.a.focalMm, cam.b.focalMm, cam.u)),
+            focalMm: Math.round(
+              curve(cam, cam.a.focalMm, cam.b.focalMm, {
+                kind: "camera",
+                field: "focalMm",
+              }),
+            ),
           }
         : scene.camera,
     },

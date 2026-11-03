@@ -56,6 +56,7 @@ import {
   keyAt,
   roundTime,
   snapshot,
+  keyValue,
   upsertKey,
   withKeyValue,
 } from "./animation";
@@ -222,6 +223,16 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({ type: z.literal("setKeyEase"), t: keyTime, ease: EaseSchema })
+    .strict(),
+  z
+    .object({
+      // Graph editor tangent handle: the curve's slope through this key
+      // for one channel (value units per second); null resets it.
+      type: z.literal("setKeyTangent"),
+      t: keyTime,
+      channel: ChannelSchema,
+      slope: z.number().finite().min(-1e5).max(1e5).nullable(),
+    })
     .strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
@@ -470,6 +481,29 @@ export function applyAction(
     }
     case "clearKeys":
       return ok({ ...scene, animation: { ...scene.animation, keys: [] } });
+    case "setKeyTangent": {
+      const key = keyAt(scene.animation, action.t);
+      if (!key) return { ok: false, error: `No keyframe at ${secs(action.t)}` };
+      if (keyValue(key, action.channel) === undefined)
+        return { ok: false, error: "That keyframe doesn't record it" };
+      const id = channelId(action.channel);
+      const tangents = { ...key.tangents };
+      if (action.slope === null) delete tangents[id];
+      // Unified tangent, as Maya's default: the curve passes smoothly.
+      else tangents[id] = { in: action.slope, out: action.slope };
+      const next = {
+        ...key,
+        tangents: Object.keys(tangents).length ? tangents : undefined,
+      };
+      if (!next.tangents) delete next.tangents;
+      return ok({
+        ...scene,
+        animation: {
+          ...scene.animation,
+          keys: scene.animation.keys.map((k) => (k === key ? next : k)),
+        },
+      });
+    }
     case "setKeyValue":
     case "setKeyEase": {
       const key = keyAt(scene.animation, action.t);
@@ -578,6 +612,8 @@ export function coalesceKey(action: SceneAction): string | null {
       return "moveKey";
     case "setKeyValue":
       return `keyValue:${action.t}:${channelId(action.channel)}`;
+    case "setKeyTangent":
+      return `keyTangent:${action.t}:${channelId(action.channel)}`;
     case "setDuration":
       return "duration";
     case "updateJoints":
@@ -727,6 +763,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return `Edit key at ${secs(action.t)}`;
     case "setKeyEase":
       return `Key at ${secs(action.t)}: ${action.ease}`;
+    case "setKeyTangent":
+      return action.slope === null
+        ? `Reset tangent at ${secs(action.t)}`
+        : `Tangent at ${secs(action.t)}`;
     case "reset":
       return "Reset scene";
   }
