@@ -638,26 +638,59 @@ export function rigMesh(pos, index) {
     const sideSign = s === "L" ? 1 : -1;
     if (normal[0] * sideSign > 0) normal = mul(normal, -1);
 
-    // Four bands across the zone: 1-D k-means, index nearest the thumb.
-    const vals = zone.map(cOf).sort((a, b) => a - b);
-    let centers = [0.125, 0.375, 0.625, 0.875].map(
-      (q) => vals[Math.floor(q * (vals.length - 1))],
-    );
-    for (let it = 0; it < 40; it++) {
-      const acc = [0, 0, 0, 0];
-      const cnt = [0, 0, 0, 0];
-      for (const v of vals) {
-        let k = 0;
-        for (let j = 1; j < 4; j++)
-          if (Math.abs(v - centers[j]) < Math.abs(v - centers[k])) k = j;
-        acc[k] += v;
-        cnt[k]++;
-      }
-      centers = centers
-        .map((c, k) => (cnt[k] ? acc[k] / cnt[k] : c))
-        .sort((a, b) => a - b);
+    // Four bands across the hand, cut at the webs between the fingers.
+    // Seen flat in the palm's plane, the hand's outline reaches out to a
+    // fingertip and dips back at each web, even where two fingers are
+    // fused, so the three deepest dips between the four longest reaches
+    // are the cuts. (K-means on the vertices, tried first, drifted off
+    // the fingers on the slimmer female hand.)
+    const reach = hand.filter((i) => !isThumb[i] && along(i) > 0.5 * L);
+    const cs = reach.map(cOf);
+    const cLo = Math.min(...cs);
+    const cHi = Math.max(...cs);
+    const NB = 64;
+    const profile = new Array(NB).fill(0);
+    reach.forEach((i, k) => {
+      const b = Math.min(
+        NB - 1,
+        Math.floor(((cs[k] - cLo) / (cHi - cLo)) * NB),
+      );
+      profile[b] = Math.max(profile[b], along(i) / L);
+    });
+    const smooth = profile.map((_, b) => {
+      let acc = 0;
+      let n0 = 0;
+      for (let d = -1; d <= 1; d++)
+        if (profile[b + d] !== undefined) {
+          acc += profile[b + d];
+          n0++;
+        }
+      return acc / n0;
+    });
+    const minGap = Math.ceil((0.08 * L) / ((cHi - cLo) / NB));
+    const peaks = [];
+    // Only real tops count: a bin on the side of a long finger can be
+    // higher than the short little finger's tip.
+    const isTop = (b) =>
+      [-2, -1, 1, 2].every(
+        (d) => smooth[b + d] === undefined || smooth[b] >= smooth[b + d],
+      );
+    for (const b of [...smooth.keys()].sort((x, y) => smooth[y] - smooth[x])) {
+      if (peaks.length === 4) break;
+      if (isTop(b) && peaks.every((p) => Math.abs(p - b) >= minGap))
+        peaks.push(b);
     }
-    const cuts = [0, 1, 2].map((k) => (centers[k] + centers[k + 1]) / 2);
+    if (peaks.length < 4)
+      throw new Error(`Found ${peaks.length} fingertips on the ${s} hand`);
+    peaks.sort((x, y) => x - y);
+    const cutBins = [0, 1, 2].map((k) => {
+      let best = peaks[k] + 1;
+      for (let b = peaks[k] + 1; b < peaks[k + 1]; b++)
+        if (smooth[b] < smooth[best]) best = b;
+      return best;
+    });
+    const cuts = cutBins.map((b) => cLo + ((b + 0.5) / NB) * (cHi - cLo));
+    const centers = peaks.map((b) => cLo + ((b + 0.5) / NB) * (cHi - cLo));
     // 0 = index (highest, towards the thumb) .. 3 = little finger.
     const fingerOf = (i) => {
       const c = cOf(i);
@@ -853,5 +886,6 @@ export function rigMesh(pos, index) {
     labelCounts: Object.fromEntries(BONES.map(([b], k) => [b, counts[k]])),
     hands: handStats,
   };
+  if (process.env.RIG_LABELS) stats.label = label; // debug: per-vertex bone
   return { joints, tips, palm, jointIdx, weights, stats };
 }
