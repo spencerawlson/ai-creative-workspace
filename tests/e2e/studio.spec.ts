@@ -772,6 +772,18 @@ test.describe("Lighting Studio — critical journeys", () => {
     // One undo takes the whole move away; the seated pose is back.
     await page.getByTestId("undo").click();
     await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
+    // How long: typed into the text, or in the Seconds box.
+    await box.fill("walk for 6 seconds");
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText(
+      "Walk: 6.0 s",
+    );
+    await page.getByTestId("motion-seconds").fill("4");
+    await box.fill("wave");
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText(
+      "Wave: 4.0 s",
+    );
   });
 
   test("Photography page still renders through the shared engine", async ({

@@ -80,35 +80,68 @@ describe("motion library", () => {
 
   it("walking goes the way the figure faces, in whole strides, inside the studio", () => {
     const walk = findMotion("walk")!;
-    const end = (rotation: number, x = 0, z = 0) => {
-      const s = motionSteps(walk, { x, z, rotation });
-      return s[s.length - 1];
-    };
-    // Facing away from the camera: both strides (2 x 1.3 m).
-    expect(end(180).z).toBeCloseTo(-2.6, 5);
-    expect(end(90).x).toBeCloseTo(2.6, 5);
-    expect(Math.abs(end(90).z)).toBeLessThan(0.01);
-    // Towards the camera there is room for one stride only.
-    const towards = planMotion(walk, { x: 0, z: 0, rotation: 0 });
-    expect(towards.repeat).toBe(1);
-    expect(towards.shortened).toBe(true);
-    expect(end(0).z).toBeCloseTo(1.3, 5);
-    // No room at all: on the spot, never sliding.
-    const stuck = planMotion(walk, { x: 0, z: 1.4, rotation: 0 });
-    expect(stuck.noRoom).toBe(true);
-    expect(stuck.steps.every((s) => s.z === 1.4)).toBe(true);
+    const inRoom = (st: { x: number; z: number }) =>
+      Math.abs(st.x) <= 2.6 + 1e-6 && st.z >= -2.6 - 1e-6 && st.z <= 1.5 + 1e-6;
+    // Two strides fit straight ahead, facing away from the camera.
+    const two = planMotion(walk, { x: 0, z: 0, rotation: 180 }, { repeat: 2 });
+    expect(two.path).toBe("straight");
+    expect(two.steps[two.steps.length - 1].z).toBeCloseTo(-2.6, 5);
+    expect(two.steps.every((st) => Math.abs(st.x) < 0.01)).toBe(true);
+    // Longer than the room ahead: round a circle, never leaving the room,
+    // the figure turning as it goes.
+    for (const rotation of [0, 90, 180, -90]) {
+      const long = planMotion(walk, { x: 0, z: 0, rotation }, { seconds: 20 });
+      expect(long.path, String(rotation)).toBe("circle");
+      expect(long.steps.every(inRoom), String(rotation)).toBe(true);
+      const turns = new Set(
+        long.steps.map((st) => Math.round(st.rotation / 30)),
+      );
+      expect(turns.size).toBeGreaterThan(6);
+    }
+    // Hemmed in a corner: on the spot, never sliding.
+    const stuck = planMotion(walk, { x: 2.5, z: 1.4, rotation: 0 });
+    expect(stuck.path).toBe("spot");
+    expect(stuck.steps.every((st) => st.z === 1.4 && st.x === 2.5)).toBe(true);
     const still = motionSteps(
       walk,
       { x: 0, z: 0, rotation: 0 },
       { inPlace: true },
     );
-    expect(still.every((s) => s.z === 0)).toBe(true);
-    const back = motionSteps(
+    expect(still.every((st) => st.z === 0)).toBe(true);
+    const back = planMotion(
       walk,
       { x: 0, z: 0, rotation: 0 },
-      { backwards: true },
+      { backwards: true, repeat: 2 },
     );
-    expect(back[back.length - 1].z).toBeCloseTo(-2.6, 5);
+    expect(back.steps[back.steps.length - 1].z).toBeCloseTo(-2.6, 5);
+  });
+
+  it("a move lasts as many seconds as asked", () => {
+    const at = { x: 0, z: 0, rotation: 180 };
+    for (const [id, secs] of [
+      ["walk", 10],
+      ["run", 30],
+      ["wave", 9],
+      ["kick", 4],
+      ["dance", 60],
+      ["jump", 3],
+    ] as const) {
+      const plan = planMotion(findMotion(id)!, at, { seconds: secs });
+      expect(plan.length, id).toBeCloseTo(secs, 1);
+    }
+    // One-off moves that end as they start repeat; the others stretch.
+    expect(planMotion(findMotion("wave")!, at, { seconds: 9 }).repeat).toBe(5);
+    const sit = planMotion(findMotion("sit-down")!, at, { seconds: 3 });
+    expect(sit.repeat).toBe(1);
+    expect(sit.length).toBeCloseTo(3, 1);
+    // As an action: keys over the whole span, animation long enough.
+    const s = apply(defaultScene(), {
+      type: "applyMotion",
+      motion: "walk",
+      seconds: 30,
+    });
+    expect(s.animation.duration).toBe(30);
+    expect(s.animation.keys[s.animation.keys.length - 1].t).toBeCloseTo(30, 1);
   });
 
   it("a move becomes keys on that figure only, from the current time", () => {
@@ -218,6 +251,18 @@ describe("typing a motion", () => {
     expect(searchMotions("th").map((m) => m.motion.id)).toContain("throw");
     expect(searchMotions("")).toEqual([]);
     expect(searchMotions("zzzz")).toEqual([]);
+  });
+
+  it("reads how long: seconds and minutes", () => {
+    expect(parseQuery("walk for 10 seconds").options.seconds).toBe(10);
+    expect(parseQuery("run 30s").options.seconds).toBe(30);
+    expect(parseQuery("dance 2.5 sec").options.seconds).toBe(2.5);
+    expect(parseQuery("jog for 1 minute").options.seconds).toBe(60);
+    expect(parseQuery("walk 1m30s").options.seconds).toBe(90);
+    expect(parseQuery("walk 3 times").options.seconds).toBeUndefined();
+    const m = searchMotions("walk for 12 seconds")[0];
+    expect(m.motion.id).toBe("walk");
+    expect(m.options.seconds).toBe(12);
   });
 
   it("reads side, count, speed and direction", () => {

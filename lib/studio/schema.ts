@@ -23,7 +23,7 @@ export const LIMITS = {
   rotation: [-180, 180],
   /** Keyframe animation: length in seconds, and at most this many keys. */
   duration: [1, 120],
-  maxKeys: 120,
+  maxKeys: 300,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],

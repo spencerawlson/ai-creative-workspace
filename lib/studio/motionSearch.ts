@@ -7,7 +7,12 @@
  * change how a move is done (left, twice, slowly, in place,
  * backwards) become options instead of search words. */
 
-import { MOTIONS, type Motion, type MotionOptions } from "./motions";
+import {
+  MOTIONS,
+  repeatable,
+  type Motion,
+  type MotionOptions,
+} from "./motions";
 
 export interface MotionMatch {
   motion: Motion;
@@ -172,14 +177,33 @@ export function distance(a: string, b: string, max = 2): number {
 }
 
 /** The modifiers in a query, and the words left to search with. */
+/** "10 seconds", "10s", "2.5 sec", "1 minute", "1.5 mins", "1m30s". */
+const DURATION =
+  /(\d+(?:[.,]\d+)?)\s*(m|mins?|minutes?)\s*(?:(\d+)\s*(?:s|secs?|seconds?)\b)?|(\d+(?:[.,]\d+)?)\s*(s|secs?|seconds?)\b/i;
+
+/** A length typed into the query, in seconds, and the text without it. */
+export function parseSeconds(text: string): { seconds?: number; rest: string } {
+  const m = DURATION.exec(text);
+  if (!m) return { rest: text };
+  const num = (v: string) => Number(v.replace(",", "."));
+  const seconds = m[1] ? num(m[1]) * 60 + (m[3] ? Number(m[3]) : 0) : num(m[4]);
+  if (!(seconds > 0)) return { rest: text };
+  return {
+    seconds,
+    rest: text.slice(0, m.index) + " " + text.slice(m.index + m[0].length),
+  };
+}
+
 export function parseQuery(text: string): {
   terms: string[];
   options: MotionOptions;
   /** The last word is still being typed (no space after it). */
   partial: boolean;
 } {
-  const all = words(text);
+  const timed = parseSeconds(text);
+  const all = words(timed.rest);
   const options: MotionOptions = {};
+  if (timed.seconds) options.seconds = Math.min(120, timed.seconds);
   const terms: string[] = [];
   for (let i = 0; i < all.length; i++) {
     const w = all[i];
@@ -207,7 +231,7 @@ export function parseQuery(text: string): {
     else if (!STOP.has(w)) terms.push(w);
   }
   if (options.repeat !== undefined)
-    options.repeat = Math.max(1, Math.min(10, options.repeat));
+    options.repeat = Math.max(1, Math.min(100, options.repeat));
   return { terms, options, partial: !/\s$/.test(text) };
 }
 
@@ -295,7 +319,8 @@ export function describeOptions(m: MotionMatch): string {
   const o = m.options;
   const bits: string[] = [];
   if (o.mirror && m.motion.sided) bits.push("left");
-  if (o.repeat && m.motion.cycle) bits.push(`${o.repeat}×`);
+  if (o.seconds && m.motion.kind === "move") bits.push(`${o.seconds} s`);
+  else if (o.repeat && repeatable(m.motion)) bits.push(`${o.repeat}×`);
   if (o.slow && o.slow > 1) bits.push("slow");
   if (o.slow && o.slow < 1) bits.push("fast");
   if (o.inPlace && m.motion.travel) bits.push("in place");

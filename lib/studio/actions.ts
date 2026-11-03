@@ -207,10 +207,12 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       figure: figureRef,
       t: keyTime.optional(),
       mirror: z.boolean().optional(),
-      repeat: z.number().int().min(1).max(10).optional(),
+      repeat: z.number().int().min(1).max(100).optional(),
       slow: z.number().finite().min(0.25).max(4).optional(),
       inPlace: z.boolean().optional(),
       backwards: z.boolean().optional(),
+      /** How long the move lasts (it repeats to fill it). */
+      seconds: z.number().finite().min(0.2).max(LIMITS.duration[1]).optional(),
     })
     .strict(),
   z
