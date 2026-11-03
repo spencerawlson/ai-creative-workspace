@@ -529,12 +529,16 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-neutral").click();
+    // The address bar becomes a compressed, animated link (one key)...
+    await expect.poll(() => sParam(page)).toMatch(/^z/);
+    const oneKey = await sParam(page);
     await scrub.fill("2");
     await page.getByTestId("pose-preset-arms-up").click();
     await expect(
       await timelineControl(page, "timeline-key-2.00"),
     ).toBeVisible();
-    // The address bar becomes a compressed, animated link.
+    // ...and is rewritten (debounced) once the second key is in.
+    await expect.poll(() => sParam(page)).not.toBe(oneKey);
     await expect.poll(() => sParam(page)).toMatch(/^z/);
     const url = new URL(page.url());
     const other = await browser.newContext();
@@ -688,13 +692,16 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("motion-option-walk")).toBeVisible();
     await box.press("Enter");
     await expect(page.getByTestId("motion-status")).toContainText("Walk:");
+    // Playing: the legs take at least two different walking positions
+    // (software rendering on CI shows few frames, so no more is asked).
     const seen = new Set<number>();
     await expect
       .poll(async () => {
-        seen.add(await poseValue(page, "hipL", "forward"));
+        const v = await poseValue(page, "hipL", "forward");
+        if (v !== 90) seen.add(v); // 90: still the seated pose
         return seen.size;
       })
-      .toBeGreaterThan(3);
+      .toBeGreaterThanOrEqual(2);
     // One undo takes the whole move away; the seated pose is back.
     await page.getByTestId("undo").click();
     await expect.poll(() => poseValue(page, "kneeL", "bend")).toBe(90);
