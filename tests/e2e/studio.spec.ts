@@ -346,15 +346,12 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page, "scene");
     await page.getByTestId("add-figure").click();
     const second = page.getByTestId("node-figure-fig-2");
-    await expect(second).toContainText("Male");
-    // The new figure is selected and loads (same model: no download).
-    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
-      "data-status",
-      "ready",
+    // The new figure's controls open (on a phone, in the Inspect tab).
+    await expect(page.getByTestId("model-male")).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    await expect(page.getByTestId("model-male")).toBeVisible();
     await page.getByTestId("model-female").click();
-    await expect(second).toContainText("Female");
     await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
       "data-status",
       "ready",
@@ -363,6 +360,10 @@ test.describe("Lighting Studio — critical journeys", () => {
     const turn = page.getByTestId("figure-rotation");
     await turn.fill("-30");
     await expect(turn).toHaveValue("-30");
+    await showPanel(page, "scene");
+    await expect(second).toContainText("Female");
+    await expect(page.getByTestId("node-figure-fig-1")).toContainText("Male");
+    await second.click();
 
     // Drag a figure across the floor (whichever isn't under a panel).
     const x = page.getByTestId("figure-x");
@@ -389,6 +390,7 @@ test.describe("Lighting Studio — critical journeys", () => {
     // Pose figure 2 only.
     await showPanel(page, "scene");
     await second.click();
+    await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
     await page.getByTestId("pose-preset-arms-up").click();
     await showPanel(page, "scene");

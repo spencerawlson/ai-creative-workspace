@@ -137,7 +137,6 @@ const FULL_VIEW = {
   position: new THREE.Vector3(0.6, 1.25, 3.4),
 };
 const FIGURE_HEIGHT = 1.88;
-const FLOOR = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 interface LightRig {
   kind: StudioLight["kind"];
@@ -289,8 +288,11 @@ export class StudioEngine {
   private moveDrag: {
     pointerId: number;
     figure: string;
-    /** Figure position minus where the pointer met the floor. */
-    offset: THREE.Vector3;
+    /** The pointer moves across this plane, through the grabbed point. */
+    plane: THREE.Plane;
+    /** Where the press met `plane`, and the figure's position then. */
+    start: THREE.Vector3;
+    from: THREE.Vector3;
     down: { x: number; y: number };
     moved: boolean;
   } | null = null;
@@ -1509,14 +1511,22 @@ export class StudioEngine {
   private startMoveDrag(e: PointerEvent): FigureInstance | null {
     if (!this.moveMode) return null;
     this.pointerRay(e);
-    const owner = this.instanceOf(this.pickBodyPart()?.object ?? null);
-    const floor =
-      owner && this.raycaster.ray.intersectPlane(FLOOR, new THREE.Vector3());
-    if (!owner || !floor) return null;
+    const hit = this.pickBodyPart();
+    const owner = this.instanceOf(hit?.object ?? null);
+    if (!hit || !owner) return null;
+    // Looking down on the set, the pointer slides over a level plane
+    // through the grabbed point (like the floor). Near eye level that
+    // plane is seen edge-on, so use one facing the camera instead; only
+    // the horizontal part of the motion moves the figure either way.
+    const view = this.camera.getWorldDirection(new THREE.Vector3());
+    const normal =
+      Math.abs(view.y) > 0.35 ? new THREE.Vector3(0, 1, 0) : view.negate();
     this.moveDrag = {
       pointerId: e.pointerId,
       figure: owner.id,
-      offset: owner.root.position.clone().sub(floor),
+      plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point),
+      start: hit.point.clone(),
+      from: owner.root.position.clone(),
       down: { x: e.clientX, y: e.clientY },
       moved: false,
     };
@@ -1596,12 +1606,13 @@ export class StudioEngine {
       )
         return;
       move.moved = true;
-      const floor = this.pointerRay(e).intersectPlane(
-        FLOOR,
+      const p = this.pointerRay(e).intersectPlane(
+        move.plane,
         new THREE.Vector3(),
       );
-      if (!floor) return;
-      const at = floor.add(move.offset);
+      if (!p) return;
+      const delta = p.sub(move.start).setY(0);
+      const at = move.from.clone().add(delta);
       const clamp = (v: number, [lo, hi]: readonly [number, number]) =>
         Math.round(THREE.MathUtils.clamp(v, lo, hi) * 100) / 100;
       this.callbacks.onFigureMove?.(move.figure, {
