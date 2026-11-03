@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { openStudio, showPanel } from "./helpers";
+import { openStudio, showPanel, timelineControl } from "./helpers";
 
 /** Automated WCAG 2.1 A/AA checks. Automated tools catch roughly a third
  * of issues; keyboard and screen-reader passes are still manual. */
@@ -36,7 +36,7 @@ test("dialogs are accessible", async ({ page }) => {
   await expect(page.getByTestId("export-dialog")).toBeHidden();
   // The video dialog needs an animation: set one key.
   await page.getByTestId("timeline-set-key").click();
-  await page.getByTestId("timeline-video").click();
+  await (await timelineControl(page, "timeline-video")).click();
   await expect(page.getByTestId("video-dialog")).toBeVisible();
   await expect(page.getByTestId("video-summary")).not.toContainText("Checking");
   expect(await axe(page)).toEqual([]);

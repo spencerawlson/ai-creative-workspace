@@ -230,7 +230,7 @@ export function GraphEditor({
         fill ? "min-h-0 flex-1" : "h-56 shrink-0 md:h-64",
       )}
     >
-      <div className="flex max-h-32 shrink-0 flex-col border-b border-ink-800 sm:max-h-none sm:w-44 sm:border-b-0 sm:border-r md:w-52">
+      <div className="flex max-h-28 shrink-0 flex-col border-b border-ink-800 sm:max-h-none sm:w-44 sm:border-b-0 sm:border-r md:w-52">
         <select
           aria-label="Object"
           value={ownerId(owner)}

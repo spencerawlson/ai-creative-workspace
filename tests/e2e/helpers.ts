@@ -153,3 +153,14 @@ export async function dragOnPage(
     await page.mouse.up();
   }
 }
+
+/** A timeline control; on phones the secondary ones sit behind "More". */
+export async function timelineControl(page: Page, id: string) {
+  const control = page.getByTestId(id);
+  if (!(await control.isVisible())) {
+    const more = page.getByTestId("timeline-more");
+    if ((await more.getAttribute("aria-expanded")) !== "true")
+      await more.click();
+  }
+  return control;
+}

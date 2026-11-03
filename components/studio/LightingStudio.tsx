@@ -551,7 +551,11 @@ export function LightingStudio() {
             "flex flex-col bg-black",
             previewing
               ? "fixed inset-0 z-50 h-dvh"
-              : "relative h-[46dvh] shrink-0 md:h-auto md:min-w-0 md:flex-1",
+              : cx(
+                  "relative shrink-0 md:h-auto md:min-w-0 md:flex-1",
+                  // Phones: a shorter view while the graph editor is open.
+                  graphOpen ? "h-[30dvh]" : "h-[46dvh]",
+                ),
           )}
           data-testid={previewing ? "preview-screen" : undefined}
         >
