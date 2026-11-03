@@ -21,12 +21,24 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Or pose directly in the viewport with a mouse or a finger: drag a
   body part, or a joint circle of the Maya-style skeleton overlay;
   grabbing a palm lifts the whole arm, grabbing a finger curls it.
+- Type a pose or a move instead of building it: a built-in library of
+  over 60 (walk, run, jog, jump, kick, punch, throw, catch, wave, clap,
+  eat, drink, sit, sit down, kneel, squat, bow, dance, stretch, pick up,
+  push, pull, climb, laugh, cry…). Search understands other words and
+  word forms ("sprint", "having dinner", "eating"), forgives typos
+  ("walkng"), and reads "left", "3 times", "slowly", "in place" and
+  "backwards". A pose applies at once; a move becomes ordinary
+  keyframes from the current time on that figure (one undo step) and
+  plays. Feet stay on the floor (figures move up and down to sit,
+  kneel or jump), and walks travel the way the figure faces in whole
+  strides, staying in the studio. Lying down, crawling and swimming
+  aren't possible yet: figures can't be tipped over.
 - Keyframe animation of figures, lights and the camera: a timeline with
   play/pause, scrubbing, keys you can drag to retime, Maya-style
   auto-key, loop and length; a full-window preview (V); and a graph
   editor (G) showing every animated value as a curve, where you drag a
-  key's point to change it, choose smooth, linear or stepped
-  interpolation per key, and tilt Bézier tangent handles. Animations are
+  key's point to change it, choose smooth, linear, stepped or spline
+  (Maya-style auto tangents) interpolation per key, and tilt Bézier tangent handles. Animations are
   kept in autosave, project files and share links (compressed; a very
   long animation is shared as its current frame), and export as an MP4
   or WebM video, rendered frame by frame in the browser.
@@ -38,6 +50,9 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
 - Autosave in this browser, `.lighting.json` project files, PNG/JPEG
   export up to the device limit (4K and beyond), with optional
   transparent backgrounds.
+- On phones, the panels below the view are a bottom sheet: tap the
+  handle or swipe down to fold them to a slim bar and give the 3D view
+  the screen.
 - `/photography`: the Camera Basics lesson on the same engine.
 
 There are no accounts, backend, or AI features yet. See
