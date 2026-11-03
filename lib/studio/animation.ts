@@ -26,7 +26,6 @@ import {
   type Animation,
   type CameraPlacement,
   type Channel,
-  type Ease,
   type Keyframe,
   type LightKey,
   type SceneDoc,
