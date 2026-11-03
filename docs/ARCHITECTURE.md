@@ -19,6 +19,10 @@ lib/studio/             Framework-free scene model (pure TS, unit-tested)
   history.ts            Undo/redo over SceneDocs
   presets.ts            Lighting, material, backdrop presets; defaults
   figures.ts            Figure helpers: lookup, labels, ids, free spots
+  animation.ts          Keyframes: snapshot, upsert, evaluate (easing,
+                        short-way angles), per-channel get/set
+  channels.ts           Animated values per figure/light/camera: labels,
+                        ranges, rounding (graph editor)
   pose.ts               Mannequin joints, limits, pose presets, mirror
   share.ts              ?s= link codec v2 (reads M3 v1 links)
   persistence.ts        Local autosave + .lighting.json project files
@@ -69,6 +73,21 @@ puts `SkeletonUtils` clones on stage, each with its own skeleton,
 capsules and overlay but shared geometry and materials. Pose and model
 actions carry an optional `figure` (omitted = the first). The UI keeps
 an "active figure" that the mannequin and pose controls act on.
+
+**Keyframes.** `scene.animation` holds a length and up to 60 keys. A
+key is a snapshot at a time of what moves: each figure's place, turn
+and joints, each light's settings, and optionally the camera placement
+(orbit position and target, not otherwise saved) and focal length.
+`evaluate(scene, t)` interpolates between the keys around `t` (smooth,
+linear or step per key; wrapping angles go the short way) and is pure.
+Moving the playhead is a history `showTime` command: it replaces what
+moves in the current entry without adding an undo step, so unkeyed
+edits are dropped, as in Maya. With auto-key on, `useStudio` tags each
+commit with the current time; an edit that changes something keys
+record is applied and keyed as one undo step. Playback runs in the
+timeline component and draws each frame straight to the engine
+(`ViewportHandle.preview`), not through React. Share links stay
+frame-only: an animation doesn't fit in a URL.
 
 ## 2. Persistent workspace (Designed — not built)
 
