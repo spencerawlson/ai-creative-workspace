@@ -304,6 +304,7 @@ function encodeAnimation(scene: SceneDoc) {
             rename(ch),
             r3(tg.in),
             r3(tg.out),
+            ...(tg.broken ? [1] : []),
           ])
         : 0,
     ]),
@@ -372,8 +373,15 @@ function decodeAnimation(
           ? {
               tangents: Object.fromEntries(
                 tangents.map((tg) => {
-                  const [ch, tin, tout] = arr(tg);
-                  return [ch, { in: tin, out: tout }];
+                  const [ch, tin, tout, broken] = arr(tg);
+                  return [
+                    ch,
+                    {
+                      in: tin,
+                      out: tout,
+                      ...(broken === 1 ? { broken: true } : {}),
+                    },
+                  ];
                 }),
               ),
             }

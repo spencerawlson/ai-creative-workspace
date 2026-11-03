@@ -24,7 +24,12 @@ import {
   type CameraPlacement,
   type SceneDoc,
 } from "@/lib/studio/schema";
-import { decodeScene, encodeScene } from "@/lib/studio/share";
+import {
+  decodeScene,
+  decodeSceneLink,
+  encodeScene,
+  encodeSceneLink,
+} from "@/lib/studio/share";
 
 const apply = (s: SceneDoc, a: SceneAction) => {
   const r = applyAction(s, a);
@@ -369,6 +374,87 @@ describe("graph editor: tangents", () => {
       expect(at(s, t)).toBeGreaterThanOrEqual(0);
       expect(at(s, t)).toBeLessThanOrEqual(145);
     }
+  });
+
+  it("Flat / Reset on several curves at once is one undo step", () => {
+    const x = { kind: "figure", figure: "fig-1", field: "x" } as const;
+    let h = createHistory(twoKeys());
+    h = historyReducer(h, {
+      type: "commit",
+      now: 0,
+      action: {
+        type: "setKeyTangents",
+        t: 0,
+        changes: [
+          { channel: elbow, tangent: { in: 60, out: 60 } },
+          { channel: x, tangent: { in: 0.5, out: 0.5 } },
+        ],
+      },
+    });
+    const tg = present(h).animation.keys[0].tangents!;
+    expect(Object.keys(tg)).toHaveLength(2);
+    h = historyReducer(h, { type: "undo" });
+    expect(present(h).animation.keys[0].tangents).toBeUndefined();
+    // Reset (null) clears them together too.
+    const reset = apply(present(historyReducer(h, { type: "redo" })), {
+      type: "setKeyTangents",
+      t: 0,
+      changes: [
+        { channel: elbow, tangent: null },
+        { channel: x, tangent: null },
+      ],
+    });
+    expect(reset.animation.keys[0].tangents).toBeUndefined();
+  });
+
+  it("a broken tangent's sides move separately; unify joins them", () => {
+    let s = apply(twoKeys(), {
+      type: "setKeyTangents",
+      t: 2,
+      changes: [{ channel: elbow, tangent: { in: 20, out: 20, broken: true } }],
+    });
+    s = apply(s, {
+      type: "setKeyTangent",
+      t: 2,
+      channel: elbow,
+      slope: 90,
+      side: "in",
+    });
+    const key = () => s.animation.keys[1].tangents!;
+    const [only] = Object.values(key());
+    expect(only).toEqual({ in: 90, out: 20, broken: true });
+    // The incoming side shapes the curve into the key.
+    expect(at(s, 1.8)).not.toBe(at(twoKeys(), 1.8));
+    // Unbroken: a drag on either side moves both.
+    s = apply(s, {
+      type: "setKeyTangents",
+      t: 2,
+      changes: [{ channel: elbow, tangent: { in: 20, out: 20 } }],
+    });
+    s = apply(s, {
+      type: "setKeyTangent",
+      t: 2,
+      channel: elbow,
+      slope: 40,
+      side: "in",
+    });
+    expect(Object.values(key())[0]).toEqual({ in: 40, out: 40 });
+  });
+
+  it("broken tangents survive save and share", async () => {
+    const s = apply(twoKeys(), {
+      type: "setKeyTangents",
+      t: 2,
+      changes: [{ channel: elbow, tangent: { in: 10, out: -5, broken: true } }],
+    });
+    expect(SceneSchema.parse(JSON.parse(JSON.stringify(s)))).toEqual(s);
+    const { param } = await encodeSceneLink(s);
+    const back = (await decodeSceneLink(param))!;
+    expect(Object.values(back.animation.keys[1].tangents!)[0]).toEqual({
+      in: 10,
+      out: -5,
+      broken: true,
+    });
   });
 
   it("re-keying keeps tangents; unknown channels are refused", () => {

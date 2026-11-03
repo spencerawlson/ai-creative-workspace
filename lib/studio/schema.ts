@@ -208,7 +208,12 @@ export const KeyframeSchema = z.object({
   tangents: z
     .record(
       z.string().max(48),
-      z.object({ in: z.number().finite(), out: z.number().finite() }),
+      z.object({
+        in: z.number().finite(),
+        out: z.number().finite(),
+        /** Broken (Maya): the in and out handles move separately. */
+        broken: z.literal(true).optional(),
+      }),
     )
     .optional(),
   figures: z.record(FigureIdSchema, FigureKeySchema),
