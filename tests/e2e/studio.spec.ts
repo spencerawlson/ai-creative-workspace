@@ -501,7 +501,7 @@ test.describe("Lighting Studio — critical journeys", () => {
     // Tangent handle: tilt the curve through the 2 s key; the value
     // between the keys changes.
     await scrub.fill("1.5");
-    const smooth = poseValue(page, "shoulderR", "raise");
+    const smooth = await poseValue(page, "shoulderR", "raise");
     await point.click();
     const handle = page.getByTestId(
       "graph-tangent-fig-1.shoulderR.raise@2.00-in",
