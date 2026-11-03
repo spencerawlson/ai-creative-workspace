@@ -25,9 +25,10 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
-import type { JointId } from "@/lib/studio/pose";
+import { FINGERS, type JointId } from "@/lib/studio/pose";
 import {
   BONE_NAMES,
+  CORE_BONES,
   JOINT_DOTS,
   applyPose,
   dragVariables,
@@ -51,9 +52,11 @@ export type CameraView = "face" | "full" | "studio";
  * (a body part tapped in the viewport). */
 export type Selection = string | null;
 
+/** `?v=` changes whenever the GLBs are rebuilt (v2: feet and fingers),
+ * so browsers don't keep a cached older rig for a week. */
 export const MODEL_URLS: Record<MannequinModel, string> = {
-  male: "/models/mannequin-male.glb",
-  female: "/models/mannequin-female.glb",
+  male: "/models/mannequin-male.glb?v=2",
+  female: "/models/mannequin-female.glb?v=2",
 };
 
 export interface EngineStatus {
@@ -198,7 +201,8 @@ interface CachedModel {
 
 /** Tap targets: one invisible capsule per bone, from the joint to the
  * next joint (or limb tip), radius as a fraction of figure height. */
-const PICK_CAPSULES: Array<[BoneName, BoneName | "tip", number, JointId]> = [
+type Capsule = [BoneName, BoneName | "tip", number, JointId];
+const PICK_CAPSULES: Capsule[] = [
   ["pelvis", "spine", 0.09, "spine"],
   ["spine", "neck", 0.1, "spine"],
   ["neck", "tip", 0.06, "head"],
@@ -213,6 +217,31 @@ const PICK_CAPSULES: Array<[BoneName, BoneName | "tip", number, JointId]> = [
   ["hipR", "kneeR", 0.06, "hipR"],
   ["kneeR", "tip", 0.045, "kneeR"],
 ];
+
+/** Version 2 rigs: the hand capsule covers the palm only and each
+ * finger, thumb and foot gets its own (finger-thin, so a tap picks the
+ * right finger even on a phone, where the hand is small). */
+function pickCapsules(full: boolean): Capsule[] {
+  if (!full) return PICK_CAPSULES;
+  const out = PICK_CAPSULES.filter(([b]) => !/^(wrist|knee)/.test(b));
+  for (const s of ["L", "R"] as const) {
+    out.push(
+      [`wrist${s}`, `middle1${s}`, 0.03, `wrist${s}`],
+      [`knee${s}`, `ankle${s}`, 0.045, `knee${s}`],
+      [`ankle${s}`, "tip", 0.04, `ankle${s}`],
+      [`thumb1${s}`, `thumb2${s}`, 0.014, `thumb1${s}`],
+      [`thumb2${s}`, `thumb3${s}`, 0.008, `thumb2${s}`],
+      [`thumb3${s}`, "tip", 0.008, `thumb3${s}`],
+    );
+    for (const f of FINGERS)
+      out.push(
+        [`${f}1${s}`, `${f}2${s}`, 0.007, `${f}1${s}`],
+        [`${f}2${s}`, `${f}3${s}`, 0.006, `${f}2${s}`],
+        [`${f}3${s}`, "tip", 0.006, `${f}3${s}`],
+      );
+  }
+  return out;
+}
 /** Where the face camera aims, between the base of the neck and the
  * crown. 0.445 reproduces the pre-rig vertex-average heuristic. */
 const HEAD_FRACTION = 0.445;
@@ -1182,7 +1211,10 @@ export class StudioEngine {
     const bones = {} as Record<BoneName, THREE.Bone>;
     for (const b of skinned.skeleton.bones) bones[b.name as BoneName] = b;
     const tips = (skinned.userData.rig?.tips ?? {}) as Record<string, number[]>;
-    if (BONE_NAMES.some((n) => !bones[n]) || !tips.neck) return null;
+    if (CORE_BONES.some((n) => !bones[n]) || !tips.neck) return null;
+    // Version 2 rigs add feet and fingers; older (cached) GLBs still pose.
+    const full =
+      BONE_NAMES.every((n) => bones[n]) && !!skinned.userData.rig?.palm;
     // Posed limbs leave the bind-pose bounds, and the one figure is
     // always in view, so skip culling. Taps hit the capsules instead of
     // CPU-skinning half a million triangles.
@@ -1207,11 +1239,37 @@ export class StudioEngine {
       kneeL: tip("kneeL"),
       kneeR: tip("kneeR"),
     };
+    if (full) {
+      const palm = skinned.userData.rig.palm as Record<
+        "L" | "R",
+        { normal: number[]; thumb: number[] }
+      >;
+      dirs.bones = {};
+      dirs.palm = { L: undefined!, R: undefined! };
+      for (const s of ["L", "R"] as const) {
+        dirs.palm[s] = {
+          normal: new THREE.Vector3().fromArray(palm[s].normal).normalize(),
+          thumb: new THREE.Vector3().fromArray(palm[s].thumb).normalize(),
+        };
+        delete tipOf[`knee${s}`]; // the shin now ends at the ankle
+        tipOf[`ankle${s}`] = tip(`ankle${s}`);
+        for (const f of ["thumb", ...FINGERS] as const) {
+          const [b1, b2, b3] = ([1, 2, 3] as const).map(
+            (k) => `${f}${k}${s}` as BoneName,
+          );
+          tipOf[b3] = tip(b3);
+          dirs.bones[b1] = dir(at(b1), at(b2));
+          dirs.bones[b2] = dir(at(b2), at(b3));
+          dirs.bones[b3] = dir(at(b3), tipOf[b3]!);
+        }
+      }
+    }
     return {
       bones,
       dirs,
       at,
       tipOf,
+      full,
       neckY: at("neck").y,
       crownY: tipOf.neck!.y,
     };
@@ -1232,7 +1290,7 @@ export class StudioEngine {
     const at = (b: BoneName) => root.worldToLocal(rig.at(b));
     const material = new THREE.MeshBasicMaterial();
     const up = new THREE.Vector3(0, 1, 0);
-    for (const [bone, to, radius, joint] of PICK_CAPSULES) {
+    for (const [bone, to, radius, joint] of pickCapsules(rig.full)) {
       const a = at(bone);
       const b = to === "tip" ? rig.tipOf[bone]! : at(to);
       const r = radius * height;
@@ -1272,7 +1330,13 @@ export class StudioEngine {
     const activeDotMaterial = overlay(
       new THREE.MeshBasicMaterial({ color: JOINT_GREEN }),
     );
-    const dots: PoseDot[] = JOINT_DOTS.map((def) => {
+    // Older rigs have no feet or fingers to put dots on.
+    const defs = JOINT_DOTS.filter(
+      (d) =>
+        rig.bones[d.bone] &&
+        (d.effector === "tip" ? rig.tipOf[d.bone] : rig.bones[d.effector]),
+    );
+    const dots: PoseDot[] = defs.map((def) => {
       const joint = at(def.bone);
       const end =
         def.effector === "tip" ? rig.tipOf[def.bone]! : at(def.effector);
@@ -1330,7 +1394,12 @@ export class StudioEngine {
       if (!rig) continue;
       const on = show && inst === active;
       rig.lines.visible = on;
-      for (const d of rig.dots) d.ring.visible = on;
+      // Finger dots: only while posing that hand (its wrist or a finger).
+      const hand = joint?.match(
+        /^(wrist|thumb|index|middle|ring|pinky)\d?(L|R)$/,
+      )?.[2];
+      for (const d of rig.dots)
+        d.ring.visible = on && (!d.def.detail || d.def.detail === hand);
       if (!on) continue;
       const scale = inst.object.scale.x;
       const p = new THREE.Vector3();
@@ -1456,7 +1525,7 @@ export class StudioEngine {
     const rig = active?.rig;
     const dotHit = rig
       ? this.raycaster.intersectObjects(
-          rig.dots.map((d) => d.pick),
+          rig.dots.filter((d) => d.ring.visible).map((d) => d.pick),
           false,
         )[0]
       : undefined;
