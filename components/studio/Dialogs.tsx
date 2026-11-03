@@ -302,11 +302,7 @@ export function VideoExportDialog({
     setProgress(0);
     abort.current = new AbortController();
     try {
-      const {
-        blob,
-        format: f,
-        slowFrames,
-      } = await recordVideo({
+      const { blob, format: f } = await recordVideo({
         viewport: viewport.current!,
         scene: studio.scene,
         width: size.w,
@@ -321,9 +317,7 @@ export function VideoExportDialog({
         `${slug(studio.name)}-animation-${size.w}x${size.h}.${f.extension}`,
       );
       studio.notify(
-        slowFrames > 0
-          ? `Exported ${f.extension.toUpperCase()} video. ${slowFrames} frames were drawn slower than ${fps} fps on this device, so parts of it run slower.`
-          : `Exported ${duration} s ${size.w} × ${size.h} ${f.extension.toUpperCase()} video.`,
+        `Exported ${duration} s ${size.w} × ${size.h} ${f.extension.toUpperCase()} video.`,
       );
       onClose();
     } catch (e) {
@@ -363,8 +357,8 @@ export function VideoExportDialog({
             data-testid="video-confirm"
           >
             {busy
-              ? `Recording… ${Math.round(progress * 100)}%`
-              : `Record ${format?.extension.toUpperCase() ?? "video"}`}
+              ? `Rendering… ${Math.round(progress * 100)}%`
+              : `Export ${format?.extension.toUpperCase() ?? "video"}`}
           </Button>
         </>
       }
@@ -408,7 +402,7 @@ export function VideoExportDialog({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
-          aria-label="Recording progress"
+          aria-label="Export progress"
           className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink-800"
         >
           <div
@@ -419,12 +413,12 @@ export function VideoExportDialog({
       )}
       <p className="mt-2 text-2xs text-ink-400" data-testid="video-summary">
         {format === undefined
-          ? "Checking which video format this browser can record…"
+          ? "Checking which video format this browser can encode…"
           : !format
-            ? "This browser can't record video. Try a current Chrome, Edge, Firefox or Safari."
+            ? "This browser can't encode video. Try a current Chrome, Edge, Firefox or Safari."
             : keys.length === 0
               ? "There's no animation yet: set keyframes on the timeline first."
-              : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()}. Recording plays the animation in real time; on a slow device parts of the video may run slower. Light handles are hidden.`}
+              : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()} (${format.codec === "avc" ? "H.264" : format.codec.toUpperCase()}). Every frame is rendered exactly; a slow device just takes longer. Light handles are hidden.`}
       </p>
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">

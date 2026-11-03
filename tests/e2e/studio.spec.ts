@@ -557,11 +557,19 @@ test.describe("Lighting Studio — critical journeys", () => {
     expect(file.suggestedFilename()).toMatch(
       /-animation-1280x720\.(mp4|webm)$/,
     );
-    const path = await file.path();
-    const { size } = await import("node:fs").then((fs) =>
-      fs.promises.stat(path),
+    const bytes = await import("node:fs").then(async (fs) =>
+      fs.promises.readFile(await file.path()),
     );
-    expect(size).toBeGreaterThan(1000);
+    // A real container with frames in it, not just a header.
+    const mp4 = bytes.subarray(4, 8).toString("latin1") === "ftyp";
+    const webm = bytes
+      .subarray(0, 4)
+      .equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+    expect(mp4 || webm).toBe(true);
+    expect(file.suggestedFilename().endsWith(mp4 ? ".mp4" : ".webm")).toBe(
+      true,
+    );
+    expect(bytes.length).toBeGreaterThan(5000);
     await expect(page.getByTestId("video-dialog")).toHaveCount(0);
   });
 
