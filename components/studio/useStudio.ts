@@ -29,6 +29,16 @@ export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
 
 export type Notice = { id: number; tone: "info" | "error"; text: string };
 
+/** Actions that change keyframes rather than the scene shown. */
+const KEY_EDITS = new Set<SceneAction["type"]>([
+  "setKeyValue",
+  "setKeyTangent",
+  "setKeyEase",
+  "moveKey",
+  "deleteKey",
+  "clearKeys",
+]);
+
 export interface TimelineState {
   t: number;
   autoKey: boolean;
@@ -67,6 +77,10 @@ export function useStudio() {
         gesture: opts?.gesture,
         autoKey: tl?.autoKey ? { t: tl.t, camera: tl.camera() } : undefined,
       });
+      // Editing the keys themselves (graph editor, timeline) changes
+      // what the playhead shows: show it again. Ordinary edits stay as
+      // they are until the playhead moves, keyed or not.
+      if (tl && KEY_EDITS.has(action.type)) send({ type: "showTime", t: tl.t });
     },
     [],
   );

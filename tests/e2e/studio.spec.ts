@@ -484,6 +484,26 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect
       .poll(async () => Number(await raise.inputValue()))
       .toBeLessThan(110);
+
+    // Tangent handle: tilt the curve through the 2 s key; the value
+    // between the keys changes.
+    await scrub.fill("1.5");
+    const smooth = Number(await raise.inputValue());
+    await point.click();
+    const handle = page.getByTestId(
+      "graph-tangent-fig-1.shoulderR.raise@2.00-in",
+    );
+    const h = (await handle.boundingBox())!;
+    const hc = { x: h.x + h.width / 2, y: h.y + h.height / 2 };
+    await dragOnPage(page, info, hc, { x: hc.x, y: hc.y + 60 });
+    await scrub.fill("1.5");
+    await expect
+      .poll(async () => Number(await raise.inputValue()))
+      .not.toBe(smooth);
+    // Reset brings the smooth curve back.
+    await page.getByTestId("graph-tangent-reset").click();
+    await scrub.fill("1.5");
+    await expect(raise).toHaveValue(String(smooth));
   });
 
   test("tapping the figure opens the pose controls for that body part", async ({
