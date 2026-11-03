@@ -162,6 +162,11 @@ export function GraphEditor({
   const padV = (hi - lo) * 0.1;
   lo -= padV;
   hi += padV;
+  // While a point or handle is held, the scale stays put (as in Maya):
+  // refitting under the pointer fed back into the drag, badly on a
+  // phone's short plot.
+  const [frozen, setFrozen] = useState<{ lo: number; hi: number } | null>(null);
+  if (frozen) ({ lo, hi } = frozen);
 
   // Until measured nothing is drawn; these just keep the maths finite.
   const sw = size?.w ?? 1;
@@ -441,6 +446,7 @@ export function GraphEditor({
                       onPointerDown={(e) => {
                         e.currentTarget.setPointerCapture(e.pointerId);
                         setPicked(k.t);
+                        setFrozen({ lo, hi });
                         drag.current = {
                           t: k.t,
                           channel: c.channel,
@@ -484,6 +490,7 @@ export function GraphEditor({
                       onPointerUp={() => {
                         const d = drag.current;
                         drag.current = null;
+                        setFrozen(null);
                         if (!d) return;
                         if (d.axis) seal();
                         onSeek(d.t);
@@ -526,6 +533,7 @@ export function GraphEditor({
                       aria-label={`${c.label} tangent at ${pickedKey.t.toFixed(2)} s`}
                       onPointerDown={(e) => {
                         e.currentTarget.setPointerCapture(e.pointerId);
+                        setFrozen({ lo, hi });
                         handleDrag.current = {
                           t: pickedKey.t,
                           channel: c.channel,
@@ -551,6 +559,7 @@ export function GraphEditor({
                       onPointerUp={() => {
                         if (handleDrag.current) seal();
                         handleDrag.current = null;
+                        setFrozen(null);
                       }}
                     />
                   );
