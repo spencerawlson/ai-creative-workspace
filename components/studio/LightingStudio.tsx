@@ -443,6 +443,26 @@ export function LightingStudio() {
     history: <HistoryPanel studio={studio} />,
   };
 
+  const timeline = (
+    <Timeline
+      studio={studio}
+      graphOpen={graphOpen}
+      onGraph={setGraphOpen}
+      viewport={viewport}
+      time={time}
+      onSeek={seek}
+      autoKey={autoKey}
+      onAutoKey={setAutoKey}
+      keyCamera={keyCamera}
+      onKeyCamera={setKeyCamera}
+      loop={loop}
+      onLoop={setLoop}
+      preview={previewing}
+      onPreview={setPreviewing}
+      playRequest={playRequest}
+    />
+  );
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-ink-950">
       <Toolbar
@@ -526,7 +546,7 @@ export function LightingStudio() {
             "flex flex-col bg-black",
             previewing
               ? "fixed inset-0 z-50 h-dvh"
-              : "relative h-[52dvh] shrink-0 md:h-auto md:min-w-0 md:flex-1",
+              : "relative h-[46dvh] shrink-0 md:h-auto md:min-w-0 md:flex-1",
           )}
           data-testid={previewing ? "preview-screen" : undefined}
         >
@@ -574,32 +594,7 @@ export function LightingStudio() {
               />
             )}
           </div>
-          {graphOpen && !previewing && (
-            <GraphEditor
-              studio={studio}
-              figure={figure}
-              selection={validSelection}
-              time={time}
-              onSeek={seek}
-            />
-          )}
-          <Timeline
-            studio={studio}
-            graphOpen={graphOpen}
-            onGraph={setGraphOpen}
-            viewport={viewport}
-            time={time}
-            onSeek={seek}
-            autoKey={autoKey}
-            onAutoKey={setAutoKey}
-            keyCamera={keyCamera}
-            onKeyCamera={setKeyCamera}
-            loop={loop}
-            onLoop={setLoop}
-            preview={previewing}
-            onPreview={setPreviewing}
-            playRequest={playRequest}
-          />
+          {previewing && timeline}
         </main>
 
         {isDesktop ? (
@@ -642,6 +637,20 @@ export function LightingStudio() {
         )}
       </div>
 
+      {!previewing && (
+        <div className="shrink-0">
+          {graphOpen && (
+            <GraphEditor
+              studio={studio}
+              figure={figure}
+              selection={validSelection}
+              time={time}
+              onSeek={seek}
+            />
+          )}
+          {timeline}
+        </div>
+      )}
       <Notices studio={studio} />
       <ExportDialog
         open={exportOpen}
