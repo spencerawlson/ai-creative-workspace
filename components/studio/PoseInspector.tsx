@@ -153,8 +153,8 @@ export function PoseInspector({
         </div>
         <p className="mt-1.5 text-2xs text-ink-400">
           Left and right are the mannequin&apos;s own. In the viewport, drag a
-          body part to pose it; grab a hand to move the whole arm. Pick a hand
-          here to see and drag its finger joints.
+          body part to pose it; grab a palm to move the whole arm, a finger to
+          curl it. Pick a hand here to see and drag its finger joints.
         </p>
 
         {hand && (

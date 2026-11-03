@@ -1454,9 +1454,11 @@ export class StudioEngine {
       const bone = rig.bones[d.def.bone];
       put(d.def.joint, bone.getWorldPosition(new THREE.Vector3()));
       if (d.def.bone.startsWith("wrist"))
+        // The middle of the palm (a third of the way to the fingertips):
+        // with finger bones, halfway is already on the knuckles.
         put(
           `hand${d.def.bone.slice(-1)}`,
-          bone.localToWorld(d.effector.clone().multiplyScalar(0.5)),
+          bone.localToWorld(d.effector.clone().multiplyScalar(0.3)),
         );
       if (d.def.bone === "spine")
         put("body", bone.localToWorld(d.effector.clone().multiplyScalar(0.5)));

@@ -20,7 +20,7 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Hand on hip…), mirror, and tap a body part to jump to its controls.
   Or pose directly in the viewport with a mouse or a finger: drag a
   body part, or a joint circle of the Maya-style skeleton overlay;
-  grabbing a hand lifts the whole arm.
+  grabbing a palm lifts the whole arm, grabbing a finger curls it.
 - Keyframe animation of figures, lights and the camera: a timeline with
   play/pause, scrubbing, keys you can drag to retime, Maya-style
   auto-key, loop and length; a full-window preview (V); and a graph
