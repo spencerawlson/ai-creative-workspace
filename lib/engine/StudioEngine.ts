@@ -40,6 +40,7 @@ import {
 } from "./posing";
 import {
   LIMITS,
+  type CameraPlacement,
   type MannequinModel,
   type SceneDoc,
   type StudioLight,
@@ -116,6 +117,8 @@ export interface EngineCallbacks {
   /** A figure is being dragged across the floor (metres). */
   onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
   onFigureMoveEnd?: () => void;
+  /** The user finished orbiting or zooming the camera. */
+  onCameraEnd?: () => void;
   onStatus?: (status: EngineStatus) => void;
 }
 
@@ -631,8 +634,24 @@ export class StudioEngine {
 
   private onControlsEnd = () => {
     this.interacting = false;
+    this.callbacks.onCameraEnd?.();
     this.invalidate();
   };
+
+  /** Where the camera is and what it orbits around. */
+  getCameraPlacement(): CameraPlacement {
+    return {
+      position: this.camera.position.toArray(),
+      target: this.controls.target.toArray(),
+    };
+  }
+
+  setCameraPlacement(p: CameraPlacement): void {
+    this.camera.position.fromArray(p.position);
+    this.controls.target.fromArray(p.target);
+    this.controls.update();
+    this.invalidate();
+  }
 
   // ---------------------------------------------------------------- lights
 

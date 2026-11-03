@@ -16,7 +16,7 @@ import { flattenJoints, unflattenJoints, type PoseJoints } from "./pose";
 import {
   LIMITS,
   type Animation,
-  type CameraView,
+  type CameraPlacement,
   type Keyframe,
   type LightKey,
   type SceneDoc,
@@ -30,7 +30,7 @@ export const roundTime = (t: number) => Math.round(t * 100) / 100;
 export function snapshot(
   scene: SceneDoc,
   t: number,
-  camera?: CameraView,
+  camera?: CameraPlacement,
 ): Keyframe {
   return {
     t: roundTime(t),
@@ -146,7 +146,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 export function evaluate(
   scene: SceneDoc,
   t: number,
-): { scene: SceneDoc; view: CameraView | null } {
+): { scene: SceneDoc; view: CameraPlacement | null } {
   const keys = scene.animation.keys;
   if (keys.length === 0) return { scene, view: null };
   const figures = scene.figures.map((f) => {
@@ -191,10 +191,10 @@ export function evaluate(
   const view = cam && {
     position: cam.a.view.position.map((v, i) =>
       lerp(v, cam.b.view.position[i], cam.u),
-    ) as CameraView["position"],
+    ) as CameraPlacement["position"],
     target: cam.a.view.target.map((v, i) =>
       lerp(v, cam.b.view.target[i], cam.u),
-    ) as CameraView["target"],
+    ) as CameraPlacement["target"],
   };
   return {
     scene: {

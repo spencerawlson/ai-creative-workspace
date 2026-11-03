@@ -19,7 +19,7 @@ import {
   ModelSchema,
   SceneSchema,
   AnimationSchema,
-  CameraViewSchema,
+  CameraPlacementSchema,
   FigureIdSchema,
   FigureSchema,
   type Figure,
@@ -195,7 +195,7 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       // Record what moves, at time `t`; replaces a key already there.
       type: z.literal("setKey"),
       t: keyTime,
-      camera: CameraViewSchema.optional(),
+      camera: CameraPlacementSchema.optional(),
     })
     .strict(),
   z.object({ type: z.literal("deleteKey"), t: keyTime }).strict(),

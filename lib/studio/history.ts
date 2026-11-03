@@ -15,7 +15,7 @@ import {
   type SceneAction,
 } from "./actions";
 import { evaluate } from "./animation";
-import type { CameraView, SceneDoc } from "./schema";
+import type { CameraPlacement, SceneDoc } from "./schema";
 
 export const HISTORY_LIMIT = 100;
 export const COALESCE_MS = 800;
@@ -62,7 +62,7 @@ export type HistoryCommand =
       now: number;
       gesture?: boolean;
       /** Auto-key: also key what moves at time `t`, in the same step. */
-      autoKey?: { t: number; camera?: CameraView };
+      autoKey?: { t: number; camera?: CameraPlacement };
     }
   /** Show the animation at time `t`: replaces what moves in the
    * current entry, without a new undo step (unkeyed changes are dropped,

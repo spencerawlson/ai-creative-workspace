@@ -156,11 +156,11 @@ const vec3 = z.tuple([
 ]);
 
 /** Where the viewport camera is and what it looks at (orbit target). */
-export const CameraViewSchema = z.object({
+export const CameraPlacementSchema = z.object({
   position: vec3,
   target: vec3,
 });
-export type CameraView = z.infer<typeof CameraViewSchema>;
+export type CameraPlacement = z.infer<typeof CameraPlacementSchema>;
 
 /** What a keyframe records for one figure, light and the camera. The
  * model, light kinds and ids are structure, not animated. */
@@ -190,7 +190,7 @@ export const KeyframeSchema = z.object({
   lights: z.record(LightSchema.shape.id, LightKeySchema),
   /** Absent when the camera wasn't keyed. */
   camera: z
-    .object({ view: CameraViewSchema, focalMm: num("focalMm") })
+    .object({ view: CameraPlacementSchema, focalMm: num("focalMm") })
     .optional(),
 });
 export type Keyframe = z.infer<typeof KeyframeSchema>;

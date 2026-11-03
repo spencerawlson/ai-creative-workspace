@@ -23,7 +23,7 @@ import {
 import { loadAutosave, saveAutosave } from "@/lib/studio/persistence";
 import { defaultScene } from "@/lib/studio/presets";
 import { decodeScene, encodeScene } from "@/lib/studio/share";
-import type { CameraView } from "@/lib/studio/schema";
+import type { CameraPlacement } from "@/lib/studio/schema";
 
 export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
 
@@ -33,7 +33,7 @@ export interface TimelineState {
   t: number;
   autoKey: boolean;
   /** The camera view to record in keys, or undefined to not key it. */
-  camera: () => CameraView | undefined;
+  camera: () => CameraPlacement | undefined;
 }
 
 export function useStudio() {

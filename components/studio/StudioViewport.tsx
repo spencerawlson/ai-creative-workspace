@@ -23,7 +23,7 @@ import type {
 } from "@/lib/engine/StudioEngine";
 import type { JointId } from "@/lib/studio/pose";
 import { nudgeLight } from "@/lib/studio/actions";
-import type { SceneDoc } from "@/lib/studio/schema";
+import type { CameraPlacement, SceneDoc } from "@/lib/studio/schema";
 import { cx } from "./ui";
 
 export interface ViewportHandle {
@@ -31,6 +31,11 @@ export interface ViewportHandle {
   runBenchmark(durationMs?: number): Promise<BenchmarkResult>;
   getStats(): EngineStats | null;
   viewportSize(): { width: number; height: number };
+  cameraPlacement(): CameraPlacement | undefined;
+  setCameraPlacement(p: CameraPlacement): void;
+  /** Draw `scene` now, without waiting for React (animation playback).
+   * The next prop update draws the real scene again. */
+  preview(scene: SceneDoc): void;
 }
 
 type Status = "starting" | "loading" | "ready" | "error" | "unsupported";
@@ -51,6 +56,7 @@ export function StudioViewport({
   activeFigure = null,
   onFigureMove,
   onFigureMoveEnd,
+  onCameraEnd,
   className,
   label = "3D lighting studio viewport",
 }: {
@@ -76,6 +82,7 @@ export function StudioViewport({
   activeFigure?: string | null;
   onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
   onFigureMoveEnd?: () => void;
+  onCameraEnd?: () => void;
   className?: string;
   label?: string;
 }) {
@@ -99,6 +106,7 @@ export function StudioViewport({
     activeFigure,
     onFigureMove,
     onFigureMoveEnd,
+    onCameraEnd,
   });
   latest.current = {
     scene,
@@ -115,6 +123,7 @@ export function StudioViewport({
     activeFigure,
     onFigureMove,
     onFigureMoveEnd,
+    onCameraEnd,
   };
 
   useEffect(() => {
@@ -134,6 +143,7 @@ export function StudioViewport({
             onPoseDragEnd: () => latest.current.onPoseDragEnd?.(),
             onFigureMove: (f, at) => latest.current.onFigureMove?.(f, at),
             onFigureMoveEnd: () => latest.current.onFigureMoveEnd?.(),
+            onCameraEnd: () => latest.current.onCameraEnd?.(),
             onStatus: (s) => {
               setStatus(s.model);
               setMessage(s.message ?? null);
@@ -204,6 +214,10 @@ export function StudioViewport({
         width: containerRef.current?.clientWidth ?? 0,
         height: containerRef.current?.clientHeight ?? 0,
       }),
+      cameraPlacement: () => engineRef.current?.getCameraPlacement(),
+      setCameraPlacement: (p) => engineRef.current?.setCameraPlacement(p),
+      preview: (scene) =>
+        engineRef.current?.update(scene, latest.current.overrides),
     }),
     [],
   );

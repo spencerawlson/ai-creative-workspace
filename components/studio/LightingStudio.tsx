@@ -35,6 +35,8 @@ import type { JointId } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
 import { HistoryPanel, PresetsPanel, ScenePanel } from "./Panels";
 import { StudioViewport, type ViewportHandle } from "./StudioViewport";
+import { Timeline } from "./Timeline";
+import { evaluate } from "@/lib/studio/animation";
 import { Button, IconButton, cx } from "./ui";
 import {
   copyText,
@@ -67,6 +69,11 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+/** Space on a focused button presses it; don't also play/pause. */
+function isButton(el: EventTarget | null): boolean {
+  return el instanceof HTMLElement && el.closest("button") !== null;
+}
+
 function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   if (
@@ -91,6 +98,13 @@ export function LightingStudio() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [selection, setSelection] = useState<Selection>(null);
+  // Keyframe timeline: where edits are keyed, and how.
+  const [time, setTime] = useState(0);
+  const [autoKey, setAutoKey] = useState(false);
+  const [keyCamera, setKeyCamera] = useState(true);
+  const [loop, setLoop] = useState(true);
+  const [previewing, setPreviewing] = useState(false);
+  const [playRequest, setPlayRequest] = useState(0);
   // The figure the mannequin and pose controls act on.
   const [activeId, setActiveId] = useState<string | null>(null);
   const figure =
@@ -148,6 +162,39 @@ export function LightingStudio() {
     [dispatch],
   );
 
+  // Show the animation at time t (also where the next edit is keyed).
+  const sceneNow = useRef(scene);
+  sceneNow.current = scene;
+  const seek = useCallback(
+    (t: number) => {
+      setTime(t);
+      studio.showTime(t);
+      const view = keyCamera ? evaluate(sceneNow.current, t).view : null;
+      if (view) viewport.current?.setCameraPlacement(view);
+    },
+    [studio, keyCamera],
+  );
+
+  // Every dispatch reads this to auto-key at the current time.
+  useEffect(() => {
+    studio.timeline.current = {
+      t: time,
+      autoKey,
+      camera: () =>
+        keyCamera ? viewport.current?.cameraPlacement() : undefined,
+    };
+  }, [studio.timeline, time, autoKey, keyCamera]);
+
+  // Auto-key: finishing an orbit keys the camera too.
+  const onCameraEnd = useCallback(() => {
+    if (!autoKey || !keyCamera || previewing) return;
+    dispatch({
+      type: "setKey",
+      t: time,
+      camera: viewport.current?.cameraPlacement(),
+    });
+  }, [autoKey, keyCamera, previewing, dispatch, time]);
+
   const onFigureMove = useCallback(
     (figureId: string, at: { x: number; z: number }) =>
       dispatch(
@@ -161,9 +208,11 @@ export function LightingStudio() {
     const ok = await copyText(studio.shareUrl());
     setCopied(ok ? "copied" : "failed");
     studio.notify(
-      ok
-        ? "Share link copied — it opens this exact setup."
-        : "Couldn't copy. Copy the address bar instead.",
+      !ok
+        ? "Couldn't copy. Copy the address bar instead."
+        : scene.animation.keys.length > 0
+          ? "Share link copied. It opens this frame; save a project file (Ctrl+S) to keep the animation."
+          : "Share link copied — it opens this exact setup.",
       ok ? "info" : "error",
     );
     setTimeout(() => setCopied("idle"), 2500);
@@ -226,6 +275,43 @@ export function LightingStudio() {
         return;
       }
       if (e.altKey || isTextField(e.target)) return;
+      if (previewing) {
+        if (e.key === "Escape" || e.key === "v" || e.key === "V")
+          setPreviewing(false);
+        else if (e.key === " " && !isButton(e.target)) {
+          e.preventDefault();
+          setPlayRequest((n) => n + 1);
+        }
+        return;
+      }
+      const keys = scene.animation.keys;
+      if (e.key === " " && !isButton(e.target)) {
+        e.preventDefault();
+        setPlayRequest((n) => n + 1);
+        return;
+      }
+      if (e.key === "k" || e.key === "K") {
+        dispatch({
+          type: "setKey",
+          t: time,
+          camera: keyCamera ? viewport.current?.cameraPlacement() : undefined,
+        });
+        return;
+      }
+      if (e.key === ",") {
+        const prev = [...keys].reverse().find((k) => k.t < time - 0.005);
+        if (prev) seek(prev.t);
+        return;
+      }
+      if (e.key === ".") {
+        const next = keys.find((k) => k.t > time + 0.005);
+        if (next) seek(next.t);
+        return;
+      }
+      if ((e.key === "v" || e.key === "V") && keys.length > 0) {
+        setPreviewing(true);
+        return;
+      }
       const preset = Number(e.key);
       if (preset >= 1 && preset <= PRESETS.length) {
         dispatch({ type: "applyPreset", presetId: PRESETS[preset - 1].id });
@@ -319,6 +405,10 @@ export function LightingStudio() {
     validSelection,
     changeView,
     panelOpen,
+    previewing,
+    time,
+    keyCamera,
+    seek,
   ]);
 
   const inspector = (
@@ -425,30 +515,73 @@ export function LightingStudio() {
           </aside>
         )}
 
-        <main className="relative h-[46dvh] shrink-0 bg-black md:h-auto md:min-w-0 md:flex-1">
-          <StudioViewport
-            ref={viewport}
-            scene={scene}
-            view={view}
-            viewNonce={viewNonce}
-            selection={validSelection}
-            showHandles={showHandles}
-            onSelect={select}
-            onLightDrag={onLightDrag}
-            onLightDragEnd={seal}
-            onPoseDrag={onPoseDrag}
-            onPoseDragEnd={seal}
-            activeFigure={figure.id}
-            onFigureMove={onFigureMove}
-            onFigureMoveEnd={seal}
-          />
-          <ViewportOverlay
-            posing={isPoseSelection(validSelection)}
-            view={view}
-            onView={changeView}
-            showHandles={showHandles}
-            onShowHandles={setShowHandles}
+        <main
+          className={cx(
+            "flex flex-col bg-black",
+            previewing
+              ? "fixed inset-0 z-50 h-dvh"
+              : "relative h-[52dvh] shrink-0 md:h-auto md:min-w-0 md:flex-1",
+          )}
+          data-testid={previewing ? "preview-screen" : undefined}
+        >
+          <div className="relative min-h-0 flex-1">
+            <StudioViewport
+              ref={viewport}
+              scene={scene}
+              view={view}
+              viewNonce={viewNonce}
+              selection={previewing ? null : validSelection}
+              showHandles={showHandles && !previewing}
+              onSelect={select}
+              onLightDrag={onLightDrag}
+              onLightDragEnd={seal}
+              onPoseDrag={onPoseDrag}
+              onPoseDragEnd={seal}
+              activeFigure={figure.id}
+              onFigureMove={onFigureMove}
+              onFigureMoveEnd={seal}
+              onCameraEnd={onCameraEnd}
+            />
+            {previewing ? (
+              <div className="pointer-events-none absolute inset-x-2 top-2 flex items-center justify-between">
+                <span className="rounded-md bg-ink-900/80 px-2 py-1 text-xs font-medium text-ink-200 backdrop-blur">
+                  Preview
+                </span>
+                <Button
+                  size="sm"
+                  icon={X}
+                  className="pointer-events-auto"
+                  onClick={() => setPreviewing(false)}
+                  data-testid="preview-exit"
+                >
+                  Exit preview (Esc)
+                </Button>
+              </div>
+            ) : (
+              <ViewportOverlay
+                posing={isPoseSelection(validSelection)}
+                view={view}
+                onView={changeView}
+                showHandles={showHandles}
+                onShowHandles={setShowHandles}
+                studio={studio}
+              />
+            )}
+          </div>
+          <Timeline
             studio={studio}
+            viewport={viewport}
+            time={time}
+            onSeek={seek}
+            autoKey={autoKey}
+            onAutoKey={setAutoKey}
+            keyCamera={keyCamera}
+            onKeyCamera={setKeyCamera}
+            loop={loop}
+            onLoop={setLoop}
+            preview={previewing}
+            onPreview={setPreviewing}
+            playRequest={playRequest}
           />
         </main>
 

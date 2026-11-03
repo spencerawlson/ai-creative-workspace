@@ -16,7 +16,7 @@ import { defaultScene } from "@/lib/studio/presets";
 import {
   LIMITS,
   SceneSchema,
-  type CameraView,
+  type CameraPlacement,
   type SceneDoc,
 } from "@/lib/studio/schema";
 import { decodeScene, encodeScene } from "@/lib/studio/share";
@@ -26,7 +26,7 @@ const apply = (s: SceneDoc, a: SceneAction) => {
   if (!r.ok) throw new Error(r.error);
   return r.scene;
 };
-const view = (x: number): CameraView => ({
+const view = (x: number): CameraPlacement => ({
   position: [x, 1.5, 3],
   target: [0, 1, 0],
 });
