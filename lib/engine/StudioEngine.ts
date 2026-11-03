@@ -262,6 +262,8 @@ export class StudioEngine {
   private instances = new Map<string, FigureInstance>();
   private activeFigure: string | null = null;
   private statusKey = "";
+  /** Video capture in progress: the canvas is at the video's size. */
+  private capture: { handles: boolean } | null = null;
   private view: CameraView = "full";
 
   private doc: SceneDoc | null = null;
@@ -528,7 +530,8 @@ export class StudioEngine {
 
   private frame = (now: number): void => {
     this.raf = 0;
-    if (this.disposed) return;
+    // While recording a video the recorder draws every frame itself.
+    if (this.disposed || this.capture) return;
     const moving = this.controls.update();
     this.trackFrameTime(now, moving);
     this.render();
@@ -619,7 +622,7 @@ export class StudioEngine {
   }
 
   private resize(): void {
-    if (this.disposed) return;
+    if (this.disposed || this.capture) return;
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
@@ -1785,6 +1788,38 @@ export class StudioEngine {
     this.camera.updateProjectionMatrix();
     this.render();
     return blob;
+  }
+
+  // ---------------------------------------------------------- video capture
+
+  /** Switch the canvas to a fixed size for recording a video: handles
+   * and the joint overlay hidden, adaptive resolution and resizing
+   * paused. Draw frames with renderCapture(); always endCapture(). */
+  beginCapture(width: number, height: number): HTMLCanvasElement {
+    if (!this.capture) this.capture = { handles: this.handlesRoot.visible };
+    this.handlesRoot.visible = false;
+    this.layoutDots(false);
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    return this.renderer.domElement;
+  }
+
+  /** Draw the current scene into the capture canvas now. */
+  renderCapture(): void {
+    if (!this.capture) return;
+    this.controls.update();
+    this.layoutDots(false);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  endCapture(): void {
+    if (!this.capture) return;
+    this.handlesRoot.visible = this.capture.handles;
+    this.capture = null;
+    this.renderer.setPixelRatio(this.pixelRatio);
+    this.resize();
   }
 
   // ------------------------------------------------------------- benchmark

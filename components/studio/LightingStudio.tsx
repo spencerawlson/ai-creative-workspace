@@ -29,7 +29,7 @@ import {
 import { PRESETS } from "@/lib/lighting";
 import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
 import { parseProject, serializeProject } from "@/lib/studio/persistence";
-import { ExportDialog, ShortcutsDialog } from "./Dialogs";
+import { ExportDialog, ShortcutsDialog, VideoExportDialog } from "./Dialogs";
 import { Inspector } from "./Inspector";
 import type { JointId } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
@@ -106,6 +106,7 @@ export function LightingStudio() {
   const [loop, setLoop] = useState(true);
   const [previewing, setPreviewing] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   const [playRequest, setPlayRequest] = useState(0);
   // The figure the mannequin and pose controls act on.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -207,14 +208,17 @@ export function LightingStudio() {
   );
 
   async function share() {
-    const ok = await copyText(studio.shareUrl());
+    const link = await studio.shareUrl();
+    const ok = await copyText(link.url);
     setCopied(ok ? "copied" : "failed");
     studio.notify(
       !ok
         ? "Couldn't copy. Copy the address bar instead."
-        : scene.animation.keys.length > 0
-          ? "Share link copied. It opens this frame; save a project file (Ctrl+S) to keep the animation."
-          : "Share link copied — it opens this exact setup.",
+        : link.animated
+          ? "Share link copied — it opens this animation."
+          : link.tooLong
+            ? "Share link copied. The animation is too long for a link, so it opens this frame; save a project file (Ctrl+S) to keep the animation."
+            : "Share link copied — it opens this exact setup.",
       ok ? "info" : "error",
     );
     setTimeout(() => setCopied("idle"), 2500);
@@ -448,6 +452,7 @@ export function LightingStudio() {
       studio={studio}
       graphOpen={graphOpen}
       onGraph={setGraphOpen}
+      onVideo={() => setVideoOpen(true)}
       viewport={viewport}
       time={time}
       onSeek={seek}
@@ -652,6 +657,14 @@ export function LightingStudio() {
         </div>
       )}
       <Notices studio={studio} />
+      <VideoExportDialog
+        open={videoOpen}
+        onClose={() => setVideoOpen(false)}
+        studio={studio}
+        viewport={viewport}
+        keyCamera={keyCamera}
+        onFinished={() => seek(time)}
+      />
       <ExportDialog
         open={exportOpen}
         onClose={() => setExportOpen(false)}

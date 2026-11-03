@@ -36,6 +36,10 @@ export interface ViewportHandle {
   /** Draw `scene` now, without waiting for React (animation playback).
    * The next prop update draws the real scene again. */
   preview(scene: SceneDoc): void;
+  /** Video recording: see StudioEngine.beginCapture. */
+  beginCapture(width: number, height: number): HTMLCanvasElement | null;
+  renderCapture(): void;
+  endCapture(): void;
 }
 
 type Status = "starting" | "loading" | "ready" | "error" | "unsupported";
@@ -218,6 +222,9 @@ export function StudioViewport({
       setCameraPlacement: (p) => engineRef.current?.setCameraPlacement(p),
       preview: (scene) =>
         engineRef.current?.update(scene, latest.current.overrides),
+      beginCapture: (w, h) => engineRef.current?.beginCapture(w, h) ?? null,
+      renderCapture: () => engineRef.current?.renderCapture(),
+      endCapture: () => engineRef.current?.endCapture(),
     }),
     [],
   );

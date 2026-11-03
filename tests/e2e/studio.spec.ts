@@ -506,6 +506,96 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(raise).toHaveValue(String(smooth));
   });
 
+  test("an animated share link opens the animation in a fresh browser", async ({
+    page,
+    browser,
+  }) => {
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await page.getByTestId("timeline-autokey").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await scrub.fill("2");
+    await page.getByTestId("pose-preset-arms-up").click();
+    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+    // The address bar becomes a compressed, animated link.
+    await expect.poll(() => sParam(page)).toMatch(/^z/);
+    const url = new URL(page.url());
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await openStudio(page2, url.pathname + url.search);
+    await expect(page2.getByTestId("timeline-key-0.00")).toBeVisible();
+    await expect(page2.getByTestId("timeline-key-2.00")).toBeVisible();
+    await page2.getByTestId("timeline-scrub").fill("2");
+    await showPanel(page2, "scene");
+    await expect(page2.getByTestId("node-pose")).toContainText("Arms up");
+    await other.close();
+  });
+
+  test("exports the animation as a video file", async ({ page }) => {
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await page.getByTestId("timeline-duration").fill("1");
+    await page.getByTestId("timeline-autokey").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await scrub.fill("1");
+    await page.getByTestId("pose-preset-arms-up").click();
+    await expect(page.getByTestId("timeline-key-1.00")).toBeVisible();
+
+    await page.getByTestId("timeline-video").click();
+    await expect(page.getByTestId("video-dialog")).toBeVisible();
+    await page.getByTestId("video-fps-24").click();
+    await expect(page.getByTestId("video-summary")).toContainText(
+      "1 s at 24 fps",
+    );
+    const download = page.waitForEvent("download", { timeout: 100_000 });
+    await page.getByTestId("video-confirm").click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(
+      /-animation-1280x720\.(mp4|webm)$/,
+    );
+    const bytes = await import("node:fs").then(async (fs) =>
+      fs.promises.readFile(await file.path()),
+    );
+    // A real container with frames in it, not just a header.
+    const mp4 = bytes.subarray(4, 8).toString("latin1") === "ftyp";
+    const webm = bytes
+      .subarray(0, 4)
+      .equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+    expect(mp4 || webm).toBe(true);
+    expect(file.suggestedFilename().endsWith(mp4 ? ".mp4" : ".webm")).toBe(
+      true,
+    );
+    expect(bytes.length).toBeGreaterThan(5000);
+    // It plays: right size and length (this Chromium decodes WebM only).
+    if (webm) {
+      const meta = await page.evaluate(async (b64) => {
+        const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const v = document.createElement("video");
+        v.muted = true;
+        v.src = URL.createObjectURL(new Blob([bin], { type: "video/webm" }));
+        await new Promise((r, j) => {
+          v.onloadedmetadata = r;
+          v.onerror = j;
+        });
+        // WebM may report Infinity until seeked to the end.
+        if (!Number.isFinite(v.duration)) {
+          v.currentTime = 1e6;
+          await new Promise((r) => (v.ondurationchange = r));
+        }
+        return { w: v.videoWidth, h: v.videoHeight, d: v.duration };
+      }, bytes.toString("base64"));
+      expect(meta.w).toBe(1280);
+      expect(meta.h).toBe(720);
+      expect(meta.d).toBeGreaterThan(0.9);
+      expect(meta.d).toBeLessThan(1.2);
+    }
+    await expect(page.getByTestId("video-dialog")).toBeHidden();
+  });
+
   test("tapping the figure opens the pose controls for that body part", async ({
     page,
   }) => {
