@@ -392,6 +392,7 @@ test.describe("Lighting Studio — critical journeys", () => {
     await second.click();
     await showPanel(page, "scene");
     await page.getByTestId("node-pose").click();
+    const beforePose = await sParam(page);
     await page.getByTestId("pose-preset-arms-up").click();
     await showPanel(page, "scene");
     await expect(second).toContainText("Arms up");
@@ -399,8 +400,9 @@ test.describe("Lighting Studio — critical journeys", () => {
       "Scan A-pose",
     );
 
-    // A share link carries both figures.
-    await expect.poll(() => sParam(page)).toMatch(/./);
+    // A share link carries both figures (the link updates after a short
+    // debounce: wait for the one that includes the pose).
+    await expect.poll(() => sParam(page)).not.toBe(beforePose);
     const url = new URL(page.url());
     const other = await browser.newContext();
     const page2 = await other.newPage();
