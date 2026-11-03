@@ -313,7 +313,7 @@ export function Timeline({
             active={keyCamera}
             aria-pressed={keyCamera}
             onClick={() => onKeyCamera(!keyCamera)}
-            data-testid="timeline-key-camera"
+            data-testid="timeline-camera"
           />
         </>
       )}
