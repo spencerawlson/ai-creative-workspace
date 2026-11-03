@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   ChartSpline,
   Clapperboard,
+  Film,
   Diamond,
   Pause,
   Play,
@@ -43,6 +44,7 @@ export function Timeline({
   onPreview,
   graphOpen = false,
   onGraph,
+  onVideo,
   playRequest = 0,
 }: {
   studio: Studio;
@@ -62,6 +64,8 @@ export function Timeline({
   onPreview: (v: boolean) => void;
   graphOpen?: boolean;
   onGraph?: (v: boolean) => void;
+  /** Open the video export dialog. */
+  onVideo?: () => void;
   /** Bumped by the parent to toggle playback (Space). */
   playRequest?: number;
 }) {
@@ -372,6 +376,16 @@ export function Timeline({
             onClick={() => onPreview(true)}
             data-testid="timeline-preview"
           />
+          {onVideo && (
+            <IconButton
+              icon={Film}
+              size="sm"
+              label="Export video"
+              disabled={keys.length === 0 || playing}
+              onClick={onVideo}
+              data-testid="timeline-video"
+            />
+          )}
         </>
       )}
     </div>

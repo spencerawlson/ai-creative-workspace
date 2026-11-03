@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Download } from "lucide-react";
 import type { ViewportHandle } from "./StudioViewport";
+import { recordVideo, videoFormat } from "./recordVideo";
 import { downloadBlob, slug, type Studio } from "./useStudio";
 import { Button, Dialog, Kbd, Segmented, Slider, Toggle } from "./ui";
 
@@ -254,6 +255,176 @@ export function ShortcutsDialog({
       <p className="mt-2 text-2xs text-ink-400">
         On a Mac, use ⌘ instead of Ctrl.
       </p>
+    </Dialog>
+  );
+}
+
+const VIDEO_SIZES = {
+  "720p": { label: "1280 × 720 (16:9)", w: 1280, h: 720 },
+  "1080p": { label: "1920 × 1080 (16:9)", w: 1920, h: 1080 },
+  square: { label: "1080 × 1080 (1:1)", w: 1080, h: 1080 },
+  vertical: { label: "1080 × 1920 (9:16)", w: 1080, h: 1920 },
+} as const;
+type VideoSizeId = keyof typeof VIDEO_SIZES;
+
+/** Record the keyframe animation to a video file (in the browser). */
+export function VideoExportDialog({
+  open,
+  onClose,
+  studio,
+  viewport,
+  keyCamera,
+  onFinished,
+}: {
+  open: boolean;
+  onClose: () => void;
+  studio: Studio;
+  viewport: React.RefObject<ViewportHandle | null>;
+  keyCamera: boolean;
+  /** Recording leaves the last frame on screen; restore the studio. */
+  onFinished: () => void;
+}) {
+  const [sizeId, setSizeId] = useState<VideoSizeId>("720p");
+  const [fps, setFps] = useState<"24" | "30" | "60">("30");
+  const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const format = typeof window === "undefined" ? null : videoFormat();
+  const { duration, keys } = studio.scene.animation;
+  const size = VIDEO_SIZES[sizeId];
+
+  async function run() {
+    setError(null);
+    setProgress(0);
+    abort.current = new AbortController();
+    try {
+      const {
+        blob,
+        format: f,
+        slowFrames,
+      } = await recordVideo({
+        viewport: viewport.current!,
+        scene: studio.scene,
+        width: size.w,
+        height: size.h,
+        fps: Number(fps),
+        keyCamera,
+        onProgress: setProgress,
+        signal: abort.current.signal,
+      });
+      downloadBlob(
+        blob,
+        `${slug(studio.name)}-animation-${size.w}x${size.h}.${f.extension}`,
+      );
+      studio.notify(
+        slowFrames > 0
+          ? `Exported ${f.extension.toUpperCase()} video. ${slowFrames} frames were drawn slower than ${fps} fps on this device, so parts of it run slower.`
+          : `Exported ${duration} s ${size.w} × ${size.h} ${f.extension.toUpperCase()} video.`,
+      );
+      onClose();
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError"))
+        setError(e instanceof Error ? e.message : "Recording failed.");
+    } finally {
+      setProgress(null);
+      abort.current = null;
+      onFinished();
+    }
+  }
+
+  const busy = progress !== null;
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        abort.current?.abort();
+        onClose();
+      }}
+      title="Export video"
+      testId="video-dialog"
+      footer={
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => (busy ? abort.current?.abort() : onClose())}
+            data-testid="video-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon={Download}
+            onClick={run}
+            disabled={busy || !format || keys.length === 0}
+            data-testid="video-confirm"
+          >
+            {busy
+              ? `Recording… ${Math.round(progress * 100)}%`
+              : `Record ${format?.extension.toUpperCase() ?? "video"}`}
+          </Button>
+        </>
+      }
+    >
+      <fieldset className="py-1.5" disabled={busy}>
+        <legend className="mb-1 text-xs text-ink-300">Size</legend>
+        <div className="grid gap-1">
+          {(Object.keys(VIDEO_SIZES) as VideoSizeId[]).map((id) => (
+            <label
+              key={id}
+              className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-ink-800"
+            >
+              <input
+                type="radio"
+                name="video-size"
+                value={id}
+                checked={sizeId === id}
+                onChange={() => setSizeId(id)}
+                className="accent-[#f2b35a]"
+                data-testid={`video-size-${id}`}
+              />
+              {VIDEO_SIZES[id].label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Segmented
+        label="Frame rate"
+        value={fps}
+        onChange={setFps}
+        testIdPrefix="video-fps"
+        options={[
+          { value: "24", label: "24 fps" },
+          { value: "30", label: "30 fps" },
+          { value: "60", label: "60 fps" },
+        ]}
+      />
+      {busy && (
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress * 100)}
+          aria-label="Recording progress"
+          className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink-800"
+        >
+          <div
+            className="h-full bg-accent transition-[width]"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+      )}
+      <p className="mt-2 text-2xs text-ink-400" data-testid="video-summary">
+        {!format
+          ? "This browser can't record video. Try a current Chrome, Edge, Firefox or Safari."
+          : keys.length === 0
+            ? "There's no animation yet: set keyframes on the timeline first."
+            : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()}. Recording plays the animation in real time; on a slow device parts of the video may run slower. Light handles are hidden.`}
+      </p>
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          {error}
+        </p>
+      )}
     </Dialog>
   );
 }

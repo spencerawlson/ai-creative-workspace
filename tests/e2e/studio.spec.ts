@@ -533,6 +533,38 @@ test.describe("Lighting Studio — critical journeys", () => {
     await other.close();
   });
 
+  test("exports the animation as a video file", async ({ page }) => {
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await page.getByTestId("timeline-duration").fill("1");
+    await page.getByTestId("timeline-autokey").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await scrub.fill("1");
+    await page.getByTestId("pose-preset-arms-up").click();
+    await expect(page.getByTestId("timeline-key-1.00")).toBeVisible();
+
+    await page.getByTestId("timeline-video").click();
+    await expect(page.getByTestId("video-dialog")).toBeVisible();
+    await page.getByTestId("video-fps-24").click();
+    await expect(page.getByTestId("video-summary")).toContainText(
+      "1 s at 24 fps",
+    );
+    const download = page.waitForEvent("download", { timeout: 100_000 });
+    await page.getByTestId("video-confirm").click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(
+      /-animation-1280x720\.(mp4|webm)$/,
+    );
+    const path = await file.path();
+    const { size } = await import("node:fs").then((fs) =>
+      fs.promises.stat(path),
+    );
+    expect(size).toBeGreaterThan(1000);
+    await expect(page.getByTestId("video-dialog")).toHaveCount(0);
+  });
+
   test("tapping the figure opens the pose controls for that body part", async ({
     page,
   }) => {
