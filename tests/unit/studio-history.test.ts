@@ -62,6 +62,25 @@ describe("history", () => {
     expect(h.entries).toHaveLength(5);
   });
 
+  it("a slow viewport drag (gesture) is one step until it is sealed", () => {
+    let h = createHistory(defaultScene());
+    const drag = (bend: number, now: number) =>
+      historyReducer(h, {
+        type: "commit",
+        action: { type: "updateJoint", joint: "elbowL", patch: { bend } },
+        now,
+        gesture: true,
+      });
+    // Pauses far longer than the coalescing window mid-drag.
+    for (let i = 1; i <= 5; i++) h = drag(i * 10, i * 3 * COALESCE_MS);
+    expect(h.entries).toHaveLength(2);
+    h = historyReducer(h, { type: "seal" });
+    h = drag(90, 100 * COALESCE_MS);
+    expect(h.entries).toHaveLength(3);
+    h = historyReducer(h, { type: "undo" });
+    expect(present(h).pose.joints.elbowL.bend).toBe(50);
+  });
+
   it("committing after undo drops the redo branch", () => {
     let h = createHistory(defaultScene());
     h = commit(h, { type: "applyPreset", presetId: "split" });

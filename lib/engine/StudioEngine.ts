@@ -2,7 +2,8 @@
  *
  * React owns the scene document; the engine renders it. The engine
  * never mutates the document — user gestures inside the viewport
- * (selecting or dragging a light handle) are reported through
+ * (selecting or dragging a light handle, dragging a body part to pose
+ * the figure) are reported through
  * callbacks and come back as validated actions.
  *
  * Lifecycle guarantees:
@@ -26,8 +27,14 @@ import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
 import type { JointId } from "@/lib/studio/pose";
 import {
   BONE_NAMES,
+  JOINT_DOTS,
   applyPose,
+  dragVariables,
+  makeReach,
+  solveReach,
   type BoneName,
+  type DragVar,
+  type JointDot,
   type RigDirections,
 } from "./posing";
 import {
@@ -98,6 +105,11 @@ export interface EngineCallbacks {
     patch: { azimuth: number; elevation: number },
   ) => void;
   onLightDragEnd?: (id: string) => void;
+  /** A body part is being dragged: new angles (degrees) per joint. */
+  onPoseDrag?: (
+    patches: Partial<Record<JointId, Record<string, number>>>,
+  ) => void;
+  onPoseDragEnd?: () => void;
   onStatus?: (status: EngineStatus) => void;
 }
 
@@ -134,9 +146,24 @@ interface LightRig {
   state: StudioLight;
 }
 
+interface PoseDot {
+  def: JointDot;
+  ring: THREE.Mesh;
+  pick: THREE.Mesh;
+  /** The point dragging the dot moves, in the joint bone's frame. */
+  effector: THREE.Vector3;
+}
+
 interface ModelRig {
   bones: Record<BoneName, THREE.Bone>;
   dirs: RigDirections;
+  dots: PoseDot[];
+  dotMaterial: THREE.Material;
+  activeDotMaterial: THREE.Material;
+  /** Bone lines, in world space (added to the scene while shown). */
+  lines: THREE.LineSegments;
+  /** Each line: from a bone's joint to a child bone or a tip offset. */
+  segments: Array<[BoneName, BoneName | THREE.Vector3]>;
 }
 
 interface CachedModel {
@@ -166,6 +193,10 @@ const PICK_CAPSULES: Array<[BoneName, BoneName | "tip", number, JointId]> = [
 /** Where the face camera aims, between the base of the neck and the
  * crown. 0.445 reproduces the pre-rig vertex-average heuristic. */
 const HEAD_FRACTION = 0.445;
+/** Skeleton overlay colours, after Maya: blue joints, green selected. */
+const JOINT_BLUE = 0x4f86ff;
+const JOINT_GREEN = 0x5cf25c;
+const BONE_BLUE = 0x3f6fd8;
 
 export class StudioEngine {
   readonly renderer: THREE.WebGLRenderer;
@@ -178,6 +209,7 @@ export class StudioEngine {
 
   private readonly figure = new THREE.Group();
   private readonly handlesRoot = new THREE.Group();
+  private readonly skeletonRoot = new THREE.Group();
   private readonly material = new THREE.MeshStandardMaterial();
   private readonly catcher: THREE.Mesh<
     THREE.CircleGeometry,
@@ -216,6 +248,18 @@ export class StudioEngine {
   private disposed = false;
   private interacting = false;
   private dragging: { id: string; pointerId: number } | null = null;
+  /** A body part held in pose mode. `moved` stays false for a tap. */
+  private poseDrag: {
+    pointerId: number;
+    vars: DragVar[];
+    x: number[];
+    reach: (x: number[]) => THREE.Vector3;
+    origin: THREE.Vector3;
+    start: THREE.Vector3;
+    plane: THREE.Plane;
+    down: { x: number; y: number };
+    moved: boolean;
+  } | null = null;
   private downAt: { x: number; y: number } | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly maxPixelRatio: number;
@@ -277,7 +321,7 @@ export class StudioEngine {
     // Low ambient so Low-key stays dark and High-key is carried by fill.
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
     this.scene.add(this.figure);
-    this.scene.add(this.handlesRoot);
+    this.scene.add(this.handlesRoot, this.skeletonRoot);
 
     this.catcher = new THREE.Mesh(
       new THREE.CircleGeometry(6, 48),
@@ -452,7 +496,13 @@ export class StudioEngine {
     this.trackFrameTime(now, moving);
     this.render();
     if (this.benchmark) this.stepBenchmark(now);
-    if (moving || this.interacting || this.dragging || this.benchmark) {
+    if (
+      moving ||
+      this.interacting ||
+      this.dragging ||
+      this.poseDrag ||
+      this.benchmark
+    ) {
       this.invalidate();
     } else if (this.pixelRatio !== this.maxPixelRatio) {
       // Idle again: restore full resolution for a crisp still frame.
@@ -462,6 +512,7 @@ export class StudioEngine {
   };
 
   private render(): void {
+    this.layoutDots(this.poseMode);
     // Keep handles a constant on-screen size and the ring facing us.
     for (const rig of this.rigs.values()) {
       const d = this.camera.position.distanceTo(rig.handle.position);
@@ -490,7 +541,11 @@ export class StudioEngine {
 
   private trackFrameTime(now: number, moving: boolean): void {
     const continuous =
-      moving || this.interacting || this.dragging || this.benchmark;
+      moving ||
+      this.interacting ||
+      this.dragging ||
+      this.poseDrag ||
+      this.benchmark;
     if (continuous && this.lastFrameAt) {
       const dt = now - this.lastFrameAt;
       if (dt < 500) {
@@ -800,7 +855,7 @@ export class StudioEngine {
       (gltf) => {
         const model = this.prepareModel(gltf.scene);
         if (this.disposed) {
-          disposeObject(model.object, this.material);
+          disposeModel(model, this.material);
           return;
         }
         this.models.set(url, model);
@@ -847,6 +902,7 @@ export class StudioEngine {
     });
     root.updateMatrixWorld(true);
     let headHeight = 1.72;
+    let posing: ReturnType<StudioEngine["addPoseTargets"]> | null = null;
     if (rig) {
       const toWorldY = (y: number) => (y - box.min.y) * s;
       headHeight = THREE.MathUtils.lerp(
@@ -855,7 +911,7 @@ export class StudioEngine {
         HEAD_FRACTION,
       );
       // After the material pass, so the capsules keep their own.
-      this.addPickCapsules(rig, size.y);
+      posing = this.addPoseTargets(root, rig, size.y);
     } else {
       // Unrigged GLB: average Y of the vertices in the top 0.25 units.
       const topY = size.y * s;
@@ -884,7 +940,8 @@ export class StudioEngine {
     return {
       object: root,
       headHeight,
-      rig: rig ? { bones: rig.bones, dirs: rig.dirs } : null,
+      rig:
+        rig && posing ? { bones: rig.bones, dirs: rig.dirs, ...posing } : null,
     };
   }
 
@@ -935,15 +992,24 @@ export class StudioEngine {
     };
   }
 
-  private addPickCapsules(
+  /** Invisible tap/drag capsules on every bone, and a dot on every
+   * posable joint (shown in pose mode, drawn over the figure). */
+  private addPoseTargets(
+    root: THREE.Object3D,
     rig: NonNullable<ReturnType<StudioEngine["prepareRig"]>>,
     height: number,
-  ): void {
+  ) {
+    // Work in the GLB's own units, like the stored tips: bones are
+    // world-aligned there, so a bone-local offset is the difference of
+    // two positions. (The figure has been scaled into the studio since
+    // the rig was measured.)
+    root.updateMatrixWorld(true);
+    const at = (b: BoneName) => root.worldToLocal(rig.at(b));
     const material = new THREE.MeshBasicMaterial();
     const up = new THREE.Vector3(0, 1, 0);
     for (const [bone, to, radius, joint] of PICK_CAPSULES) {
-      const a = rig.at(bone);
-      const b = to === "tip" ? rig.tipOf[bone]! : rig.at(to);
+      const a = at(bone);
+      const b = to === "tip" ? rig.tipOf[bone]! : at(to);
       const r = radius * height;
       const capsule = new THREE.Mesh(
         new THREE.CapsuleGeometry(
@@ -956,6 +1022,7 @@ export class StudioEngine {
       );
       capsule.name = "pose-pick";
       capsule.userData.joint = joint;
+      capsule.userData.bone = bone;
       capsule.visible = false;
       // Bones are world-aligned in the bind pose, so a bone-local offset
       // is the world offset from the joint.
@@ -963,6 +1030,106 @@ export class StudioEngine {
       capsule.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
       rig.bones[bone].add(capsule);
     }
+    // Maya-style skeleton overlay: a small hollow circle on each joint,
+    // thin bone lines between them, drawn through the mesh.
+    const overlay = <M extends THREE.Material>(m: M): M => {
+      m.transparent = true;
+      m.depthTest = false;
+      m.depthWrite = false;
+      m.toneMapped = false;
+      return m;
+    };
+    const ringGeometry = new THREE.RingGeometry(0.58, 1, 24);
+    const pickGeometry = new THREE.SphereGeometry(1, 8, 6);
+    const dotMaterial = overlay(
+      new THREE.MeshBasicMaterial({ color: JOINT_BLUE }),
+    );
+    const activeDotMaterial = overlay(
+      new THREE.MeshBasicMaterial({ color: JOINT_GREEN }),
+    );
+    const dots: PoseDot[] = JOINT_DOTS.map((def) => {
+      const joint = at(def.bone);
+      const end =
+        def.effector === "tip" ? rig.tipOf[def.bone]! : at(def.effector);
+      const ring = new THREE.Mesh(ringGeometry, dotMaterial);
+      ring.renderOrder = 21;
+      ring.visible = false;
+      ring.raycast = () => {};
+      const pick = new THREE.Mesh(pickGeometry, material);
+      pick.name = "pose-dot";
+      pick.userData.joint = def.joint;
+      pick.visible = false;
+      rig.bones[def.bone].add(ring, pick);
+      // World-aligned bind pose: the world offset is the local one.
+      return { def, ring, pick, effector: end.clone().sub(joint) };
+    });
+    // Bones: each joint to its children, and on to the limb tips.
+    const segments: Array<[BoneName, BoneName | THREE.Vector3]> = [];
+    for (const name of BONE_NAMES) {
+      const parent = rig.bones[name].parent as THREE.Bone | null;
+      if (parent?.isBone && parent.name in rig.bones)
+        segments.push([parent.name as BoneName, name]);
+    }
+    for (const [bone, tip] of Object.entries(rig.tipOf) as Array<
+      [BoneName, THREE.Vector3]
+    >)
+      segments.push([bone, tip.clone().sub(at(bone))]);
+    const lineGeometry = new THREE.BufferGeometry();
+    lineGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(segments.length * 6), 3),
+    );
+    const lines = new THREE.LineSegments(
+      lineGeometry,
+      overlay(new THREE.LineBasicMaterial({ color: BONE_BLUE, opacity: 0.75 })),
+    );
+    lines.renderOrder = 20;
+    lines.frustumCulled = false;
+    lines.visible = false;
+    lines.raycast = () => {};
+    return { dots, dotMaterial, activeDotMaterial, lines, segments };
+  }
+
+  /** Show the skeleton overlay (pose mode): joint circles facing the
+   * camera at a constant on-screen size, the selected one green. */
+  private layoutDots(show: boolean): void {
+    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
+    const rig = model?.rig;
+    if (!model || !rig) return;
+    rig.lines.visible = show;
+    for (const d of rig.dots) d.ring.visible = show;
+    if (!show) return;
+    const active = this.selection?.startsWith("pose:")
+      ? this.selection.slice(5)
+      : null;
+    const scale = model.object.scale.x;
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    for (const d of rig.dots) {
+      const bone = rig.bones[d.def.bone];
+      const dist = this.camera.position.distanceTo(bone.getWorldPosition(p));
+      const on = d.def.joint === active;
+      const r = Math.max(0.0035, dist * 0.0035) * (on ? 1.3 : 1);
+      d.ring.scale.setScalar(r / scale);
+      // Generous touch target around a small circle.
+      d.pick.scale.setScalar(Math.max(r * 4.5, 0.02) / scale);
+      // Face the camera whatever the bone's rotation.
+      d.ring.quaternion
+        .copy(bone.getWorldQuaternion(q).invert())
+        .multiply(this.camera.quaternion);
+      d.ring.material = on ? rig.activeDotMaterial : rig.dotMaterial;
+    }
+    const pos = rig.lines.geometry.attributes.position as THREE.BufferAttribute;
+    const b = new THREE.Vector3();
+    rig.segments.forEach(([from, to], i) => {
+      const bone = rig.bones[from];
+      bone.getWorldPosition(p);
+      if (to instanceof THREE.Vector3) bone.localToWorld(b.copy(to));
+      else rig.bones[to].getWorldPosition(b);
+      pos.setXYZ(i * 2, p.x, p.y, p.z);
+      pos.setXYZ(i * 2 + 1, b.x, b.y, b.z);
+    });
+    pos.needsUpdate = true;
   }
 
   private syncPose(): void {
@@ -975,6 +1142,8 @@ export class StudioEngine {
   private showModel(url: string, model: CachedModel): void {
     this.figure.clear();
     this.figure.add(model.object);
+    this.skeletonRoot.clear();
+    if (model.rig) this.skeletonRoot.add(model.rig.lines);
     this.modelUrl = url;
     this.headHeight = model.headHeight;
     this.syncPose();
@@ -985,6 +1154,33 @@ export class StudioEngine {
     }
     this.callbacks.onStatus?.({ model: "ready" });
     this.invalidate();
+  }
+
+  /** For automated tests: where each posable joint (and each hand's
+   * middle) is on screen, in client pixels. */
+  jointsOnScreen(): Record<string, { x: number; y: number }> {
+    const rig = this.currentRig;
+    if (!rig) return {};
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const out: Record<string, { x: number; y: number }> = {};
+    const put = (name: string, p: THREE.Vector3) => {
+      p.project(this.camera);
+      out[name] = {
+        x: rect.left + ((p.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - p.y) / 2) * rect.height,
+      };
+    };
+    this.figure.updateMatrixWorld(true);
+    for (const d of rig.dots) {
+      const bone = rig.bones[d.def.bone];
+      put(d.def.joint, bone.getWorldPosition(new THREE.Vector3()));
+      if (d.def.bone.startsWith("wrist"))
+        put(
+          `hand${d.def.bone.slice(-1)}`,
+          bone.localToWorld(d.effector.clone().multiplyScalar(0.5)),
+        );
+    }
+    return out;
   }
 
   get loadedModelUrl(): string | null {
@@ -1011,11 +1207,129 @@ export class StudioEngine {
     return hit ? (hit.object.userData.lightId as string) : null;
   }
 
+  /** Body parts and joint dots can be dragged while the pose controls
+   * are open. */
+  private get poseMode(): boolean {
+    return this.selection === "pose" || !!this.selection?.startsWith("pose:");
+  }
+
+  private get currentRig(): ModelRig | null {
+    const model = this.modelUrl ? this.models.get(this.modelUrl) : undefined;
+    return model?.rig ?? null;
+  }
+
+  /** What a press in pose mode would grab: a joint dot first (they sit
+   * on top), then a body part. Null if nothing draggable is there. */
+  private pickPoseTarget(e: PointerEvent): {
+    joint: string;
+    vars: DragVar[];
+    grabbed: THREE.Object3D;
+    /** The point that follows the pointer, world space. */
+    origin: THREE.Vector3;
+    /** Where the press landed, world space. */
+    at: THREE.Vector3;
+  } | null {
+    const rig = this.currentRig;
+    if (!rig || !this.poseMode) return null;
+    const ray = this.pointerRay(e);
+    const partHit = this.raycaster
+      .intersectObject(this.figure, true)
+      .find((h) => h.object.name === "pose-pick");
+    const dotHit = this.raycaster.intersectObjects(
+      rig.dots.map((d) => d.pick),
+      false,
+    )[0];
+    const dot = dotHit && rig.dots.find((d) => d.pick === dotHit.object);
+    // A dot's generous touch target only counts off the body: over a body
+    // part, the press must land near the circle itself. (On a phone the
+    // whole hand sits inside the wrist dot's target.)
+    const onCircle =
+      dot &&
+      ray.distanceToPoint(dot.ring.getWorldPosition(new THREE.Vector3())) <
+        dot.ring.getWorldScale(new THREE.Vector3()).x * 2;
+    if (dot && (!partHit || onCircle)) {
+      const grabbed = rig.bones[dot.def.bone];
+      return {
+        joint: dot.def.joint,
+        vars: dot.def.vars,
+        grabbed,
+        origin: grabbed.localToWorld(dot.effector.clone()),
+        at: grabbed.getWorldPosition(new THREE.Vector3()),
+      };
+    }
+    const hit = partHit;
+    if (!hit) return null;
+    const vars = dragVariables(hit.object.userData.bone as BoneName);
+    if (vars.length === 0) return null;
+    return {
+      joint: hit.object.userData.joint as string,
+      vars,
+      grabbed: hit.object.parent!,
+      origin: hit.point.clone(),
+      at: hit.point.clone(),
+    };
+  }
+
+  private startPoseDrag(
+    e: PointerEvent,
+    t: NonNullable<ReturnType<StudioEngine["pickPoseTarget"]>>,
+  ): boolean {
+    const rig = this.currentRig;
+    if (!rig || !this.doc) return false;
+    this.figure.updateMatrixWorld(true);
+    const joints = this.doc.pose.joints as Record<
+      string,
+      Record<string, number>
+    >;
+    this.poseDrag = {
+      pointerId: e.pointerId,
+      vars: t.vars,
+      x: t.vars.map((v) => joints[v.joint][v.dof]),
+      reach: makeReach(
+        rig.bones,
+        rig.dirs,
+        this.doc.pose.joints,
+        t.vars,
+        t.grabbed,
+        t.grabbed.worldToLocal(t.origin.clone()),
+      ),
+      origin: t.origin,
+      start: t.at,
+      // The pointer moves across a plane facing the camera, through
+      // where it pressed; the grabbed point moves with it.
+      plane: new THREE.Plane().setFromNormalAndCoplanarPoint(
+        this.camera.getWorldDirection(new THREE.Vector3()),
+        t.at,
+      ),
+      down: { x: e.clientX, y: e.clientY },
+      moved: false,
+    };
+    return true;
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
+    // A second finger during a drag must not start an orbit.
+    if (this.dragging || this.poseDrag) {
+      e.stopImmediatePropagation();
+      return;
+    }
     this.downAt = { x: e.clientX, y: e.clientY };
     const id = this.pickLight(e);
-    if (!id) return;
+    if (!id) {
+      const target = this.pickPoseTarget(e);
+      if (!target || !this.startPoseDrag(e, target)) return;
+      // Hold the body part: keep OrbitControls from starting a rotate.
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+      this.renderer.domElement.style.cursor = "grabbing";
+      const sel: Selection = `pose:${target.joint}`;
+      this.selection = sel;
+      this.callbacks.onSelect?.(sel);
+      this.invalidate();
+      return;
+    }
     // Grab the handle: keep OrbitControls from starting a rotate.
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -1028,7 +1342,39 @@ export class StudioEngine {
   };
 
   private onPointerMove = (e: PointerEvent): void => {
-    if (!this.dragging || e.pointerId !== this.dragging.pointerId) return;
+    const drag = this.poseDrag;
+    if (drag) {
+      if (e.pointerId !== drag.pointerId) return;
+      if (
+        !drag.moved &&
+        Math.hypot(e.clientX - drag.down.x, e.clientY - drag.down.y) < 4
+      )
+        return;
+      drag.moved = true;
+      const p = this.pointerRay(e).intersectPlane(
+        drag.plane,
+        new THREE.Vector3(),
+      );
+      if (!p) return;
+      const target = drag.origin.clone().add(p.sub(drag.start));
+      drag.x = solveReach(drag.vars, drag.x, drag.reach, target);
+      const patches: Partial<Record<JointId, Record<string, number>>> = {};
+      drag.vars.forEach((v, i) => {
+        (patches[v.joint] ??= {})[v.dof] = Math.round(drag.x[i] * 10) / 10;
+      });
+      this.callbacks.onPoseDrag?.(patches);
+      this.invalidate();
+      return;
+    }
+    if (!this.dragging) {
+      // Hover feedback: a grab cursor over anything draggable.
+      if (e.pointerType === "mouse" && e.buttons === 0 && this.currentRig) {
+        const over = !!this.pickPoseTarget(e);
+        this.renderer.domElement.style.cursor = over ? "grab" : "";
+      }
+      return;
+    }
+    if (e.pointerId !== this.dragging.pointerId) return;
     const rig = this.rigs.get(this.dragging.id);
     if (!rig) return;
     const patch = dragOnSphere(this.pointerRay(e), rig.state);
@@ -1036,6 +1382,17 @@ export class StudioEngine {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    const drag = this.poseDrag;
+    if (drag && e.pointerId === drag.pointerId) {
+      this.poseDrag = null;
+      this.downAt = null;
+      this.renderer.domElement.releasePointerCapture?.(e.pointerId);
+      this.renderer.domElement.style.cursor = "";
+      if (drag.moved) this.callbacks.onPoseDragEnd?.();
+      // Bones back in step with the document (a tap changed nothing).
+      this.syncPose();
+      return;
+    }
     if (this.dragging && e.pointerId === this.dragging.pointerId) {
       const { id } = this.dragging;
       this.dragging = null;
@@ -1049,13 +1406,13 @@ export class StudioEngine {
     this.downAt = null;
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
     this.pointerRay(e);
-    const hit = this.raycaster.intersectObjects(
-      [this.figure, this.cyc],
-      true,
-    )[0];
+    // Joint dots only exist while posing.
+    const hit = this.raycaster
+      .intersectObjects([this.figure, this.cyc], true)
+      .find((h) => h.object.name !== "pose-dot" || this.poseMode);
     const sel: Selection = !hit
       ? null
-      : hit.object.name === "pose-pick"
+      : hit.object.name === "pose-pick" || hit.object.name === "pose-dot"
         ? `pose:${hit.object.userData.joint as string}`
         : hit.object.name === "model"
           ? "model"
@@ -1096,6 +1453,7 @@ export class StudioEngine {
     };
     const transparent = opts.transparent && opts.format === "image/png";
     this.handlesRoot.visible = false;
+    this.layoutDots(false);
     if (transparent) {
       this.scene.background = null;
       this.cyc.visible = false;
@@ -1214,7 +1572,7 @@ export class StudioEngine {
     this.controls.dispose();
     for (const [id, rig] of [...this.rigs]) this.removeRig(id, rig);
     for (const model of this.models.values())
-      disposeObject(model.object, this.material);
+      disposeModel(model, this.material);
     this.models.clear();
     for (const g of Object.values(this.handleGeometries)) g.dispose();
     this.pickGeometry.dispose();
@@ -1240,6 +1598,15 @@ const TONE_MAPPING = {
 
 function shadowOf(light: LightRig["light"]): THREE.LightShadow | null {
   return light instanceof THREE.RectAreaLight ? null : (light.shadow ?? null);
+}
+
+function disposeModel(model: CachedModel, keep: THREE.Material): void {
+  disposeObject(model.object, keep);
+  if (!model.rig) return;
+  model.rig.lines.geometry.dispose();
+  (model.rig.lines.material as THREE.Material).dispose();
+  model.rig.dotMaterial.dispose();
+  model.rig.activeDotMaterial.dispose();
 }
 
 function disposeObject(root: THREE.Object3D, keep: THREE.Material): void {

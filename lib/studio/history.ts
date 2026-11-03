@@ -3,7 +3,8 @@
  * A linear list of entries plus a cursor. Committing after an undo drops
  * the redo branch. Consecutive commits with the same coalesce key within
  * `COALESCE_MS` replace the newest entry instead of adding one, so a
- * slider drag is one undo step.
+ * slider drag is one undo step. A `gesture` commit (a drag in the
+ * viewport) keeps merging however slowly it moves, until `seal`.
  */
 
 import {
@@ -53,7 +54,7 @@ export const canUndo = (h: HistoryState) => h.index > 0;
 export const canRedo = (h: HistoryState) => h.index < h.entries.length - 1;
 
 export type HistoryCommand =
-  | { type: "commit"; action: SceneAction; now: number }
+  | { type: "commit"; action: SceneAction; now: number; gesture?: boolean }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "jump"; index: number }
@@ -79,7 +80,7 @@ export function historyReducer(
       const merge =
         key !== null &&
         key === h.lastKey &&
-        cmd.now - h.lastAt < COALESCE_MS &&
+        (cmd.gesture || cmd.now - h.lastAt < COALESCE_MS) &&
         h.index === h.entries.length - 1 &&
         h.index > 0;
       if (merge) {

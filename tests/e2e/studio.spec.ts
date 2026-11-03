@@ -3,7 +3,10 @@ import { PRESETS, cloneLights } from "../../lib/lighting";
 import { encodeSetup } from "../../lib/share";
 import {
   canvasBrightness,
+  dragOnPage,
   isMobile,
+  jointsOnScreen,
+  overlayPixels,
   openStudio,
   sParam,
   showPanel,
@@ -273,6 +276,62 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(lift).toHaveValue("40");
     await page.getByTestId("undo").click();
     await expect(lift).toHaveValue("15");
+  });
+
+  test("drag the figure to pose it: hand lifts the arm, wrist dot bends the hand", async ({
+    page,
+  }, info) => {
+    await openStudio(page);
+    await showPanel(page, "scene");
+    expect(await overlayPixels(page)).toBe(0);
+    await page.getByTestId("node-pose").click();
+    // Pose mode draws the joint overlay.
+    await expect.poll(() => overlayPixels(page)).toBeGreaterThan(20);
+    const joints = await jointsOnScreen(page);
+    expect(Object.keys(joints)).toHaveLength(14); // 12 joints + 2 hands
+    // Use a hand that isn't under a side panel (on a tablet the figure's
+    // right hand sits behind the scene list).
+    const exposed = (p: { x: number; y: number }) =>
+      page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.tagName === "CANVAS",
+        p,
+      );
+    const side = (await exposed(joints.handR)) ? "R" : "L";
+    expect(await exposed(joints[`hand${side}`])).toBe(true);
+    const wrist = joints[`wrist${side}`];
+    const hand = joints[`hand${side}`];
+    const out = side === "R" ? -40 : 40; // away from the body on screen
+    const box = (await page.getByTestId("lighting-scene").boundingBox())!;
+
+    // Grab the hand and pull it up: the whole arm follows.
+    await dragOnPage(page, info, hand, {
+      x: hand.x,
+      y: hand.y - box.height * 0.35,
+    });
+    await expect(page.getByTestId(`pose-group-arm${side}`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const raise = page.getByTestId(`pose-shoulder${side}-raise`);
+    await expect
+      .poll(async () => Number(await raise.inputValue()))
+      .toBeGreaterThan(30);
+    // The whole drag is one undo step.
+    await page.getByTestId("undo").click();
+    await expect(raise).toHaveValue("0");
+
+    // Drag the wrist's own dot outwards: the hand bends at the wrist.
+    await dragOnPage(page, info, wrist, { x: wrist.x + out, y: wrist.y - 10 });
+    const bend = page.getByTestId(`pose-wrist${side}-bend`);
+    const lift = page.getByTestId(`pose-wrist${side}-lift`);
+    await expect
+      .poll(
+        async () =>
+          Math.abs(Number(await bend.inputValue())) +
+          Math.abs(Number(await lift.inputValue())),
+      )
+      .toBeGreaterThan(10);
+    await expect(raise).toHaveValue("0");
   });
 
   test("tapping the figure opens the pose controls for that body part", async ({

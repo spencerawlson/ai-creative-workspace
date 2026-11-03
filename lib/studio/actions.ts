@@ -37,6 +37,7 @@ import {
   JOINTS,
   JOINT_IDS,
   JointPatchSchema,
+  POSE_GROUPS,
   mirrorJoints,
   posePreset,
   type JointId,
@@ -119,6 +120,17 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       type: z.literal("updateJoint"),
       joint: z.enum(JOINT_IDS as [JointId, ...JointId[]]),
       patch: JointPatchSchema,
+    })
+    .strict(),
+  z
+    .object({
+      // Several joints at once, e.g. a hand dragged in the viewport moves
+      // the shoulder and elbow together as one undo step.
+      type: z.literal("updateJoints"),
+      patches: z.partialRecord(
+        z.enum(JOINT_IDS as [JointId, ...JointId[]]),
+        JointPatchSchema,
+      ),
     })
     .strict(),
   z.object({ type: z.literal("mirrorPose") }).strict(),
@@ -269,28 +281,10 @@ export function applyAction(
         pose: { preset: preset.id, joints: structuredClone(preset.joints) },
       });
     }
-    case "updateJoint": {
-      const dofs = JOINTS[action.joint].dofs;
-      const unknown = Object.keys(action.patch).find((k) => !(k in dofs));
-      if (unknown)
-        return {
-          ok: false,
-          error: `${JOINTS[action.joint].label} has no "${unknown}" movement`,
-        };
-      return ok({
-        ...scene,
-        pose: {
-          preset: "custom",
-          joints: {
-            ...scene.pose.joints,
-            [action.joint]: {
-              ...scene.pose.joints[action.joint],
-              ...action.patch,
-            },
-          },
-        },
-      });
-    }
+    case "updateJoint":
+      return patchJoints(scene, { [action.joint]: action.patch }, ok);
+    case "updateJoints":
+      return patchJoints(scene, action.patches, ok);
     case "mirrorPose":
       return ok({
         ...scene,
@@ -299,6 +293,27 @@ export function applyAction(
     case "reset":
       return ok(defaultScene());
   }
+}
+
+function patchJoints(
+  scene: SceneDoc,
+  patches: Partial<Record<JointId, Record<string, number>>>,
+  ok: (next: SceneDoc) => ActionResult,
+): ActionResult {
+  const ids = Object.keys(patches) as JointId[];
+  if (ids.length === 0) return { ok: false, error: "No joints to change" };
+  const joints = { ...scene.pose.joints };
+  for (const id of ids) {
+    const patch = patches[id]!;
+    const unknown = Object.keys(patch).find((k) => !(k in JOINTS[id].dofs));
+    if (unknown)
+      return {
+        ok: false,
+        error: `${JOINTS[id].label} has no "${unknown}" movement`,
+      };
+    joints[id] = { ...joints[id], ...patch } as never;
+  }
+  return ok({ ...scene, pose: { preset: "custom", joints } });
 }
 
 /** Actions with the same key, in quick succession, merge into one undo
@@ -315,6 +330,11 @@ export function coalesceKey(action: SceneAction): string | null {
       return `backdrop:${Object.keys(action.patch).sort().join(",")}`;
     case "updateJoint":
       return `joint:${action.joint}:${Object.keys(action.patch).sort().join(",")}`;
+    case "updateJoints":
+      return `joints:${Object.entries(action.patches)
+        .map(([id, p]) => `${id}=${Object.keys(p!).sort().join(",")}`)
+        .sort()
+        .join(";")}`;
     default:
       return null;
   }
@@ -405,6 +425,13 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
         .map((k) => dofs[k]?.label.toLowerCase() ?? k)
         .join(", ");
       return `${j.label}: ${what}`;
+    }
+    case "updateJoints": {
+      const ids = Object.keys(action.patches) as JointId[];
+      const group = POSE_GROUPS.find((g) =>
+        ids.every((id) => (g.joints as readonly string[]).includes(id)),
+      );
+      return `Move ${(group?.label ?? ids.map((id) => JOINTS[id].label).join(" + ")).toLowerCase()}`;
     }
     case "mirrorPose":
       return "Mirror pose";
