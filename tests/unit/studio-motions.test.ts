@@ -7,6 +7,7 @@ import {
   floorOffset,
   motionLength,
   motionSteps,
+  planMotion,
 } from "@/lib/studio/motions";
 import { parseQuery, searchMotions, stem } from "@/lib/studio/motionSearch";
 import { neutralJoints } from "@/lib/studio/pose";
@@ -77,22 +78,37 @@ describe("motion library", () => {
     expect(steps[steps.length - 1].y).toBeCloseTo(0, 1);
   });
 
-  it("walking goes the way the figure faces, and stays in the studio", () => {
-    const facing = (rotation: number) => {
-      const s = motionSteps(findMotion("walk")!, { x: 0, z: 0, rotation });
+  it("walking goes the way the figure faces, in whole strides, inside the studio", () => {
+    const walk = findMotion("walk")!;
+    const end = (rotation: number, x = 0, z = 0) => {
+      const s = motionSteps(walk, { x, z, rotation });
       return s[s.length - 1];
     };
-    expect(facing(0).z).toBeGreaterThan(2); // towards the camera
-    expect(Math.abs(facing(0).x)).toBeLessThan(0.01);
-    expect(facing(90).x).toBeGreaterThan(2);
-    const near = motionSteps(findMotion("run")!, { x: 0, z: 2.5, rotation: 0 });
-    for (const s of near) expect(s.z).toBeLessThanOrEqual(LIMITS.figureZ[1]);
+    // Facing away from the camera: both strides (2 x 1.3 m).
+    expect(end(180).z).toBeCloseTo(-2.6, 5);
+    expect(end(90).x).toBeCloseTo(2.6, 5);
+    expect(Math.abs(end(90).z)).toBeLessThan(0.01);
+    // Towards the camera there is room for one stride only.
+    const towards = planMotion(walk, { x: 0, z: 0, rotation: 0 });
+    expect(towards.repeat).toBe(1);
+    expect(towards.shortened).toBe(true);
+    expect(end(0).z).toBeCloseTo(1.3, 5);
+    // No room at all: on the spot, never sliding.
+    const stuck = planMotion(walk, { x: 0, z: 1.4, rotation: 0 });
+    expect(stuck.noRoom).toBe(true);
+    expect(stuck.steps.every((s) => s.z === 1.4)).toBe(true);
     const still = motionSteps(
-      findMotion("walk")!,
+      walk,
       { x: 0, z: 0, rotation: 0 },
       { inPlace: true },
     );
     expect(still.every((s) => s.z === 0)).toBe(true);
+    const back = motionSteps(
+      walk,
+      { x: 0, z: 0, rotation: 0 },
+      { backwards: true },
+    );
+    expect(back[back.length - 1].z).toBeCloseTo(-2.6, 5);
   });
 
   it("a move becomes keys on that figure only, from the current time", () => {

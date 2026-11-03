@@ -2060,18 +2060,61 @@ export interface MotionStep {
   joints: PoseJoints;
 }
 
-/** How far a travelling figure may get from the centre (metres). */
-const ROOM = 2.6;
+/** Where a travelling figure may go (metres): the studio's floor,
+ * stopping well short of the camera, which looks from the front (+z). */
+const ROOM = { x: 2.6, back: -2.6, front: 1.5 };
+
+/** How far (metres) a figure at `p` can go along unit direction `d`
+ * before leaving the room. */
+function roomAhead(from: MotionPlacement, dx: number, dz: number): number {
+  let room = Infinity;
+  const limit = (p: number, d: number, lo: number, hi: number) => {
+    if (d > 1e-6) room = Math.min(room, (hi - p) / d);
+    else if (d < -1e-6) room = Math.min(room, (lo - p) / d);
+  };
+  limit(from.x, dx, -ROOM.x, ROOM.x);
+  limit(from.z, dz, ROOM.back, ROOM.front);
+  return Math.max(0, room);
+}
+
+export interface MotionPlan {
+  steps: MotionStep[];
+  /** Cycles played (fewer than asked when there wasn't room). */
+  repeat: number;
+  /** Asked to travel, but there wasn't room for a single stride. */
+  noRoom: boolean;
+  /** Fewer cycles than asked, to fit the room. */
+  shortened: boolean;
+}
 
 /** A motion's frames, laid out in time and space from a placement. */
-export function motionSteps(
+export function planMotion(
   motion: Motion,
   from: MotionPlacement,
   opts: MotionOptions = {},
-): MotionStep[] {
-  const repeat = motion.cycle
+): MotionPlan {
+  const asked = motion.cycle
     ? Math.max(1, Math.min(10, Math.round(opts.repeat ?? motion.repeat ?? 1)))
     : 1;
+  // Travel: along the way the figure faces. Strides are never
+  // stretched or squashed (the feet would slide): with too little room
+  // the figure does fewer cycles, or stays on the spot.
+  const sign = opts.backwards ? -1 : 1;
+  const rad = (from.rotation * Math.PI) / 180;
+  const fx = Math.sin(rad) * sign;
+  const fz = Math.cos(rad) * sign;
+  let per = opts.inPlace ? 0 : (motion.travel ?? 0);
+  let repeat = asked;
+  let noRoom = false;
+  if (per > 0) {
+    const room = roomAhead(from, fx, fz);
+    const fits = Math.floor(room / per + 1e-6);
+    if (fits < 1) {
+      per = 0;
+      noRoom = true;
+    } else repeat = Math.min(asked, fits);
+  }
+
   const slow = Math.max(0.25, Math.min(4, opts.slow ?? 1));
   const cycle = motion.cycle ?? 0;
   type Raw = MotionFrame & { at: number; progress: number };
@@ -2095,36 +2138,14 @@ export function motionSteps(
     });
   } else raw.push(...motion.frames.map((fr) => ({ ...fr, progress: 0 })));
 
-  // Travel: along the way the figure faces, kept inside the studio.
-  const dir = (opts.backwards ? -1 : 1) * (opts.inPlace ? 0 : 1);
-  const per = (motion.travel ?? 0) * dir;
-  const rad = (from.rotation * Math.PI) / 180;
-  const fx = Math.sin(rad);
-  const fz = Math.cos(rad);
-  let total = per * repeat;
-  for (const [p, d] of [
-    [from.x, fx],
-    [from.z, fz],
-  ]) {
-    if (Math.abs(d) < 1e-6) continue;
-    const end = p + d * total;
-    if (Math.abs(end) > ROOM) {
-      const room = (Math.sign(end) * ROOM - p) / d;
-      total =
-        Math.sign(total) *
-        Math.max(0, Math.min(Math.abs(total), Math.abs(room)));
-    }
-  }
-  const scale = per ? total / (per * repeat) : 0;
-
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  return raw.map((fr) => {
+  const steps = raw.map((fr) => {
     let joints = build(fr.pose, { ...motion.hands, ...fr.hands });
     if (opts.mirror) joints = mirrorJoints(joints);
     joints = roundJoints(joints);
     const turn = (fr.turn ?? 0) * (opts.mirror ? -1 : 1);
-    const along = per * scale * fr.progress;
+    const along = per * fr.progress;
     const y = Math.max(-1, Math.min(1.5, floorOffset(joints) + (fr.air ?? 0)));
     return {
       at: Math.round(fr.at * slow * 100) / 100,
@@ -2135,7 +2156,14 @@ export function motionSteps(
       joints,
     };
   });
+  return { steps, repeat, noRoom, shortened: repeat < asked };
 }
+
+export const motionSteps = (
+  motion: Motion,
+  from: MotionPlacement,
+  opts: MotionOptions = {},
+): MotionStep[] => planMotion(motion, from, opts).steps;
 
 /** Whole tenths of a degree, inside every joint's limits. */
 function roundJoints(joints: PoseJoints): PoseJoints {

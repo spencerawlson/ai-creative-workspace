@@ -5,7 +5,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import { tryApplyAction, type SceneAction } from "@/lib/studio/actions";
 import {
   MOTIONS,
-  motionLength,
+  planMotion,
   type Motion,
   type MotionCategory,
 } from "@/lib/studio/motions";
@@ -90,9 +90,15 @@ export function MotionSearch({
     }
     dispatch(action);
     if (m.motion.kind === "move") {
-      const len = motionLength(m.motion, m.options);
+      const plan = planMotion(m.motion, figure, m.options);
+      const len = plan.steps[plan.steps.length - 1].at;
+      const room = plan.noRoom
+        ? " On the spot: no room ahead (turn the figure or move it back)."
+        : plan.shortened
+          ? ` ${plan.repeat}× to stay in the studio.`
+          : "";
       setStatus(
-        `${m.motion.name}: ${len.toFixed(1)} s of keyframes from ${time.toFixed(1)} s`,
+        `${m.motion.name}: ${len.toFixed(1)} s of keyframes from ${time.toFixed(1)} s.${room}`,
       );
       onPlayFrom?.(time);
     } else setStatus(`Pose: ${m.motion.name}`);
