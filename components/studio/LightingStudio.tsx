@@ -635,7 +635,27 @@ export function LightingStudio() {
                 </button>
               ))}
             </div>
-            <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
+            {/* Phones: the graph editor takes the panel's place rather
+                than squeezing in under it. */}
+            {graphOpen && !previewing ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <GraphEditor
+                  studio={studio}
+                  figure={figure}
+                  selection={validSelection}
+                  time={time}
+                  onSeek={seek}
+                  fill
+                />
+              </div>
+            ) : null}
+            <div
+              role="tabpanel"
+              className={cx(
+                "min-h-0 flex-1 overflow-y-auto",
+                graphOpen && !previewing && "hidden",
+              )}
+            >
               {mobileTab === "edit" ? inspector : panels[mobileTab]}
             </div>
           </div>
@@ -644,7 +664,7 @@ export function LightingStudio() {
 
       {!previewing && (
         <div className="shrink-0">
-          {graphOpen && (
+          {graphOpen && isDesktop && (
             <GraphEditor
               studio={studio}
               figure={figure}

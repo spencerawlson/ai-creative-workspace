@@ -68,10 +68,13 @@ describe("feet and fingers in the pose model", () => {
   });
 
   it("mirroring swaps the hands", () => {
-    const j = neutralJoints();
+    const j = neutralJoints() as unknown as Record<
+      string,
+      Record<string, number>
+    >;
     j.index2L.curl = 70;
     j.ankleR.point = 30;
-    const m = mirrorJoints(j);
+    const m = mirrorJoints(j as unknown as ReturnType<typeof neutralJoints>);
     expect(m.index2R.curl).toBe(70);
     expect(m.index2L.curl).toBe(0);
     expect(m.ankleL.point).toBe(30);

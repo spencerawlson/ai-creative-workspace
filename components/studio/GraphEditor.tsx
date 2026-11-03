@@ -84,12 +84,15 @@ export function GraphEditor({
   selection,
   time,
   onSeek,
+  fill = false,
 }: {
   studio: Studio;
   figure: Figure;
   selection: Selection;
   time: number;
   onSeek: (t: number) => void;
+  /** Fill the parent (phones) instead of a fixed-height strip. */
+  fill?: boolean;
 }) {
   const { scene, dispatch, seal } = studio;
   const { duration, keys } = scene.animation;
@@ -219,9 +222,15 @@ export function GraphEditor({
     <section
       aria-label="Graph editor"
       data-testid="graph-editor"
-      className="flex h-56 shrink-0 border-t border-ink-800 bg-ink-950 text-2xs text-ink-300 md:h-64"
+      className={cx(
+        "flex border-t border-ink-800 bg-ink-950 text-2xs text-ink-300",
+        // Narrow screens: channels above the plot, so the plot gets the
+        // full width.
+        "flex-col sm:flex-row",
+        fill ? "min-h-0 flex-1" : "h-56 shrink-0 md:h-64",
+      )}
     >
-      <div className="flex w-44 shrink-0 flex-col border-r border-ink-800 md:w-52">
+      <div className="flex max-h-32 shrink-0 flex-col border-b border-ink-800 sm:max-h-none sm:w-44 sm:border-b-0 sm:border-r md:w-52">
         <select
           aria-label="Object"
           value={ownerId(owner)}
@@ -282,8 +291,8 @@ export function GraphEditor({
         </ul>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-ink-800 px-2">
+      <div className="flex min-h-40 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-ink-800 px-2 py-1">
           {pickedKey ? (
             <>
               <span className="text-ink-200">

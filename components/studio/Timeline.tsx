@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   ChartSpline,
+  ChevronDown,
+  Ellipsis,
   Clapperboard,
   Film,
   Diamond,
@@ -72,6 +74,9 @@ export function Timeline({
   const { scene, dispatch, seal } = studio;
   const { duration, keys } = scene.animation;
   const [playing, setPlaying] = useState(false);
+  // Phones: the secondary controls fold away behind "More".
+  const [more, setMore] = useState(false);
+  const extra = more ? undefined : "hidden sm:inline-flex";
   const [playT, setPlayT] = useState(time);
   const shown = playing ? playT : time;
   const onKey = keyAt(scene.animation, time);
@@ -176,6 +181,7 @@ export function Timeline({
         <>
           <IconButton
             icon={SkipBack}
+            className={extra}
             size="sm"
             label="Previous keyframe"
             shortcut=","
@@ -185,6 +191,7 @@ export function Timeline({
           />
           <IconButton
             icon={SkipForward}
+            className={extra}
             size="sm"
             label="Next keyframe"
             shortcut="."
@@ -287,6 +294,7 @@ export function Timeline({
           />
           <IconButton
             icon={Trash2}
+            className={extra}
             size="sm"
             label="Delete keyframe"
             disabled={!onKey || playing}
@@ -317,6 +325,7 @@ export function Timeline({
           </button>
           <IconButton
             icon={Video}
+            className={extra}
             size="sm"
             label={keyCamera ? "Camera is keyed" : "Camera is not keyed"}
             active={keyCamera}
@@ -328,6 +337,7 @@ export function Timeline({
       )}
       <IconButton
         icon={Repeat}
+        className={extra}
         size="sm"
         label="Loop"
         active={loop}
@@ -337,7 +347,12 @@ export function Timeline({
       />
       {!preview && (
         <>
-          <label className="flex shrink-0 items-center gap-1 text-2xs text-ink-300">
+          <label
+            className={cx(
+              "shrink-0 items-center gap-1 text-2xs text-ink-300",
+              more ? "flex" : "hidden sm:flex",
+            )}
+          >
             Length
             <input
               type="number"
@@ -358,6 +373,7 @@ export function Timeline({
           {onGraph && (
             <IconButton
               icon={ChartSpline}
+              className={extra}
               size="sm"
               label={graphOpen ? "Hide graph editor" : "Show graph editor"}
               shortcut="G"
@@ -369,6 +385,7 @@ export function Timeline({
           )}
           <IconButton
             icon={Clapperboard}
+            className={extra}
             size="sm"
             label="Preview animation"
             shortcut="V"
@@ -379,6 +396,7 @@ export function Timeline({
           {onVideo && (
             <IconButton
               icon={Film}
+              className={extra}
               size="sm"
               label="Export video"
               disabled={keys.length === 0 || playing}
@@ -388,6 +406,15 @@ export function Timeline({
           )}
         </>
       )}
+      <IconButton
+        icon={more ? ChevronDown : Ellipsis}
+        size="sm"
+        label={more ? "Fewer timeline controls" : "More timeline controls"}
+        aria-expanded={more}
+        className="sm:hidden"
+        onClick={() => setMore(!more)}
+        data-testid="timeline-more"
+      />
     </div>
   );
 }
