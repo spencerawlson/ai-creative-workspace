@@ -12,6 +12,8 @@ import {
   type JointId,
 } from "@/lib/studio/pose";
 import type { Studio } from "./useStudio";
+import { figureLabel } from "@/lib/studio/figures";
+import type { Figure } from "@/lib/studio/schema";
 import { Button, PanelHeader, SectionTitle, Slider, cx } from "./ui";
 
 /** `pose:<joint>` (from a tap on the figure or a body-part button) picks
@@ -28,23 +30,32 @@ export function isPoseSelection(selection: Selection): boolean {
 
 export function PoseInspector({
   studio,
+  figure,
   selection,
   onSelect,
 }: {
   studio: Studio;
+  figure: Figure;
   selection: Selection;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, figure?: string) => void;
 }) {
   const { scene, dispatch, seal } = studio;
+  const target = { figure: figure.id };
   const joint = jointFromSelection(selection);
   const groupId = joint ? groupOfJoint(joint) : "armR";
   const group = POSE_GROUPS.find((g) => g.id === groupId)!;
-  const preset = posePreset(scene.pose.preset);
-  const joints = scene.pose.joints as Record<string, Record<string, number>>;
+  const preset = posePreset(figure.pose.preset);
+  const joints = figure.pose.joints as Record<string, Record<string, number>>;
 
   return (
     <>
-      <PanelHeader title="Pose" />
+      <PanelHeader
+        title={
+          scene.figures.length > 1
+            ? `Pose · ${figureLabel(scene, figure.id)}`
+            : "Pose"
+        }
+      />
       <div className="px-3 py-3">
         <SectionTitle>Poses</SectionTitle>
         <div
@@ -56,14 +67,18 @@ export function PoseInspector({
             <button
               key={p.id}
               type="button"
-              aria-pressed={scene.pose.preset === p.id}
+              aria-pressed={figure.pose.preset === p.id}
               data-testid={`pose-preset-${p.id}`}
               onClick={() =>
-                dispatch({ type: "applyPosePreset", presetId: p.id })
+                dispatch({
+                  type: "applyPosePreset",
+                  presetId: p.id,
+                  ...target,
+                })
               }
               className={cx(
                 "rounded-md border px-2 py-1.5 text-left text-xs font-medium transition-colors",
-                scene.pose.preset === p.id
+                figure.pose.preset === p.id
                   ? "border-accent bg-accent/10 text-ink-100"
                   : "border-ink-700 text-ink-200 hover:border-ink-500",
               )}
@@ -79,7 +94,7 @@ export function PoseInspector({
           <Button
             size="sm"
             icon={FlipHorizontal2}
-            onClick={() => dispatch({ type: "mirrorPose" })}
+            onClick={() => dispatch({ type: "mirrorPose", ...target })}
             data-testid="pose-mirror"
           >
             Mirror
@@ -89,7 +104,11 @@ export function PoseInspector({
             variant="ghost"
             icon={RotateCcw}
             onClick={() =>
-              dispatch({ type: "applyPosePreset", presetId: "neutral" })
+              dispatch({
+                type: "applyPosePreset",
+                presetId: "neutral",
+                ...target,
+              })
             }
             data-testid="pose-reset"
           >
@@ -154,6 +173,7 @@ export function PoseInspector({
                       type: "updateJoint",
                       joint: id,
                       patch: { [dof]: v },
+                      ...target,
                     })
                   }
                   onCommitEnd={seal}

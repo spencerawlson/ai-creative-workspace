@@ -69,15 +69,31 @@ export async function canvasBrightness(page: Page): Promise<number> {
  * the engine's test hook (only present in automated browsers). */
 export async function jointsOnScreen(
   page: Page,
+  figure?: string,
 ): Promise<Record<string, { x: number; y: number }>> {
-  return page.evaluate(() =>
-    (
-      window as unknown as {
-        __studioEngine: {
-          jointsOnScreen(): Record<string, { x: number; y: number }>;
-        };
-      }
-    ).__studioEngine.jointsOnScreen(),
+  return page.evaluate(
+    (f) =>
+      (
+        window as unknown as {
+          __studioEngine: {
+            jointsOnScreen(
+              f?: string,
+            ): Record<string, { x: number; y: number }>;
+          };
+        }
+      ).__studioEngine.jointsOnScreen(f),
+    figure,
+  );
+}
+
+/** Is the canvas (not a panel over it) what's under this point? */
+export async function onCanvas(
+  page: Page,
+  p: { x: number; y: number },
+): Promise<boolean> {
+  return page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.tagName === "CANVAS",
+    p,
   );
 }
 

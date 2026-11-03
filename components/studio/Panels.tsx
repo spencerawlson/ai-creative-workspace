@@ -27,14 +27,16 @@ import type { Selection } from "@/lib/engine/StudioEngine";
 import {
   BACKDROP_PRESETS,
   KIND_LABELS,
-  MATERIAL_PRESETS,
 } from "@/lib/studio/presets";
 import {
   LIGHT_KINDS,
   LIMITS,
+  type Figure,
   type LightKind,
   type StudioLight,
 } from "@/lib/studio/schema";
+import { figureLabel } from "@/lib/studio/figures";
+import { useSelectNewFigure } from "./useSelectNewFigure";
 import type { Studio } from "./useStudio";
 import { IconButton, PanelHeader, cx } from "./ui";
 
@@ -120,14 +122,19 @@ function Row({
 
 export function ScenePanel({
   studio,
+  figure,
   selection,
   onSelect,
 }: {
   studio: Studio;
+  /** The figure the mannequin and pose controls act on. */
+  figure: Figure;
   selection: Selection;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, figure?: string) => void;
 }) {
   const { scene, dispatch } = studio;
+  const expectNewFigure = useSelectNewFigure(scene.figures, onSelect);
+  const many = scene.figures.length > 1;
   const [adding, setAdding] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const full = scene.lights.length >= LIMITS.maxLights;
@@ -156,9 +163,6 @@ export function ScenePanel({
     if (added) onSelect(added.id);
   }, [scene.lights, onSelect]);
 
-  const material =
-    MATERIAL_PRESETS.find((m) => m.id === scene.material.preset)?.name ??
-    "Custom";
   const backdrop =
     BACKDROP_PRESETS.find((b) => b.id === scene.backdrop.preset)?.name ??
     "Custom";
@@ -250,19 +254,45 @@ export function ScenePanel({
             </Row>
           ))}
         </ul>
+        <div className="mb-1 mt-3 flex items-center justify-between px-2">
+          <h3 className="text-2xs font-semibold uppercase tracking-wider text-ink-400">
+            Figures{" "}
+            <span className="font-normal normal-case tracking-normal">
+              ({scene.figures.length}/{LIMITS.maxFigures})
+            </span>
+          </h3>
+          <IconButton
+            icon={Plus}
+            size="sm"
+            label="Add figure"
+            disabled={scene.figures.length >= LIMITS.maxFigures}
+            data-testid="add-figure"
+            onClick={() => {
+              expectNewFigure();
+              dispatch({ type: "addFigure" });
+            }}
+          />
+        </div>
+        <ul className="space-y-0.5" aria-label="Figures">
+          {scene.figures.map((f, i) => (
+            <Row
+              key={f.id}
+              icon={User}
+              label={many ? `Figure ${i + 1}` : "Mannequin"}
+              detail={`${f.model === "male" ? "Male" : "Female"} · ${
+                posePreset(f.pose.preset)?.name ?? "Custom pose"
+              }`}
+              selected={selection === "model" && f.id === figure.id}
+              onSelect={() => onSelect("model", f.id)}
+              testId={`node-figure-${f.id}`}
+            />
+          ))}
+        </ul>
         <ul className="mt-3 space-y-0.5" aria-label="Subject and set">
           <Row
-            icon={User}
-            label="Mannequin"
-            detail={`${scene.model === "male" ? "Male" : "Female"} · ${material}`}
-            selected={selection === "model"}
-            onSelect={() => onSelect("model")}
-            testId="node-model"
-          />
-          <Row
             icon={PersonStanding}
-            label="Pose"
-            detail={posePreset(scene.pose.preset)?.name ?? "Custom pose"}
+            label={many ? `Pose · ${figureLabel(scene, figure.id)}` : "Pose"}
+            detail={posePreset(figure.pose.preset)?.name ?? "Custom pose"}
             selected={isPoseSelection(selection)}
             onSelect={() => onSelect("pose")}
             testId="node-pose"

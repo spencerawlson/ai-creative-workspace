@@ -18,6 +18,9 @@ import {
   MaterialSchema,
   ModelSchema,
   SceneSchema,
+  FigureIdSchema,
+  FigureSchema,
+  type Figure,
   ShadowSchema,
   type SceneDoc,
   type StudioLight,
@@ -42,8 +45,25 @@ import {
   posePreset,
   type JointId,
 } from "./pose";
+import {
+  figureLabel,
+  findFigure,
+  freeSpot,
+  newFigure,
+  nextFigureId,
+} from "./figures";
 
 const lightId = z.string().min(1).max(24);
+/** Which figure a pose/model action targets; omitted = the first one. */
+const figureRef = FigureIdSchema.optional();
+
+const FigurePatchSchema = FigureSchema.pick({
+  x: true,
+  z: true,
+  rotation: true,
+})
+  .partial()
+  .strict();
 
 export const SceneActionSchema = z.discriminatedUnion("type", [
   z
@@ -65,7 +85,29 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     .strict(),
   z.object({ type: z.literal("removeLight"), id: lightId }).strict(),
   z.object({ type: z.literal("duplicateLight"), id: lightId }).strict(),
-  z.object({ type: z.literal("setModel"), model: ModelSchema }).strict(),
+  z
+    .object({
+      type: z.literal("setModel"),
+      model: ModelSchema,
+      figure: figureRef,
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("addFigure"), model: ModelSchema.optional() })
+    .strict(),
+  z
+    .object({ type: z.literal("duplicateFigure"), figure: FigureIdSchema })
+    .strict(),
+  z
+    .object({ type: z.literal("removeFigure"), figure: FigureIdSchema })
+    .strict(),
+  z
+    .object({
+      type: z.literal("updateFigure"),
+      figure: FigureIdSchema,
+      patch: FigurePatchSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("updateCamera"),
@@ -113,6 +155,7 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("applyPosePreset"),
       presetId: z.string().max(32),
+      figure: figureRef,
     })
     .strict(),
   z
@@ -120,6 +163,7 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       type: z.literal("updateJoint"),
       joint: z.enum(JOINT_IDS as [JointId, ...JointId[]]),
       patch: JointPatchSchema,
+      figure: figureRef,
     })
     .strict(),
   z
@@ -131,9 +175,10 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
         z.enum(JOINT_IDS as [JointId, ...JointId[]]),
         JointPatchSchema,
       ),
+      figure: figureRef,
     })
     .strict(),
-  z.object({ type: z.literal("mirrorPose") }).strict(),
+  z.object({ type: z.literal("mirrorPose"), figure: figureRef }).strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
 export type SceneAction = z.infer<typeof SceneActionSchema>;
@@ -242,8 +287,46 @@ export function applyAction(
       });
     }
     case "setModel":
-      if (scene.model === action.model) return { ok: true, scene };
-      return ok({ ...scene, model: action.model });
+      return withFigure(scene, action.figure, ok, (f) =>
+        f.model === action.model ? f : { ...f, model: action.model },
+      );
+    case "addFigure": {
+      if (scene.figures.length >= LIMITS.maxFigures)
+        return { ok: false, error: `At most ${LIMITS.maxFigures} figures` };
+      const figure = newFigure(
+        nextFigureId(scene.figures),
+        action.model ?? "male",
+        freeSpot(scene.figures),
+      );
+      return ok({ ...scene, figures: [...scene.figures, figure] });
+    }
+    case "duplicateFigure": {
+      const src = findFigure(scene, action.figure);
+      if (!src) return { ok: false, error: `No figure "${action.figure}"` };
+      if (scene.figures.length >= LIMITS.maxFigures)
+        return { ok: false, error: `At most ${LIMITS.maxFigures} figures` };
+      const copy = {
+        ...structuredClone(src),
+        id: nextFigureId(scene.figures),
+        ...freeSpot(scene.figures),
+      };
+      return ok({ ...scene, figures: [...scene.figures, copy] });
+    }
+    case "removeFigure": {
+      if (!findFigure(scene, action.figure))
+        return { ok: false, error: `No figure "${action.figure}"` };
+      if (scene.figures.length <= 1)
+        return { ok: false, error: "A scene needs at least one figure" };
+      return ok({
+        ...scene,
+        figures: scene.figures.filter((f) => f.id !== action.figure),
+      });
+    }
+    case "updateFigure":
+      return withFigure(scene, action.figure, ok, (f) => ({
+        ...f,
+        ...action.patch,
+      }));
     case "updateCamera":
       return ok({ ...scene, camera: { ...scene.camera, ...action.patch } });
     case "applyMaterialPreset": {
@@ -276,44 +359,71 @@ export function applyAction(
       const preset = posePreset(action.presetId);
       if (!preset)
         return { ok: false, error: `Unknown pose "${action.presetId}"` };
-      return ok({
-        ...scene,
+      return withFigure(scene, action.figure, ok, (f) => ({
+        ...f,
         pose: { preset: preset.id, joints: structuredClone(preset.joints) },
-      });
+      }));
     }
     case "updateJoint":
-      return patchJoints(scene, { [action.joint]: action.patch }, ok);
+      return patchJoints(
+        scene,
+        action.figure,
+        { [action.joint]: action.patch },
+        ok,
+      );
     case "updateJoints":
-      return patchJoints(scene, action.patches, ok);
+      return patchJoints(scene, action.figure, action.patches, ok);
     case "mirrorPose":
-      return ok({
-        ...scene,
-        pose: { preset: "custom", joints: mirrorJoints(scene.pose.joints) },
-      });
+      return withFigure(scene, action.figure, ok, (f) => ({
+        ...f,
+        pose: { preset: "custom", joints: mirrorJoints(f.pose.joints) },
+      }));
     case "reset":
       return ok(defaultScene());
   }
 }
 
+/** Replace one figure (the first if `id` is omitted) with `change(f)`.
+ * Returning the same object is a no-op. */
+function withFigure(
+  scene: SceneDoc,
+  id: string | undefined,
+  ok: (next: SceneDoc) => ActionResult,
+  change: (f: Figure) => Figure | ActionResult,
+): ActionResult {
+  const figure = findFigure(scene, id);
+  if (!figure) return { ok: false, error: `No figure "${id}"` };
+  const next = change(figure);
+  if ("ok" in next) return next;
+  if (next === figure) return { ok: true, scene };
+  return ok({
+    ...scene,
+    figures: scene.figures.map((f) => (f === figure ? next : f)),
+  });
+}
+
 function patchJoints(
   scene: SceneDoc,
+  figure: string | undefined,
   patches: Partial<Record<JointId, Record<string, number>>>,
   ok: (next: SceneDoc) => ActionResult,
 ): ActionResult {
   const ids = Object.keys(patches) as JointId[];
   if (ids.length === 0) return { ok: false, error: "No joints to change" };
-  const joints = { ...scene.pose.joints };
-  for (const id of ids) {
-    const patch = patches[id]!;
-    const unknown = Object.keys(patch).find((k) => !(k in JOINTS[id].dofs));
-    if (unknown)
-      return {
-        ok: false,
-        error: `${JOINTS[id].label} has no "${unknown}" movement`,
-      };
-    joints[id] = { ...joints[id], ...patch } as never;
-  }
-  return ok({ ...scene, pose: { preset: "custom", joints } });
+  return withFigure(scene, figure, ok, (f) => {
+    const joints = { ...f.pose.joints };
+    for (const id of ids) {
+      const patch = patches[id]!;
+      const unknown = Object.keys(patch).find((k) => !(k in JOINTS[id].dofs));
+      if (unknown)
+        return {
+          ok: false,
+          error: `${JOINTS[id].label} has no "${unknown}" movement`,
+        };
+      joints[id] = { ...joints[id], ...patch } as never;
+    }
+    return { ...f, pose: { preset: "custom", joints } };
+  });
 }
 
 /** Actions with the same key, in quick succession, merge into one undo
@@ -329,9 +439,11 @@ export function coalesceKey(action: SceneAction): string | null {
     case "updateBackdrop":
       return `backdrop:${Object.keys(action.patch).sort().join(",")}`;
     case "updateJoint":
-      return `joint:${action.joint}:${Object.keys(action.patch).sort().join(",")}`;
+      return `joint:${action.figure ?? ""}:${action.joint}:${Object.keys(action.patch).sort().join(",")}`;
+    case "updateFigure":
+      return `figure:${action.figure}:${Object.keys(action.patch).sort().join(",")}`;
     case "updateJoints":
-      return `joints:${Object.entries(action.patches)
+      return `joints:${action.figure ?? ""}:${Object.entries(action.patches)
         .map(([id, p]) => `${id}=${Object.keys(p!).sort().join(",")}`)
         .sort()
         .join(";")}`;
@@ -385,6 +497,22 @@ function fields(patch: object): string {
 
 /** Human-readable label for history and action previews. */
 export function describeAction(scene: SceneDoc, action: SceneAction): string {
+  const label = describeOnly(scene, action);
+  // With several figures, say which one a pose/model change was for.
+  const figure = "figure" in action ? action.figure : undefined;
+  const perFigure = [
+    "setModel",
+    "applyPosePreset",
+    "updateJoint",
+    "updateJoints",
+    "mirrorPose",
+  ].includes(action.type);
+  return perFigure && scene.figures.length > 1
+    ? `${figureLabel(scene, figure ?? scene.figures[0].id)} · ${label}`
+    : label;
+}
+
+function describeOnly(scene: SceneDoc, action: SceneAction): string {
   const lightName = (id: string) => findLight(scene, id)?.label ?? id;
   switch (action.type) {
     case "applyPreset":
@@ -402,6 +530,18 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
       return `Duplicate ${lightName(action.id)}`;
     case "setModel":
       return `Mannequin: ${action.model}`;
+    case "addFigure":
+      return "Add figure";
+    case "duplicateFigure":
+      return `Duplicate ${figureLabel(scene, action.figure)}`;
+    case "removeFigure":
+      return `Remove ${figureLabel(scene, action.figure)}`;
+    case "updateFigure":
+      return `${figureLabel(scene, action.figure)}: ${
+        "rotation" in action.patch && Object.keys(action.patch).length === 1
+          ? "turn"
+          : "move"
+      }`;
     case "updateCamera":
       return `Camera: ${fields(action.patch)}`;
     case "applyMaterialPreset":

@@ -6,6 +6,7 @@ import {
   dragOnPage,
   isMobile,
   jointsOnScreen,
+  onCanvas,
   overlayPixels,
   openStudio,
   sParam,
@@ -57,7 +58,7 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect.poll(() => sParam(page)).not.toBe(initial);
     const afterPreset = await sParam(page);
     await showPanel(page, "scene");
-    await page.getByTestId("node-model").click();
+    await page.getByTestId("node-figure-fig-1").click();
     await page.getByTestId("model-female").click();
     await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
       "data-status",
@@ -75,7 +76,9 @@ test.describe("Lighting Studio — critical journeys", () => {
       "true",
     );
     await showPanel(page2, "scene");
-    await expect(page2.getByTestId("node-model")).toContainText("Female");
+    await expect(page2.getByTestId("node-figure-fig-1")).toContainText(
+      "Female",
+    );
     await other.close();
   });
 
@@ -169,7 +172,7 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page, "presets");
     await page.getByTestId("preset-split").click();
     await showPanel(page, "scene");
-    await page.getByTestId("node-model").click();
+    await page.getByTestId("node-figure-fig-1").click();
     for (const m of ["female", "male", "female"] as const) {
       await page.getByTestId(`model-${m}`).click();
       await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
@@ -288,7 +291,8 @@ test.describe("Lighting Studio — critical journeys", () => {
     // Pose mode draws the joint overlay.
     await expect.poll(() => overlayPixels(page)).toBeGreaterThan(20);
     const joints = await jointsOnScreen(page);
-    expect(Object.keys(joints)).toHaveLength(14); // 12 joints + 2 hands
+    expect(joints).toHaveProperty("handR");
+    expect(joints).toHaveProperty("wristL");
     // Use a hand that isn't under a side panel (on a tablet the figure's
     // right hand sits behind the scene list).
     const exposed = (p: { x: number; y: number }) =>
@@ -332,6 +336,87 @@ test.describe("Lighting Studio — critical journeys", () => {
       )
       .toBeGreaterThan(10);
     await expect(raise).toHaveValue("0");
+  });
+
+  test("several figures: add, turn, move, pose each one, share", async ({
+    page,
+    browser,
+  }, info) => {
+    await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("add-figure").click();
+    const second = page.getByTestId("node-figure-fig-2");
+    await expect(second).toContainText("Male");
+    // The new figure is selected and loads (same model: no download).
+    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
+      "data-status",
+      "ready",
+    );
+    await expect(page.getByTestId("model-male")).toBeVisible();
+    await page.getByTestId("model-female").click();
+    await expect(second).toContainText("Female");
+    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
+      "data-status",
+      "ready",
+      { timeout: 90_000 },
+    );
+    const turn = page.getByTestId("figure-rotation");
+    await turn.fill("-30");
+    await expect(turn).toHaveValue("-30");
+
+    // Drag a figure across the floor (whichever isn't under a panel).
+    const x = page.getByTestId("figure-x");
+    for (const id of ["fig-2", "fig-1"]) {
+      const body = (await jointsOnScreen(page, id)).body;
+      if (!body || !(await onCanvas(page, body))) continue;
+      if (id === "fig-1") {
+        await showPanel(page, "scene");
+        await page.getByTestId("node-figure-fig-1").click();
+      }
+      const before = Number(await x.inputValue());
+      await dragOnPage(page, info, body, { x: body.x + 40, y: body.y });
+      await expect
+        .poll(async () => Number(await x.inputValue()))
+        .toBeGreaterThan(before + 0.05);
+      // One undo puts it back.
+      await page.getByTestId("undo").click();
+      await expect
+        .poll(async () => Number(await x.inputValue()))
+        .toBeCloseTo(before, 2);
+      break;
+    }
+
+    // Pose figure 2 only.
+    await showPanel(page, "scene");
+    await second.click();
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-arms-up").click();
+    await showPanel(page, "scene");
+    await expect(second).toContainText("Arms up");
+    await expect(page.getByTestId("node-figure-fig-1")).toContainText(
+      "Scan A-pose",
+    );
+
+    // A share link carries both figures.
+    await expect.poll(() => sParam(page)).toMatch(/./);
+    const url = new URL(page.url());
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await openStudio(page2, url.pathname + url.search);
+    await showPanel(page2, "scene");
+    await expect(page2.getByTestId("node-figure-fig-2")).toContainText(
+      "Female · Arms up",
+    );
+    await other.close();
+
+    // Remove it again; the last figure can't be removed.
+    await showPanel(page, "scene");
+    await second.click();
+    await page.getByTestId("figure-remove").click();
+    await expect(second).toHaveCount(0);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await expect(page.getByTestId("figure-remove")).toBeDisabled();
   });
 
   test("tapping the figure opens the pose controls for that body part", async ({
