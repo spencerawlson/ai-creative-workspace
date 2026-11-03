@@ -24,9 +24,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   play/pause, scrubbing, keys you can drag to retime, Maya-style
   auto-key, loop and length; a full-window preview (V); and a graph
   editor (G) showing every animated value as a curve, where you drag a
-  key's point to change it and choose smooth, linear or stepped
-  interpolation per key. Animations are kept in autosave and project
-  files; share links carry the current frame.
+  key's point to change it, choose smooth, linear or stepped
+  interpolation per key, and tilt Bézier tangent handles. Animations are
+  kept in autosave, project files and share links (compressed; a very
+  long animation is shared as its current frame), and export as an MP4
+  or WebM video, rendered frame by frame in the browser.
 - Six backdrops (shadow catcher or seamless sweep), camera focal length,
   exposure in EV, Filmic/AgX/Neutral tone mapping.
 - Undo/redo with a history panel, keyboard shortcuts (press `?`).

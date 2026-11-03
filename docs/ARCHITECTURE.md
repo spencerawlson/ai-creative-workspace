@@ -86,8 +86,25 @@ edits are dropped, as in Maya. With auto-key on, `useStudio` tags each
 commit with the current time; an edit that changes something keys
 record is applied and keyed as one undo step. Playback runs in the
 timeline component and draws each frame straight to the engine
-(`ViewportHandle.preview`), not through React. Share links stay
-frame-only: an animation doesn't fit in a URL.
+(`ViewportHandle.preview`), not through React. Each value follows its
+own cubic Hermite curve between keys; with no graph-editor tangents
+that is exactly the key's ease, and every result is clamped to the
+channel's range.
+
+**Animated links.** A link for a scene with keys holds the animation
+too, as positional rows, deflate-raw compressed with the browser's
+`CompressionStream` and prefixed `z`. Links stay under 8,000 characters
+(servers refuse long request lines); longer animations are shared as
+their frame. Decoding stops past 256 KB inflated and ends in full
+schema validation, like every link.
+
+**Video export.** `components/studio/recordVideo.ts` puts the engine in
+capture mode (fixed canvas size, handles hidden, render loop paused),
+evaluates each frame and encodes it with WebCodecs at an exact
+timestamp; mediabunny (MPL-2.0, loaded on demand) writes MP4 (H.264)
+or WebM (VP9/VP8), whichever the browser can really encode.
+MediaRecorder was tried first and dropped frames while its encoder
+started up.
 
 ## 2. Persistent workspace (Designed — not built)
 
