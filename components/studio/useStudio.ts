@@ -23,10 +23,18 @@ import {
 import { loadAutosave, saveAutosave } from "@/lib/studio/persistence";
 import { defaultScene } from "@/lib/studio/presets";
 import { decodeScene, encodeScene } from "@/lib/studio/share";
+import type { CameraPlacement } from "@/lib/studio/schema";
 
 export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
 
 export type Notice = { id: number; tone: "info" | "error"; text: string };
+
+export interface TimelineState {
+  t: number;
+  autoKey: boolean;
+  /** The camera view to record in keys, or undefined to not key it. */
+  camera: () => CameraPlacement | undefined;
+}
 
 export function useStudio() {
   const [history, send] = useReducer(historyReducer, undefined, () =>
@@ -43,24 +51,49 @@ export function useStudio() {
     setNotice({ id: ++noticeId.current, tone, text });
   }, []);
 
+  /** Set by the timeline: the current time, whether auto-key is on,
+   * and the camera view to key. Read at dispatch time, so every edit —
+   * slider, viewport drag, preset — is keyed the same way. */
+  const timeline = useRef<TimelineState | null>(null);
+
   /** `gesture`: part of a viewport drag; merges until `seal`. */
   const dispatch = useCallback(
     (action: SceneAction, opts?: { gesture?: boolean }) => {
+      const tl = timeline.current;
       send({
         type: "commit",
         action,
         now: performance.now(),
         gesture: opts?.gesture,
+        autoKey: tl?.autoKey ? { t: tl.t, camera: tl.camera() } : undefined,
       });
     },
     [],
   );
-  const seal = useCallback(() => send({ type: "seal" }), []);
-  const undo = useCallback(() => send({ type: "undo" }), []);
-  const redo = useCallback(() => send({ type: "redo" }), []);
-  const jump = useCallback(
-    (index: number) => send({ type: "jump", index }),
+  const showTime = useCallback(
+    (t: number) => send({ type: "showTime", t }),
     [],
+  );
+  // After undo/redo the figures should again match the playhead.
+  const resync = useCallback(() => {
+    const tl = timeline.current;
+    if (tl) send({ type: "showTime", t: tl.t });
+  }, []);
+  const seal = useCallback(() => send({ type: "seal" }), []);
+  const undo = useCallback(() => {
+    send({ type: "undo" });
+    resync();
+  }, [resync]);
+  const redo = useCallback(() => {
+    send({ type: "redo" });
+    resync();
+  }, [resync]);
+  const jump = useCallback(
+    (index: number) => {
+      send({ type: "jump", index });
+      resync();
+    },
+    [resync],
   );
 
   // Rejected actions (out of range, unknown light, too many lights).
@@ -128,6 +161,8 @@ export function useStudio() {
       undo,
       redo,
       jump,
+      showTime,
+      timeline,
       canUndo: canUndo(history),
       canRedo: canRedo(history),
       name,
@@ -146,6 +181,7 @@ export function useStudio() {
       undo,
       redo,
       jump,
+      showTime,
       name,
       hydrated,
       savedAt,

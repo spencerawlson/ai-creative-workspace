@@ -20,6 +20,13 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Or pose directly in the viewport with a mouse or a finger: drag a
   body part, or a joint circle of the Maya-style skeleton overlay;
   grabbing a hand lifts the whole arm.
+- Keyframe animation of figures, lights and the camera: a timeline with
+  play/pause, scrubbing, keys you can drag to retime, Maya-style
+  auto-key, loop and length; a full-window preview (V); and a graph
+  editor (G) showing every animated value as a curve, where you drag a
+  key's point to change it and choose smooth, linear or stepped
+  interpolation per key. Animations are kept in autosave and project
+  files; share links carry the current frame.
 - Six backdrops (shadow catcher or seamless sweep), camera focal length,
   exposure in EV, Filmic/AgX/Neutral tone mapping.
 - Undo/redo with a history panel, keyboard shortcuts (press `?`).

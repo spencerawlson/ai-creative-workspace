@@ -423,6 +423,69 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("figure-remove")).toBeDisabled();
   });
 
+  test("keyframes: auto-key, scrub, undo, play, preview, graph editor", async ({
+    page,
+  }, info) => {
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await page.getByTestId("timeline-autokey").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-group-armR").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await expect(page.getByTestId("timeline-key-0.00")).toBeVisible();
+
+    // Auto-key: an edit at 2 s keys 2 s.
+    await scrub.fill("2");
+    const raise = page.getByTestId("pose-shoulderR-raise");
+    await raise.fill("120");
+    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+
+    // Between keys the pose is interpolated (eased: halfway is halfway).
+    await scrub.fill("1");
+    await expect(raise).toHaveValue("60");
+
+    // The edit and its key were one undo step.
+    await page.getByTestId("undo").click();
+    await expect(page.getByTestId("timeline-key-2.00")).toHaveCount(0);
+    await page.getByTestId("redo").click();
+    await expect(page.getByTestId("timeline-key-2.00")).toBeVisible();
+
+    // Play moves the time.
+    const clock = page.getByTestId("timeline-time");
+    const before = await clock.innerText();
+    await page.getByTestId("timeline-play").click();
+    await expect.poll(() => clock.innerText()).not.toBe(before);
+    await page.getByTestId("timeline-play").click();
+
+    // Preview screen: full window, Esc closes it.
+    await page.getByTestId("timeline-preview").click();
+    await expect(page.getByTestId("preview-screen")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("preview-screen")).toHaveCount(0);
+
+    // Graph editor: drag the 2 s point down to lower that key's value.
+    await page.getByTestId("timeline-graph").click();
+    await expect(page.getByTestId("graph-editor")).toBeVisible();
+    const point = page.getByTestId("graph-key-fig-1.shoulderR.raise@2.00");
+    // Grab it once the panel has settled (it lays out as it opens).
+    let b = (await point.boundingBox())!;
+    await expect
+      .poll(async () => {
+        const now = (await point.boundingBox())!;
+        const still = now.x === b.x && now.y === b.y;
+        b = now;
+        return still;
+      })
+      .toBe(true);
+    const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    await dragOnPage(page, info, from, { x: from.x, y: from.y + 40 });
+    await scrub.fill("2");
+    await expect
+      .poll(async () => Number(await raise.inputValue()))
+      .toBeLessThan(110);
+  });
+
   test("tapping the figure opens the pose controls for that body part", async ({
     page,
   }) => {

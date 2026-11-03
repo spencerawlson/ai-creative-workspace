@@ -18,6 +18,10 @@ import {
   MaterialSchema,
   ModelSchema,
   SceneSchema,
+  AnimationSchema,
+  CameraPlacementSchema,
+  ChannelSchema,
+  EaseSchema,
   FigureIdSchema,
   FigureSchema,
   type Figure,
@@ -46,6 +50,16 @@ import {
   type JointId,
 } from "./pose";
 import {
+  KEY_EPSILON,
+  channelId,
+  forget,
+  keyAt,
+  roundTime,
+  snapshot,
+  upsertKey,
+  withKeyValue,
+} from "./animation";
+import {
   figureLabel,
   findFigure,
   freeSpot,
@@ -54,6 +68,7 @@ import {
 } from "./figures";
 
 const lightId = z.string().min(1).max(24);
+const keyTime = z.number().finite().min(0).max(LIMITS.duration[1]);
 /** Which figure a pose/model action targets; omitted = the first one. */
 const figureRef = FigureIdSchema.optional();
 
@@ -179,6 +194,35 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("mirrorPose"), figure: figureRef }).strict(),
+  z
+    .object({
+      // Record what moves, at time `t`; replaces a key already there.
+      type: z.literal("setKey"),
+      t: keyTime,
+      camera: CameraPlacementSchema.optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("deleteKey"), t: keyTime }).strict(),
+  z.object({ type: z.literal("moveKey"), from: keyTime, to: keyTime }).strict(),
+  z
+    .object({
+      type: z.literal("setDuration"),
+      duration: AnimationSchema.shape.duration,
+    })
+    .strict(),
+  z.object({ type: z.literal("clearKeys") }).strict(),
+  z
+    .object({
+      // Graph editor: one value inside one key.
+      type: z.literal("setKeyValue"),
+      t: keyTime,
+      channel: ChannelSchema,
+      value: z.number().finite(),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("setKeyEase"), t: keyTime, ease: EaseSchema })
+    .strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
 export type SceneAction = z.infer<typeof SceneActionSchema>;
@@ -265,6 +309,7 @@ export function applyAction(
         ...scene,
         preset: "custom",
         lights: scene.lights.filter((l) => l.id !== action.id),
+        animation: forget(scene.animation, { light: action.id }),
       });
     }
     case "duplicateLight": {
@@ -320,6 +365,7 @@ export function applyAction(
       return ok({
         ...scene,
         figures: scene.figures.filter((f) => f.id !== action.figure),
+        animation: forget(scene.animation, { figure: action.figure }),
       });
     }
     case "updateFigure":
@@ -378,10 +424,75 @@ export function applyAction(
         ...f,
         pose: { preset: "custom", joints: mirrorJoints(f.pose.joints) },
       }));
+    case "setKey": {
+      const r = upsertKey(
+        scene.animation,
+        snapshot(scene, action.t, action.camera),
+      );
+      return r.ok ? ok({ ...scene, animation: r.animation }) : r;
+    }
+    case "deleteKey": {
+      const keys = scene.animation.keys;
+      const kept = keys.filter((k) => Math.abs(k.t - action.t) >= KEY_EPSILON);
+      if (kept.length === keys.length)
+        return { ok: false, error: `No keyframe at ${secs(action.t)}` };
+      return ok({ ...scene, animation: { ...scene.animation, keys: kept } });
+    }
+    case "moveKey": {
+      const key = keyAt(scene.animation, action.from);
+      if (!key)
+        return { ok: false, error: `No keyframe at ${secs(action.from)}` };
+      const to = roundTime(action.to);
+      if (Math.abs(to - key.t) < KEY_EPSILON) return { ok: true, scene };
+      if (keyAt(scene.animation, to))
+        return {
+          ok: false,
+          error: `There is already a keyframe at ${secs(to)}`,
+        };
+      const rest = {
+        ...scene.animation,
+        keys: scene.animation.keys.filter((k) => k !== key),
+      };
+      const r = upsertKey(rest, { ...key, t: to });
+      return r.ok ? ok({ ...scene, animation: r.animation }) : r;
+    }
+    case "setDuration": {
+      const last = scene.animation.keys.at(-1);
+      if (last && last.t > action.duration)
+        return {
+          ok: false,
+          error: `A keyframe is at ${secs(last.t)}; move or delete it first`,
+        };
+      return ok({
+        ...scene,
+        animation: { ...scene.animation, duration: action.duration },
+      });
+    }
+    case "clearKeys":
+      return ok({ ...scene, animation: { ...scene.animation, keys: [] } });
+    case "setKeyValue":
+    case "setKeyEase": {
+      const key = keyAt(scene.animation, action.t);
+      if (!key) return { ok: false, error: `No keyframe at ${secs(action.t)}` };
+      const next =
+        action.type === "setKeyEase"
+          ? { ...key, ease: action.ease }
+          : withKeyValue(key, action.channel, action.value);
+      if (!next) return { ok: false, error: "That keyframe doesn't record it" };
+      return ok({
+        ...scene,
+        animation: {
+          ...scene.animation,
+          keys: scene.animation.keys.map((k) => (k === key ? next : k)),
+        },
+      });
+    }
     case "reset":
       return ok(defaultScene());
   }
 }
+
+const secs = (t: number) => `${t.toFixed(2)} s`;
 
 /** Replace one figure (the first if `id` is omitted) with `change(f)`.
  * Returning the same object is a no-op. */
@@ -426,6 +537,26 @@ function patchJoints(
   });
 }
 
+/** Actions that change something keyframes record (figure placement
+ * and pose, light settings, focal length): with auto-key on, these also
+ * set a key at the current time. */
+export function isAnimatable(action: SceneAction): boolean {
+  switch (action.type) {
+    case "applyPreset":
+    case "updateLight":
+    case "applyPosePreset":
+    case "updateJoint":
+    case "updateJoints":
+    case "mirrorPose":
+    case "updateFigure":
+      return true;
+    case "updateCamera":
+      return "focalMm" in action.patch;
+    default:
+      return false;
+  }
+}
+
 /** Actions with the same key, in quick succession, merge into one undo
  * step — so dragging a slider or a light handle is a single undo. */
 export function coalesceKey(action: SceneAction): string | null {
@@ -442,6 +573,13 @@ export function coalesceKey(action: SceneAction): string | null {
       return `joint:${action.figure ?? ""}:${action.joint}:${Object.keys(action.patch).sort().join(",")}`;
     case "updateFigure":
       return `figure:${action.figure}:${Object.keys(action.patch).sort().join(",")}`;
+    case "moveKey":
+      // Dragging a key on the timeline is one undo step.
+      return "moveKey";
+    case "setKeyValue":
+      return `keyValue:${action.t}:${channelId(action.channel)}`;
+    case "setDuration":
+      return "duration";
     case "updateJoints":
       return `joints:${action.figure ?? ""}:${Object.entries(action.patches)
         .map(([id, p]) => `${id}=${Object.keys(p!).sort().join(",")}`)
@@ -575,6 +713,20 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
     }
     case "mirrorPose":
       return "Mirror pose";
+    case "setKey":
+      return `Set key at ${secs(action.t)}`;
+    case "deleteKey":
+      return `Delete key at ${secs(action.t)}`;
+    case "moveKey":
+      return `Move key to ${secs(action.to)}`;
+    case "setDuration":
+      return `Animation length: ${action.duration} s`;
+    case "clearKeys":
+      return "Delete all keys";
+    case "setKeyValue":
+      return `Edit key at ${secs(action.t)}`;
+    case "setKeyEase":
+      return `Key at ${secs(action.t)}: ${action.ease}`;
     case "reset":
       return "Reset scene";
   }

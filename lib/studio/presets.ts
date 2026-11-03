@@ -4,6 +4,7 @@
 
 import { PRESETS, type LightState } from "@/lib/lighting";
 import { newFigure } from "./figures";
+import { defaultAnimation } from "./schema";
 import type {
   BackdropSettings,
   CameraSettings,
@@ -214,6 +215,7 @@ export function defaultScene(): SceneDoc {
     backdrop: backdropFromPreset("studio-dark")!,
     shadows: { quality: "medium" },
     figures: [newFigure("fig-1", "male", { x: 0, z: 0 })],
+    animation: defaultAnimation(),
   };
 }
 
