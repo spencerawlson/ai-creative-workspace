@@ -570,6 +570,29 @@ test.describe("Lighting Studio — critical journeys", () => {
       true,
     );
     expect(bytes.length).toBeGreaterThan(5000);
+    // It plays: right size and length (this Chromium decodes WebM only).
+    if (webm) {
+      const meta = await page.evaluate(async (b64) => {
+        const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const v = document.createElement("video");
+        v.muted = true;
+        v.src = URL.createObjectURL(new Blob([bin], { type: "video/webm" }));
+        await new Promise((r, j) => {
+          v.onloadedmetadata = r;
+          v.onerror = j;
+        });
+        // WebM may report Infinity until seeked to the end.
+        if (!Number.isFinite(v.duration)) {
+          v.currentTime = 1e6;
+          await new Promise((r) => (v.ondurationchange = r));
+        }
+        return { w: v.videoWidth, h: v.videoHeight, d: v.duration };
+      }, bytes.toString("base64"));
+      expect(meta.w).toBe(1280);
+      expect(meta.h).toBe(720);
+      expect(meta.d).toBeGreaterThan(0.9);
+      expect(meta.d).toBeLessThan(1.2);
+    }
     await expect(page.getByTestId("video-dialog")).toBeHidden();
   });
 
