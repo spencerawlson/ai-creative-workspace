@@ -150,7 +150,7 @@ describe("keyframe actions", () => {
     expect(applyAction(s, { type: "setKey", t: 6 }).ok).toBe(false); // past 5 s
     let full = apply(defaultScene(), { type: "setDuration", duration: 120 });
     for (let i = 0; i < LIMITS.maxKeys; i++)
-      full = apply(full, { type: "setKey", t: i });
+      full = apply(full, { type: "setKey", t: i / 2 });
     expect(applyAction(full, { type: "setKey", t: 100 }).ok).toBe(false);
   });
 
