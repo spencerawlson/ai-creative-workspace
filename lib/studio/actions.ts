@@ -621,7 +621,12 @@ function applyMotion(
     figures,
     animation: {
       ...scene.animation,
-      duration: Math.max(scene.animation.duration, Math.ceil(end)),
+      // A first move sets the length (so it loops without a long pause);
+      // later ones only ever lengthen it.
+      duration:
+        scene.animation.keys.length === 0
+          ? Math.max(LIMITS.duration[0], Math.ceil(end))
+          : Math.max(scene.animation.duration, Math.ceil(end)),
       keys: keys.sort((a, b) => a.t - b.t),
     },
   });

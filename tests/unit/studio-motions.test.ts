@@ -147,6 +147,11 @@ describe("motion library", () => {
       expect(k.figures["fig-1"].joints.hipL.forward).toBe(0);
   });
 
+  it("a first move sets the animation's length to fit it", () => {
+    const s = apply(defaultScene(), { type: "applyMotion", motion: "nod" });
+    expect(s.animation.duration).toBe(2); // 1.8 s, rounded up
+  });
+
   it("the animation grows to fit, within its limits", () => {
     const s = apply(defaultScene(), {
       type: "applyMotion",

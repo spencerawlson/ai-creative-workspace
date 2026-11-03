@@ -725,6 +725,32 @@ test.describe("layout", () => {
     expect(box.height).toBeGreaterThan(300);
   });
 
+  test("phones: the panels fold down to a bar and the view grows", async ({
+    page,
+  }, info) => {
+    test.skip(!isMobile(info), "mobile layout only");
+    await openStudio(page);
+    const view = page.getByTestId("lighting-scene");
+    const before = (await view.boundingBox())!.height;
+    const handle = page.getByTestId("sheet-handle");
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await handle.click();
+    await expect(handle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("tabpanel")).toHaveCount(0);
+    await expect
+      .poll(async () => (await view.boundingBox())!.height)
+      .toBeGreaterThan(before * 1.5);
+    // The tabs stay in the bar; picking one opens the panels again.
+    await page.getByTestId("tab-scene").click();
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("node-light-key")).toBeVisible();
+    // Selecting in the view (folded first) opens them too.
+    await handle.click();
+    await view.click();
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
+  });
+
   test("selecting a light on a phone opens the inspector tab", async ({
     page,
   }, info) => {
