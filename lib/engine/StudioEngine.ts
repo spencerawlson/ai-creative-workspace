@@ -1559,13 +1559,29 @@ export class StudioEngine {
     }
     const owner = partHit && this.instanceOf(partHit.object);
     if (!partHit || !owner) return null;
-    const vars = dragVariables(partHit.object.userData.bone as BoneName);
+    let bone = partHit.object.userData.bone as BoneName;
+    let joint = partHit.object.userData.joint as string;
+    let grabbed = partHit.object.parent!;
+    // Fingers are grabbed one by one only while that hand is being
+    // posed (like their dots); otherwise the whole hand is the handle
+    // and lifts the arm. Seen from the front the thumb lies over the
+    // palm, and on a phone a finger is a few pixels wide.
+    const finger = bone.match(/^(thumb|index|middle|ring|pinky)\d(L|R)$/);
+    const posing = this.selection?.match(
+      /^pose:(wrist|thumb|index|middle|ring|pinky)\d?(L|R)$/,
+    );
+    if (finger && owner.rig && posing?.[2] !== finger[2]) {
+      bone = `wrist${finger[2]}` as BoneName;
+      joint = bone;
+      grabbed = owner.rig.bones[bone];
+    }
+    const vars = dragVariables(bone);
     if (vars.length === 0) return null;
     return {
       figure: owner.id,
-      joint: partHit.object.userData.joint as string,
+      joint,
       vars,
-      grabbed: partHit.object.parent!,
+      grabbed,
       origin: partHit.point.clone(),
       at: partHit.point.clone(),
     };
