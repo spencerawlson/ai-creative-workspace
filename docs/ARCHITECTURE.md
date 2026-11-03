@@ -53,14 +53,21 @@ demand, caches models per URL, token-guards loads, and `dispose()`
 frees every GPU resource it created.
 
 **Posing.** The scans have no skeleton, so the model build fits one
-(13 bones, world-aligned in the bind pose) and bakes smoothed skin
+(45 bones: body, feet, thumbs and three per finger; world-aligned in
+the bind pose) and bakes smoothed skin
 weights; see the header of `scripts/rig-mannequin.mjs`. A pose is plain
 data in the scene (`pose.joints`, degrees relative to the A-pose) and
 goes through the same actions, history, autosave and share links as
 lighting. The engine turns angles into bone rotations
 (`lib/engine/posing.ts`). Taps on the figure hit invisible per-bone
 capsules, not the 481k-triangle skinned mesh, and select
-`pose:<joint>`. In pose mode, dragging a body part or a joint circle
+`pose:<joint>`. Some of the scan's fingers are fused, so the rig finds
+the thumb as the piece that separates from the hand first and cuts the
+four fingers at the webs between fingertips, seen in the palm's plane;
+`rig.palm` in the GLB gives each hand's frame (palm normal, thumb
+direction) for the finger rotations. Version 1 GLBs (13 bones) still
+pose, without feet and fingers; model URLs carry `?v=` so browsers
+fetch rebuilt rigs. In pose mode, dragging a body part or a joint circle
 runs a small damped-least-squares solver over that joint's existing
 angles, inside their limits; one drag is one undo step (a "gesture"
 commit, sealed on release).
