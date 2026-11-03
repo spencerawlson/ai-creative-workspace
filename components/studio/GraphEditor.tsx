@@ -7,7 +7,7 @@
  * travels to the next key (smooth, linear, step); click the background
  * to move the playhead. Every edit is a normal, undoable action. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Selection } from "@/lib/engine/StudioEngine";
 import {
   channelId,
@@ -124,15 +124,16 @@ export function GraphEditor({
     return times.map((t) => ({ t, scene: evaluate(scene, t).scene }));
   }, [scene, duration]);
 
-  // Plot size follows the element.
+  // Plot size follows the element. Measured before the first paint, so
+  // the plot never shows (or takes input) at a placeholder size.
   const box = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 600, h: 200 });
-  useEffect(() => {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() =>
-      setSize({ w: el.clientWidth, h: el.clientHeight }),
-    );
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -154,8 +155,11 @@ export function GraphEditor({
   lo -= padV;
   hi += padV;
 
-  const W = size.w - PAD.l - PAD.r;
-  const H = size.h - PAD.t - PAD.b;
+  // Until measured nothing is drawn; these just keep the maths finite.
+  const sw = size?.w ?? 1;
+  const sh = size?.h ?? 1;
+  const W = Math.max(1, sw - PAD.l - PAD.r);
+  const H = Math.max(1, sh - PAD.t - PAD.b);
   const x = (t: number) => PAD.l + (t / duration) * W;
   const y = (v: number) => PAD.t + (1 - (v - lo) / (hi - lo)) * H;
   const tAt = (px: number) =>
@@ -287,160 +291,158 @@ export function GraphEditor({
           )}
         </div>
         <div ref={box} className="relative min-h-0 flex-1">
-          <svg
-            ref={svg}
-            width={size.w}
-            height={size.h}
-            className="absolute inset-0 touch-none select-none"
-            data-testid="graph-plot"
-            onPointerDown={(e) => {
-              if (e.target !== e.currentTarget) return;
-              setPicked(null);
-              onSeek(tAt(local(e).px));
-            }}
-          >
-            {/* grid */}
-            {timeTicks.map((t) => (
-              <g key={`t${t}`}>
-                <line
-                  x1={x(t)}
-                  x2={x(t)}
-                  y1={PAD.t}
-                  y2={PAD.t + H}
-                  stroke="#262a33"
-                />
-                <text
-                  x={x(t)}
-                  y={size.h - 6}
-                  textAnchor="middle"
-                  fill="#6b7280"
-                >
-                  {t}s
-                </text>
-              </g>
-            ))}
-            {valueTicks.map((v) => (
-              <g key={`v${v}`}>
-                <line
-                  x1={PAD.l}
-                  x2={PAD.l + W}
-                  y1={y(v)}
-                  y2={y(v)}
-                  stroke="#1f232b"
-                />
-                <text
-                  x={PAD.l - 4}
-                  y={y(v) + 3}
-                  textAnchor="end"
-                  fill="#6b7280"
-                >
-                  {Math.abs(hi - lo) < 10 ? v.toFixed(2) : Math.round(v)}
-                </text>
-              </g>
-            ))}
-            {/* curves */}
-            {visible.map((c) => {
-              const pts = samples
-                .map((s) => [s.t, channelValue(s.scene, c.channel)] as const)
-                .filter(
-                  (p): p is readonly [number, number] => p[1] !== undefined,
-                )
-                .map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`);
-              return (
-                <polyline
-                  key={channelId(c.channel)}
-                  points={pts.join(" ")}
-                  fill="none"
-                  stroke={colour(c.channel)}
-                  strokeWidth={1.5}
-                  pointerEvents="none"
-                />
-              );
-            })}
-            {/* playhead */}
-            <line
-              x1={x(time)}
-              x2={x(time)}
-              y1={PAD.t}
-              y2={PAD.t + H}
-              stroke="#f59e0b"
-              strokeWidth={1}
-              pointerEvents="none"
-            />
-            {/* key points */}
-            {visible.flatMap((c) =>
-              keys.map((k) => {
-                const v = keyValue(k, c.channel);
-                if (v === undefined) return null;
-                const active =
-                  picked !== null && Math.abs(k.t - picked) < 0.005;
-                const { unit } = channelRange(c.channel);
+          {size && (
+            <svg
+              ref={svg}
+              width={sw}
+              height={sh}
+              className="absolute inset-0 touch-none select-none"
+              data-testid="graph-plot"
+              onPointerDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                setPicked(null);
+                onSeek(tAt(local(e).px));
+              }}
+            >
+              {/* grid */}
+              {timeTicks.map((t) => (
+                <g key={`t${t}`}>
+                  <line
+                    x1={x(t)}
+                    x2={x(t)}
+                    y1={PAD.t}
+                    y2={PAD.t + H}
+                    stroke="#262a33"
+                  />
+                  <text x={x(t)} y={sh - 6} textAnchor="middle" fill="#6b7280">
+                    {t}s
+                  </text>
+                </g>
+              ))}
+              {valueTicks.map((v) => (
+                <g key={`v${v}`}>
+                  <line
+                    x1={PAD.l}
+                    x2={PAD.l + W}
+                    y1={y(v)}
+                    y2={y(v)}
+                    stroke="#1f232b"
+                  />
+                  <text
+                    x={PAD.l - 4}
+                    y={y(v) + 3}
+                    textAnchor="end"
+                    fill="#6b7280"
+                  >
+                    {Math.abs(hi - lo) < 10 ? v.toFixed(2) : Math.round(v)}
+                  </text>
+                </g>
+              ))}
+              {/* curves */}
+              {visible.map((c) => {
+                const pts = samples
+                  .map((s) => [s.t, channelValue(s.scene, c.channel)] as const)
+                  .filter(
+                    (p): p is readonly [number, number] => p[1] !== undefined,
+                  )
+                  .map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`);
                 return (
-                  <circle
-                    key={`${channelId(c.channel)}@${k.t}`}
-                    cx={x(k.t)}
-                    cy={y(v)}
-                    r={active ? 6 : 4.5}
-                    fill={active ? "#ffffff" : colour(c.channel)}
-                    stroke="#0b0c10"
+                  <polyline
+                    key={channelId(c.channel)}
+                    points={pts.join(" ")}
+                    fill="none"
+                    stroke={colour(c.channel)}
                     strokeWidth={1.5}
-                    className="cursor-grab"
-                    data-testid={`graph-key-${channelId(c.channel)}@${k.t.toFixed(2)}`}
-                    aria-label={`${c.label} ${v}${unit} at ${k.t.toFixed(2)} s`}
-                    onPointerDown={(e) => {
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      setPicked(k.t);
-                      drag.current = {
-                        t: k.t,
-                        channel: c.channel,
-                        x: e.clientX,
-                        y: e.clientY,
-                        axis: null,
-                      };
-                    }}
-                    onPointerMove={(e) => {
-                      const d = drag.current;
-                      if (!d) return;
-                      const dx = e.clientX - d.x;
-                      const dy = e.clientY - d.y;
-                      if (!d.axis) {
-                        if (Math.hypot(dx, dy) < 4) return;
-                        d.axis = Math.abs(dx) > Math.abs(dy) ? "time" : "value";
-                      }
-                      const { px, py } = local(e);
-                      if (d.axis === "value") {
-                        dispatch(
-                          {
-                            type: "setKeyValue",
-                            t: d.t,
-                            channel: d.channel,
-                            value: fitValue(d.channel, vAt(py)),
-                          },
-                          { gesture: true },
-                        );
-                      } else {
-                        const to = tAt(px);
-                        if (to === d.t || keyAt(scene.animation, to)) return;
-                        dispatch(
-                          { type: "moveKey", from: d.t, to },
-                          { gesture: true },
-                        );
-                        d.t = to;
-                        setPicked(to);
-                      }
-                    }}
-                    onPointerUp={() => {
-                      const d = drag.current;
-                      drag.current = null;
-                      if (!d) return;
-                      if (d.axis) seal();
-                      onSeek(d.t);
-                    }}
+                    pointerEvents="none"
                   />
                 );
-              }),
-            )}
-          </svg>
+              })}
+              {/* playhead */}
+              <line
+                x1={x(time)}
+                x2={x(time)}
+                y1={PAD.t}
+                y2={PAD.t + H}
+                stroke="#f59e0b"
+                strokeWidth={1}
+                pointerEvents="none"
+              />
+              {/* key points */}
+              {visible.flatMap((c) =>
+                keys.map((k) => {
+                  const v = keyValue(k, c.channel);
+                  if (v === undefined) return null;
+                  const active =
+                    picked !== null && Math.abs(k.t - picked) < 0.005;
+                  const { unit } = channelRange(c.channel);
+                  return (
+                    <circle
+                      key={`${channelId(c.channel)}@${k.t}`}
+                      cx={x(k.t)}
+                      cy={y(v)}
+                      r={active ? 6 : 4.5}
+                      fill={active ? "#ffffff" : colour(c.channel)}
+                      stroke="#0b0c10"
+                      strokeWidth={1.5}
+                      className="cursor-grab"
+                      data-testid={`graph-key-${channelId(c.channel)}@${k.t.toFixed(2)}`}
+                      aria-label={`${c.label} ${v}${unit} at ${k.t.toFixed(2)} s`}
+                      onPointerDown={(e) => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        setPicked(k.t);
+                        drag.current = {
+                          t: k.t,
+                          channel: c.channel,
+                          x: e.clientX,
+                          y: e.clientY,
+                          axis: null,
+                        };
+                      }}
+                      onPointerMove={(e) => {
+                        const d = drag.current;
+                        if (!d) return;
+                        const dx = e.clientX - d.x;
+                        const dy = e.clientY - d.y;
+                        if (!d.axis) {
+                          if (Math.hypot(dx, dy) < 4) return;
+                          d.axis =
+                            Math.abs(dx) > Math.abs(dy) ? "time" : "value";
+                        }
+                        const { px, py } = local(e);
+                        if (d.axis === "value") {
+                          dispatch(
+                            {
+                              type: "setKeyValue",
+                              t: d.t,
+                              channel: d.channel,
+                              value: fitValue(d.channel, vAt(py)),
+                            },
+                            { gesture: true },
+                          );
+                        } else {
+                          const to = tAt(px);
+                          if (to === d.t || keyAt(scene.animation, to)) return;
+                          dispatch(
+                            { type: "moveKey", from: d.t, to },
+                            { gesture: true },
+                          );
+                          d.t = to;
+                          setPicked(to);
+                        }
+                      }}
+                      onPointerUp={() => {
+                        const d = drag.current;
+                        drag.current = null;
+                        if (!d) return;
+                        if (d.axis) seal();
+                        onSeek(d.t);
+                      }}
+                    />
+                  );
+                }),
+              )}
+            </svg>
+          )}
         </div>
       </div>
     </section>

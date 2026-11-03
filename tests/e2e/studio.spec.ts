@@ -468,7 +468,16 @@ test.describe("Lighting Studio — critical journeys", () => {
     await page.getByTestId("timeline-graph").click();
     await expect(page.getByTestId("graph-editor")).toBeVisible();
     const point = page.getByTestId("graph-key-fig-1.shoulderR.raise@2.00");
-    const b = (await point.boundingBox())!;
+    // Grab it once the panel has settled (it lays out as it opens).
+    let b = (await point.boundingBox())!;
+    await expect
+      .poll(async () => {
+        const now = (await point.boundingBox())!;
+        const still = now.x === b.x && now.y === b.y;
+        b = now;
+        return still;
+      })
+      .toBe(true);
     const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     await dragOnPage(page, info, from, { x: from.x, y: from.y + 40 });
     await scrub.fill("2");
