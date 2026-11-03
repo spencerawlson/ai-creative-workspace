@@ -17,6 +17,8 @@ import {
   LIMITS,
   type Animation,
   type CameraPlacement,
+  type Channel,
+  type Ease,
   type Keyframe,
   type LightKey,
   type SceneDoc,
@@ -87,6 +89,9 @@ export function upsertKey(
   if (key.t > anim.duration)
     return { ok: false, error: "That time is past the end of the animation" };
   const others = anim.keys.filter((k) => Math.abs(k.t - key.t) >= KEY_EPSILON);
+  // Re-keying (auto-key does it on every edit) keeps the interpolation.
+  const old = keyAt(anim, key.t);
+  if (old?.ease && !key.ease) key = { ...key, ease: old.ease };
   if (others.length >= LIMITS.maxKeys)
     return { ok: false, error: `At most ${LIMITS.maxKeys} keyframes` };
   return {
@@ -98,8 +103,12 @@ export function upsertKey(
   };
 }
 
-/** Ease in and out (smoothstep). */
-const ease = (u: number) => u * u * (3 - 2 * u);
+/** Shape of the travel from a key to the next. */
+function shape(kind: Ease | undefined, u: number): number {
+  if (kind === "linear") return u;
+  if (kind === "step") return 0;
+  return u * u * (3 - 2 * u); // smooth: ease in and out
+}
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 /** Degrees, the short way round. */
 function lerpAngle(a: number, b: number, u: number): number {
@@ -133,7 +142,7 @@ function bracket<T>(
   return {
     a: before.v,
     b: after.v,
-    u: ease((t - before.k.t) / (after.k.t - before.k.t)),
+    u: shape(before.k.ease, (t - before.k.t) / (after.k.t - before.k.t)),
   };
 }
 
@@ -228,4 +237,85 @@ export function forget(
       return { ...k, figures, lights };
     }),
   };
+}
+
+// ------------------------------------------------------------- channels
+
+/** A channel's value in a scene, or undefined if it doesn't exist. */
+export function channelValue(scene: SceneDoc, ch: Channel): number | undefined {
+  switch (ch.kind) {
+    case "figure":
+      return scene.figures.find((f) => f.id === ch.figure)?.[ch.field];
+    case "joint": {
+      const f = scene.figures.find((x) => x.id === ch.figure);
+      const j = (f?.pose.joints as Record<string, Record<string, number>>)?.[
+        ch.joint
+      ];
+      return j?.[ch.dof];
+    }
+    case "light":
+      return scene.lights.find((l) => l.id === ch.light)?.[ch.field];
+    case "camera":
+      return scene.camera.focalMm;
+  }
+}
+
+/** A channel's value stored in a key, or undefined if the key doesn't
+ * record it. */
+export function keyValue(key: Keyframe, ch: Channel): number | undefined {
+  switch (ch.kind) {
+    case "figure":
+      return key.figures[ch.figure]?.[ch.field];
+    case "joint":
+      return (
+        key.figures[ch.figure]?.joints as
+          Record<string, Record<string, number>> | undefined
+      )?.[ch.joint]?.[ch.dof];
+    case "light":
+      return key.lights[ch.light]?.[ch.field];
+    case "camera":
+      return key.camera?.focalMm;
+  }
+}
+
+/** A copy of `key` with one channel set; null if the key doesn't record
+ * that channel. Range checks happen when the scene is validated. */
+export function withKeyValue(
+  key: Keyframe,
+  ch: Channel,
+  value: number,
+): Keyframe | null {
+  if (keyValue(key, ch) === undefined) return null;
+  const k = structuredClone(key);
+  switch (ch.kind) {
+    case "figure":
+      k.figures[ch.figure][ch.field] = value;
+      break;
+    case "joint":
+      (k.figures[ch.figure].joints as Record<string, Record<string, number>>)[
+        ch.joint
+      ][ch.dof] = value;
+      break;
+    case "light":
+      k.lights[ch.light][ch.field] = value;
+      break;
+    case "camera":
+      k.camera!.focalMm = value;
+      break;
+  }
+  return k;
+}
+
+/** Stable id for a channel (selection, React keys, colours). */
+export function channelId(ch: Channel): string {
+  switch (ch.kind) {
+    case "figure":
+      return `${ch.figure}.${ch.field}`;
+    case "joint":
+      return `${ch.figure}.${ch.joint}.${ch.dof}`;
+    case "light":
+      return `light.${ch.light}.${ch.field}`;
+    case "camera":
+      return "camera.focalMm";
+  }
 }

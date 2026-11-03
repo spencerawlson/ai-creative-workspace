@@ -5,7 +5,12 @@ import {
   isAnimatable,
   type SceneAction,
 } from "@/lib/studio/actions";
-import { evaluate, snapshot } from "@/lib/studio/animation";
+import {
+  channelValue,
+  evaluate,
+  keyValue,
+  snapshot,
+} from "@/lib/studio/animation";
 import {
   createHistory,
   historyReducer,
@@ -245,5 +250,74 @@ describe("keyframes are kept, but not in share links", () => {
     expect(SceneSchema.safeParse(swapped).success).toBe(false);
     const short = { ...s, animation: { ...s.animation, duration: 1 } };
     expect(SceneSchema.safeParse(short).success).toBe(false);
+  });
+});
+
+describe("graph editor: interpolation and key values", () => {
+  const elbow = {
+    kind: "joint",
+    figure: "fig-1",
+    joint: "elbowL",
+    dof: "bend",
+  } as const;
+
+  it("linear is a straight line; step holds until the next key", () => {
+    let s = apply(twoKeys(), { type: "setKeyEase", t: 0, ease: "linear" });
+    const at = (t: number) => channelValue(evaluate(s, t).scene, elbow);
+    expect(at(0.5)).toBe(22.5);
+    s = apply(s, { type: "setKeyEase", t: 0, ease: "step" });
+    expect(at(1.99)).toBe(0);
+    expect(at(2)).toBe(90);
+  });
+
+  it("re-keying a time keeps its interpolation", () => {
+    let s = apply(twoKeys(), { type: "setKeyEase", t: 0, ease: "linear" });
+    s = apply(s, { type: "setKey", t: 0 });
+    expect(s.animation.keys[0].ease).toBe("linear");
+  });
+
+  it("edits one value in one key, within the channel's limits", () => {
+    let s = apply(twoKeys(), {
+      type: "setKeyValue",
+      t: 2,
+      channel: elbow,
+      value: 120,
+    });
+    expect(keyValue(s.animation.keys[1], elbow)).toBe(120);
+    expect(keyValue(s.animation.keys[0], elbow)).toBe(0);
+    const tooFar = applyAction(s, {
+      type: "setKeyValue",
+      t: 2,
+      channel: elbow,
+      value: 400,
+    });
+    expect(tooFar.ok).toBe(false);
+    const light = { kind: "light", light: "key", field: "intensity" } as const;
+    s = apply(s, { type: "setKeyValue", t: 0, channel: light, value: 2.5 });
+    expect(keyValue(s.animation.keys[0], light)).toBe(2.5);
+  });
+
+  it("refuses channels a key doesn't record, and missing keys", () => {
+    let s = apply(defaultScene(), { type: "setKey", t: 0 }); // no camera
+    expect(
+      applyAction(s, {
+        type: "setKeyValue",
+        t: 0,
+        channel: { kind: "camera", field: "focalMm" },
+        value: 50,
+      }).ok,
+    ).toBe(false);
+    s = apply(s, { type: "addFigure" });
+    expect(
+      applyAction(s, {
+        type: "setKeyValue",
+        t: 0,
+        channel: { kind: "figure", figure: "fig-2", field: "x" },
+        value: 1,
+      }).ok,
+    ).toBe(false);
+    expect(applyAction(s, { type: "setKeyEase", t: 3, ease: "step" }).ok).toBe(
+      false,
+    );
   });
 });

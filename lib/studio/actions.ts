@@ -20,6 +20,8 @@ import {
   SceneSchema,
   AnimationSchema,
   CameraPlacementSchema,
+  ChannelSchema,
+  EaseSchema,
   FigureIdSchema,
   FigureSchema,
   type Figure,
@@ -49,11 +51,13 @@ import {
 } from "./pose";
 import {
   KEY_EPSILON,
+  channelId,
   forget,
   keyAt,
   roundTime,
   snapshot,
   upsertKey,
+  withKeyValue,
 } from "./animation";
 import {
   figureLabel,
@@ -207,6 +211,18 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("clearKeys") }).strict(),
+  z
+    .object({
+      // Graph editor: one value inside one key.
+      type: z.literal("setKeyValue"),
+      t: keyTime,
+      channel: ChannelSchema,
+      value: z.number().finite(),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("setKeyEase"), t: keyTime, ease: EaseSchema })
+    .strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
 export type SceneAction = z.infer<typeof SceneActionSchema>;
@@ -454,6 +470,23 @@ export function applyAction(
     }
     case "clearKeys":
       return ok({ ...scene, animation: { ...scene.animation, keys: [] } });
+    case "setKeyValue":
+    case "setKeyEase": {
+      const key = keyAt(scene.animation, action.t);
+      if (!key) return { ok: false, error: `No keyframe at ${secs(action.t)}` };
+      const next =
+        action.type === "setKeyEase"
+          ? { ...key, ease: action.ease }
+          : withKeyValue(key, action.channel, action.value);
+      if (!next) return { ok: false, error: "That keyframe doesn't record it" };
+      return ok({
+        ...scene,
+        animation: {
+          ...scene.animation,
+          keys: scene.animation.keys.map((k) => (k === key ? next : k)),
+        },
+      });
+    }
     case "reset":
       return ok(defaultScene());
   }
@@ -543,6 +576,8 @@ export function coalesceKey(action: SceneAction): string | null {
     case "moveKey":
       // Dragging a key on the timeline is one undo step.
       return "moveKey";
+    case "setKeyValue":
+      return `keyValue:${action.t}:${channelId(action.channel)}`;
     case "setDuration":
       return "duration";
     case "updateJoints":
@@ -688,6 +723,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return `Animation length: ${action.duration} s`;
     case "clearKeys":
       return "Delete all keys";
+    case "setKeyValue":
+      return `Edit key at ${secs(action.t)}`;
+    case "setKeyEase":
+      return `Key at ${secs(action.t)}: ${action.ease}`;
     case "reset":
       return "Reset scene";
   }

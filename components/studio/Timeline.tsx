@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
+  ChartSpline,
   Clapperboard,
   Diamond,
   Pause,
@@ -40,6 +41,8 @@ export function Timeline({
   onLoop,
   preview = false,
   onPreview,
+  graphOpen = false,
+  onGraph,
   playRequest = 0,
 }: {
   studio: Studio;
@@ -57,6 +60,8 @@ export function Timeline({
   /** Preview mode: playback controls only. */
   preview?: boolean;
   onPreview: (v: boolean) => void;
+  graphOpen?: boolean;
+  onGraph?: (v: boolean) => void;
   /** Bumped by the parent to toggle playback (Space). */
   playRequest?: number;
 }) {
@@ -346,6 +351,18 @@ export function Timeline({
             />
             s
           </label>
+          {onGraph && (
+            <IconButton
+              icon={ChartSpline}
+              size="sm"
+              label={graphOpen ? "Hide graph editor" : "Show graph editor"}
+              shortcut="G"
+              active={graphOpen}
+              aria-pressed={graphOpen}
+              onClick={() => onGraph(!graphOpen)}
+              data-testid="timeline-graph"
+            />
+          )}
           <IconButton
             icon={Clapperboard}
             size="sm"

@@ -183,9 +183,17 @@ const LightKeySchema = LightSchema.pick({
 });
 export type LightKey = z.infer<typeof LightKeySchema>;
 
+/** How values travel from a key to the next: ease in/out, a straight
+ * line, or hold until the next key. */
+export const EASES = ["smooth", "linear", "step"] as const;
+export const EaseSchema = z.enum(EASES);
+export type Ease = z.infer<typeof EaseSchema>;
+
 export const KeyframeSchema = z.object({
   /** Seconds from the start. */
   t: z.number().finite().min(0).max(LIMITS.duration[1]),
+  /** Interpolation towards the next key; absent = smooth. */
+  ease: EaseSchema.optional(),
   figures: z.record(FigureIdSchema, FigureKeySchema),
   lights: z.record(LightSchema.shape.id, LightKeySchema),
   /** Absent when the camera wasn't keyed. */
@@ -194,6 +202,44 @@ export const KeyframeSchema = z.object({
     .optional(),
 });
 export type Keyframe = z.infer<typeof KeyframeSchema>;
+
+/** One animated value, as the graph editor lists it. */
+export const LIGHT_CHANNELS = [
+  "azimuth",
+  "elevation",
+  "distance",
+  "intensity",
+  "temperature",
+  "softness",
+  "spotAngle",
+  "size",
+] as const;
+export const ChannelSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("figure"),
+      figure: FigureIdSchema,
+      field: z.enum(["x", "z", "rotation"]),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("joint"),
+      figure: FigureIdSchema,
+      joint: z.string().max(16),
+      dof: z.string().max(16),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("light"),
+      light: LightSchema.shape.id,
+      field: z.enum(LIGHT_CHANNELS),
+    })
+    .strict(),
+  z.object({ kind: z.literal("camera"), field: z.literal("focalMm") }).strict(),
+]);
+export type Channel = z.infer<typeof ChannelSchema>;
 
 export const AnimationSchema = z
   .object({

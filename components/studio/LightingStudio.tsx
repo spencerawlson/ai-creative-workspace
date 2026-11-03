@@ -36,6 +36,7 @@ import { isPoseSelection } from "./PoseInspector";
 import { HistoryPanel, PresetsPanel, ScenePanel } from "./Panels";
 import { StudioViewport, type ViewportHandle } from "./StudioViewport";
 import { Timeline } from "./Timeline";
+import { GraphEditor } from "./GraphEditor";
 import { evaluate } from "@/lib/studio/animation";
 import { Button, IconButton, cx } from "./ui";
 import {
@@ -104,6 +105,7 @@ export function LightingStudio() {
   const [keyCamera, setKeyCamera] = useState(true);
   const [loop, setLoop] = useState(true);
   const [previewing, setPreviewing] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [playRequest, setPlayRequest] = useState(0);
   // The figure the mannequin and pose controls act on.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -306,6 +308,10 @@ export function LightingStudio() {
       if (e.key === ".") {
         const next = keys.find((k) => k.t > time + 0.005);
         if (next) seek(next.t);
+        return;
+      }
+      if (e.key === "g" || e.key === "G") {
+        setGraphOpen((v) => !v);
         return;
       }
       if ((e.key === "v" || e.key === "V") && keys.length > 0) {
@@ -568,8 +574,19 @@ export function LightingStudio() {
               />
             )}
           </div>
+          {graphOpen && !previewing && (
+            <GraphEditor
+              studio={studio}
+              figure={figure}
+              selection={validSelection}
+              time={time}
+              onSeek={seek}
+            />
+          )}
           <Timeline
             studio={studio}
+            graphOpen={graphOpen}
+            onGraph={setGraphOpen}
             viewport={viewport}
             time={time}
             onSeek={seek}
