@@ -24,10 +24,7 @@ import { posePreset } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
 import { PRESETS, kelvinToRgb } from "@/lib/lighting";
 import type { Selection } from "@/lib/engine/StudioEngine";
-import {
-  BACKDROP_PRESETS,
-  KIND_LABELS,
-} from "@/lib/studio/presets";
+import { BACKDROP_PRESETS, KIND_LABELS } from "@/lib/studio/presets";
 import {
   LIGHT_KINDS,
   LIMITS,

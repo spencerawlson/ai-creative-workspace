@@ -32,7 +32,9 @@ describe("pose model", () => {
   it("defaults to the scan's A-pose", () => {
     const s = scene();
     expect(s.figures[0].pose.preset).toBe("neutral");
-    expect(flattenJoints(s.figures[0].pose.joints).every((v) => v === 0)).toBe(true);
+    expect(flattenJoints(s.figures[0].pose.joints).every((v) => v === 0)).toBe(
+      true,
+    );
   });
 
   it("scenes saved before posing existed still load, in the A-pose", () => {
@@ -116,7 +118,11 @@ describe("pose actions", () => {
       patch: { lift: 30 },
     });
     expect(s.figures[0].pose.preset).toBe("custom");
-    expect(s.figures[0].pose.joints.wristR).toEqual({ bend: 0, lift: 30, twist: 0 });
+    expect(s.figures[0].pose.joints.wristR).toEqual({
+      bend: 0,
+      lift: 30,
+      twist: 0,
+    });
   });
 
   it("rejects out-of-range values and movements a joint doesn't have", () => {
@@ -156,9 +162,9 @@ describe("pose actions", () => {
       type: "applyPosePreset",
       presetId: "neutral",
     });
-    expect(reset.ok && flattenJoints(reset.scene.figures[0].pose.joints)).toEqual(
-      flattenJoints(neutralJoints()),
-    );
+    expect(
+      reset.ok && flattenJoints(reset.scene.figures[0].pose.joints),
+    ).toEqual(flattenJoints(neutralJoints()));
   });
 
   it("slider drags on one joint coalesce; labels read well", () => {
@@ -192,7 +198,9 @@ describe("pose in share links", () => {
       encodeScene(scene()).replace(/-/g, "+").replace(/_/g, "/"),
     );
     expect(json).not.toContain('"po"');
-    expect(decodeScene(encodeScene(scene()))?.figures[0].pose.preset).toBe("neutral");
+    expect(decodeScene(encodeScene(scene()))?.figures[0].pose.preset).toBe(
+      "neutral",
+    );
   });
 
   it("rejects a link with a tampered pose", () => {
