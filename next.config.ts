@@ -23,6 +23,9 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // This folder is the workspace root, even with a package-lock.json in
+  // a folder above it.
+  outputFileTracingRoot: __dirname,
   async headers() {
     return [
       {
