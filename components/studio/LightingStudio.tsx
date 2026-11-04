@@ -93,7 +93,11 @@ export function LightingStudio() {
   const { scene, dispatch, seal, undo, redo } = studio;
   // md+: docked panels. lg+: room for both side panels; below that the
   // tool panel floats over the viewport and starts collapsed.
-  const isDesktop = useMediaQuery("(min-width: 768px)");
+  // Short viewports (landscape phones, ~412px tall) use the phone sheet
+  // layout even when wide enough for md:, because the docked panels
+  // + timeline leave too little vertical room for the canvas.
+  const isShort = useMediaQuery("(max-height: 500px)");
+  const isDesktop = useMediaQuery("(min-width: 768px)") && !isShort;
   const isWide = useMediaQuery("(min-width: 1024px)");
   const viewport = useRef<ViewportHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -119,6 +123,22 @@ export function LightingStudio() {
   // Phones: the panels below the view fold down to a slim bar.
   const [sheetOpen, setSheetOpen] = useState(true);
   const sheetSwipe = useRef<{ y: number; moved: boolean } | null>(null);
+  // Landscape-compact: on a short viewport the sheet starts folded so
+  // the canvas gets the height; tapping a tab still opens it.
+  // NOTE: isShort's server snapshot is true, so folding on "isShort
+  // became true" would also fire on tall phones at hydration and
+  // leave the sheet folded there. Fold only on a real transition
+  // (tall -> short, e.g. rotating to landscape) or on mount when
+  // the actual window is short.
+  const prevShortRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevShortRef.current === false && isShort) setSheetOpen(false);
+    prevShortRef.current = isShort;
+  }, [isShort]);
+  useEffect(() => {
+    if (window.innerHeight < 500) setSheetOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [view, setView] = useState<CameraView>("full");
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
@@ -517,7 +537,7 @@ export function LightingStudio() {
   );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-ink-950">
+    <div className="flex h-dvh flex-col overflow-hidden bg-ink-950 pt-[env(safe-area-inset-top)]">
       <Toolbar
         studio={studio}
         copied={copied}
@@ -541,7 +561,16 @@ export function LightingStudio() {
         }}
       />
 
-      <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
+      <div
+        className={cx(
+          "relative flex min-h-0 flex-1 flex-col",
+          // Desktop only: side panels beside the canvas. Short
+          // landscape viewports use the phone layout, so they stay
+          // stacked (canvas on top, folded sheet bar below) instead
+          // of squeezing the sheet into a narrow side column.
+          isDesktop && "md:flex-row",
+        )}
+      >
         {isDesktop && (
           <nav
             aria-label="Tools"
@@ -669,7 +698,7 @@ export function LightingStudio() {
         ) : (
           <div
             className={cx(
-              "flex flex-col bg-ink-900",
+              "flex flex-col bg-ink-900 pb-[env(safe-area-inset-bottom)]",
               sheetOpen ? "min-h-0 flex-1" : "shrink-0",
             )}
             data-testid="phone-sheet"
@@ -782,7 +811,7 @@ export function LightingStudio() {
       </div>
 
       {!previewing && isDesktop && (
-        <div className="shrink-0">
+        <div className="shrink-0 pb-[env(safe-area-inset-bottom)]">
           {graphOpen && (
             <GraphEditor
               studio={studio}
@@ -1057,7 +1086,7 @@ function Notices({ studio }: { studio: Studio }) {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex justify-center px-4"
     >
       {visible && (
         <div
