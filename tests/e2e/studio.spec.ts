@@ -837,6 +837,45 @@ test.describe("layout", () => {
     await expect(page.getByTestId("pose-spine-bend")).toBeVisible();
   });
 
+  test("phones on their side: phone layout, folded, view fills the height", async ({
+    page,
+  }, info) => {
+    test.skip(!isMobile(info), "mobile layout only");
+    // Wider than md: but short, like a phone turned to landscape.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openStudio(page);
+    await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(
+      0,
+    );
+    const handle = page.getByTestId("sheet-handle");
+    await expect(handle).toHaveAttribute("aria-expanded", "false");
+    const view = (await page.getByTestId("lighting-scene").boundingBox())!;
+    expect(view.width).toBeGreaterThan(800);
+    expect(view.height).toBeGreaterThan(150);
+    // Opening the panels keeps the phone split (view above, panels below).
+    await page.getByTestId("tab-scene").click();
+    await expect(handle).toHaveAttribute("aria-expanded", "true");
+    const open = (await page.getByTestId("lighting-scene").boundingBox())!;
+    const sheet = (await page.getByTestId("phone-sheet").boundingBox())!;
+    expect(sheet.y).toBeGreaterThanOrEqual(open.y + open.height - 1);
+    // Turning back upright keeps the phone layout.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("phone-sheet")).toBeVisible();
+  });
+
+  test("desktop: the docked layout from the first paint", async ({
+    page,
+  }, info) => {
+    test.skip(isMobile(info), "desktop and tablet layout");
+    // The server HTML (what shows before the scripts run) already has
+    // the docked panels, never the phone sheet.
+    const html = await (await page.request.get("/")).text();
+    expect(html).toContain('aria-label="Tools"');
+    expect(html).not.toContain('data-testid="phone-sheet"');
+    await openStudio(page);
+    await expect(page.getByRole("navigation", { name: "Tools" })).toBeVisible();
+  });
+
   test("selecting a light on a phone opens the inspector tab", async ({
     page,
   }, info) => {
