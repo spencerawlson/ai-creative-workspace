@@ -23,7 +23,7 @@ export const LIMITS = {
   rotation: [-180, 180],
   /** Keyframe animation: length in seconds, and at most this many keys. */
   duration: [1, 120],
-  maxKeys: 120,
+  maxKeys: 300,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],
@@ -208,7 +208,12 @@ export const KeyframeSchema = z.object({
   tangents: z
     .record(
       z.string().max(48),
-      z.object({ in: z.number().finite(), out: z.number().finite() }),
+      z.object({
+        in: z.number().finite(),
+        out: z.number().finite(),
+        /** Broken (Maya): the in and out handles move separately. */
+        broken: z.literal(true).optional(),
+      }),
     )
     .optional(),
   figures: z.record(FigureIdSchema, FigureKeySchema),

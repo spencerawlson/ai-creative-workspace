@@ -197,9 +197,14 @@ export function GraphEditor({
     return { px: e.clientX - r.left, py: e.clientY - r.top };
   };
 
-  /** The slope (value/s) the curve has through a key, as drawn. */
-  const slopeAt = (k: Keyframe, ch: Channel): number => {
-    const own = k.tangents?.[channelId(ch)]?.out;
+  /** The slope (value/s) the curve has into (`in`) or out of a key, as
+   * drawn. */
+  const slopeAt = (
+    k: Keyframe,
+    ch: Channel,
+    side: "in" | "out" = "out",
+  ): number => {
+    const own = k.tangents?.[channelId(ch)]?.[side];
     if (own !== undefined) return own;
     const i = keys.indexOf(k);
     const next = keys.slice(i + 1).find((n) => keyValue(n, ch) !== undefined);
@@ -213,14 +218,45 @@ export function GraphEditor({
     if (k.ease !== "linear") return 0;
     return next ? (keyValue(next, ch)! - keyValue(k, ch)!) / (next.t - k.t) : 0;
   };
-  function setTangents(t: number, slope: number | null) {
+  const r3 = (n: number) => Math.round(n * 1000) / 1000;
+  /** Flat, Reset, Break or Unify the shown curves at a key: one undo
+   * step for all of them. */
+  function setTangents(t: number, how: "flat" | "reset" | "break" | "unify") {
     const key = keyAt(scene.animation, t);
     if (!key) return;
-    for (const c of visible)
-      if (keyValue(key, c.channel) !== undefined)
-        dispatch({ type: "setKeyTangent", t, channel: c.channel, slope });
+    const changes = visible
+      .filter((c) => keyValue(key, c.channel) !== undefined)
+      .map((c) => {
+        const own = key.tangents?.[channelId(c.channel)];
+        const out = r3(slopeAt(key, c.channel, "out"));
+        const tangent =
+          how === "reset"
+            ? null
+            : how === "flat"
+              ? {
+                  in: 0,
+                  out: 0,
+                  ...(own?.broken ? { broken: true as const } : {}),
+                }
+              : how === "break"
+                ? {
+                    in: r3(slopeAt(key, c.channel, "in")),
+                    out,
+                    broken: true as const,
+                  }
+                : { in: out, out };
+        return { channel: c.channel, tangent };
+      });
+    if (changes.length) dispatch({ type: "setKeyTangents", t, changes });
   }
-  const handleDrag = useRef<{ t: number; channel: Channel } | null>(null);
+  const anyBroken =
+    !!pickedKey &&
+    visible.some((c) => pickedKey.tangents?.[channelId(c.channel)]?.broken);
+  const handleDrag = useRef<{
+    t: number;
+    channel: Channel;
+    side: "in" | "out";
+  } | null>(null);
 
   const timeTicks = Array.from(
     { length: Math.floor(duration / (duration > 20 ? 5 : 1)) + 1 },
@@ -335,7 +371,7 @@ export function GraphEditor({
                 className="rounded px-1.5 py-0.5 text-ink-200 hover:bg-ink-800"
                 title="Flat tangents on the shown curves at this key"
                 data-testid="graph-tangent-flat"
-                onClick={() => setTangents(pickedKey.t, 0)}
+                onClick={() => setTangents(pickedKey.t, "flat")}
               >
                 Flat
               </button>
@@ -344,9 +380,25 @@ export function GraphEditor({
                 className="rounded px-1.5 py-0.5 text-ink-200 hover:bg-ink-800"
                 title="Back to the key's interpolation"
                 data-testid="graph-tangent-reset"
-                onClick={() => setTangents(pickedKey.t, null)}
+                onClick={() => setTangents(pickedKey.t, "reset")}
               >
                 Reset
+              </button>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-ink-200 hover:bg-ink-800"
+                title={
+                  anyBroken
+                    ? "Join the in and out handles again"
+                    : "Let the in and out handles move separately"
+                }
+                aria-pressed={anyBroken}
+                data-testid="graph-tangent-break"
+                onClick={() =>
+                  setTangents(pickedKey.t, anyBroken ? "unify" : "break")
+                }
+              >
+                {anyBroken ? "Unify" : "Break"}
               </button>
             </>
           ) : (
@@ -516,13 +568,15 @@ export function GraphEditor({
                   const v = keyValue(pickedKey, c.channel);
                   if (v === undefined) return null;
                   const id = channelId(c.channel);
-                  // Direction of the slope on screen, 40 px each way.
-                  const m = slopeAt(pickedKey, c.channel);
-                  const dx = W / duration;
-                  const dy = (-m * H) / (hi - lo);
-                  const len = Math.hypot(dx, dy) || 1;
-                  const hx = (dx / len) * 40;
-                  const hy = (dy / len) * 40;
+                  // Direction of each side's slope on screen, 40 px long.
+                  const arm = (m: number) => {
+                    const dx = W / duration;
+                    const dy = (-m * H) / (hi - lo);
+                    const len = Math.hypot(dx, dy) || 1;
+                    return [(dx / len) * 40, (dy / len) * 40];
+                  };
+                  const [ix, iy] = arm(slopeAt(pickedKey, c.channel, "in"));
+                  const [ox, oy] = arm(slopeAt(pickedKey, c.channel, "out"));
                   const cx0 = x(pickedKey.t);
                   const cy0 = y(v);
                   const handle = (
@@ -548,6 +602,7 @@ export function GraphEditor({
                         handleDrag.current = {
                           t: pickedKey.t,
                           channel: c.channel,
+                          side,
                         };
                       }}
                       onPointerMove={(e) => {
@@ -563,6 +618,7 @@ export function GraphEditor({
                             t: d.t,
                             channel: d.channel,
                             slope: Math.round(slope * 1000) / 1000,
+                            side: d.side,
                           },
                           { gesture: true },
                         );
@@ -577,17 +633,27 @@ export function GraphEditor({
                   return (
                     <g key={`tangent-${id}`}>
                       <line
-                        x1={cx0 - hx}
-                        y1={cy0 - hy}
-                        x2={cx0 + hx}
-                        y2={cy0 + hy}
+                        x1={cx0 - ix}
+                        y1={cy0 - iy}
+                        x2={cx0}
+                        y2={cy0}
                         stroke={colour(c.channel)}
                         strokeWidth={1}
                         strokeDasharray="3 2"
                         pointerEvents="none"
                       />
-                      {handle("in", cx0 - hx, cy0 - hy)}
-                      {handle("out", cx0 + hx, cy0 + hy)}
+                      <line
+                        x1={cx0}
+                        y1={cy0}
+                        x2={cx0 + ox}
+                        y2={cy0 + oy}
+                        stroke={colour(c.channel)}
+                        strokeWidth={1}
+                        strokeDasharray="3 2"
+                        pointerEvents="none"
+                      />
+                      {handle("in", cx0 - ix, cy0 - iy)}
+                      {handle("out", cx0 + ox, cy0 + oy)}
                     </g>
                   );
                 })}

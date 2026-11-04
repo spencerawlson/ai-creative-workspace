@@ -26,22 +26,27 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   eat, drink, sit, sit down, kneel, squat, bow, dance, stretch, pick up,
   push, pull, climb, laugh, cry…). Search understands other words and
   word forms ("sprint", "having dinner", "eating"), forgives typos
-  ("walkng"), and reads "left", "3 times", "slowly", "in place" and
-  "backwards". A pose applies at once; a move becomes ordinary
+  ("walkng"), and reads "left", "3 times", "slowly", "in place",
+  "backwards" and how long ("walk for 10 seconds", "dance 1 minute", or
+  the Seconds box). A pose applies at once; a move becomes ordinary
   keyframes from the current time on that figure (one undo step) and
   plays. Feet stay on the floor (figures move up and down to sit,
   kneel or jump), and walks travel the way the figure faces in whole
-  strides, staying in the studio. Lying down, crawling and swimming
+  strides, staying in the studio: a walk too long for the room ahead
+  goes round a circle. Lying down, crawling and swimming
   aren't possible yet: figures can't be tipped over.
 - Keyframe animation of figures, lights and the camera: a timeline with
   play/pause, scrubbing, keys you can drag to retime, Maya-style
   auto-key, loop and length; a full-window preview (V); and a graph
   editor (G) showing every animated value as a curve, where you drag a
   key's point to change it, choose smooth, linear, stepped or spline
-  (Maya-style auto tangents) interpolation per key, and tilt Bézier tangent handles. Animations are
+  (Maya-style auto tangents) interpolation per key, and tilt Bézier
+  tangent handles, broken or unified; Flat and Reset act on every curve
+  shown as one undo step. Animations are
   kept in autosave, project files and share links (compressed; a very
   long animation is shared as its current frame), and export as an MP4
-  or WebM video, rendered frame by frame in the browser.
+  or WebM video, rendered frame by frame in the browser, optionally with
+  a sound file from your device (cut to the animation's length).
 - Six backdrops (shadow catcher or seamless sweep), camera focal length,
   exposure in EV, Filmic/AgX/Neutral tone mapping.
 - Undo/redo with a history panel, keyboard shortcuts (press `?`).

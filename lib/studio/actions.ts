@@ -70,6 +70,7 @@ import {
 } from "./figures";
 
 const lightId = z.string().min(1).max(24);
+const slopeValue = z.number().finite().min(-1e5).max(1e5);
 const keyTime = z.number().finite().min(0).max(LIMITS.duration[1]);
 /** Which figure a pose/model action targets; omitted = the first one. */
 const figureRef = FigureIdSchema.optional();
@@ -206,10 +207,12 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       figure: figureRef,
       t: keyTime.optional(),
       mirror: z.boolean().optional(),
-      repeat: z.number().int().min(1).max(10).optional(),
+      repeat: z.number().int().min(1).max(100).optional(),
       slow: z.number().finite().min(0.25).max(4).optional(),
       inPlace: z.boolean().optional(),
       backwards: z.boolean().optional(),
+      /** How long the move lasts (it repeats to fill it). */
+      seconds: z.number().finite().min(0.2).max(LIMITS.duration[1]).optional(),
     })
     .strict(),
   z
@@ -249,6 +252,34 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       t: keyTime,
       channel: ChannelSchema,
       slope: z.number().finite().min(-1e5).max(1e5).nullable(),
+      /** A broken tangent's one side; unified tangents move together. */
+      side: z.enum(["in", "out"]).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      // Several curves' tangents at one key in one undo step (Flat,
+      // Reset, Break, Unify on the curves shown). null = from the ease.
+      type: z.literal("setKeyTangents"),
+      t: keyTime,
+      changes: z
+        .array(
+          z
+            .object({
+              channel: ChannelSchema,
+              tangent: z
+                .object({
+                  in: slopeValue,
+                  out: slopeValue,
+                  broken: z.literal(true).optional(),
+                })
+                .strict()
+                .nullable(),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(400),
     })
     .strict(),
   z.object({ type: z.literal("reset") }).strict(),
@@ -500,16 +531,38 @@ export function applyAction(
     }
     case "clearKeys":
       return ok({ ...scene, animation: { ...scene.animation, keys: [] } });
-    case "setKeyTangent": {
+    case "setKeyTangent":
+    case "setKeyTangents": {
       const key = keyAt(scene.animation, action.t);
       if (!key) return { ok: false, error: `No keyframe at ${secs(action.t)}` };
-      if (keyValue(key, action.channel) === undefined)
-        return { ok: false, error: "That keyframe doesn't record it" };
-      const id = channelId(action.channel);
+      const changes =
+        action.type === "setKeyTangents"
+          ? action.changes
+          : [
+              {
+                channel: action.channel,
+                slope: action.slope,
+                side: action.side,
+              },
+            ];
       const tangents = { ...key.tangents };
-      if (action.slope === null) delete tangents[id];
-      // Unified tangent, as Maya's default: the curve passes smoothly.
-      else tangents[id] = { in: action.slope, out: action.slope };
+      for (const c of changes) {
+        if (keyValue(key, c.channel) === undefined)
+          return { ok: false, error: "That keyframe doesn't record it" };
+        const id = channelId(c.channel);
+        if ("tangent" in c) {
+          if (c.tangent === null) delete tangents[id];
+          else tangents[id] = { ...c.tangent };
+          continue;
+        }
+        const old = tangents[id];
+        if (c.slope === null) delete tangents[id];
+        else if (old?.broken && c.side)
+          // Broken: only the dragged side moves.
+          tangents[id] = { ...old, [c.side]: c.slope };
+        // Unified tangent, as Maya's default: the curve passes smoothly.
+        else tangents[id] = { in: c.slope, out: c.slope };
+      }
       const next = {
         ...key,
         tangents: Object.keys(tangents).length ? tangents : undefined,
@@ -883,6 +936,8 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return action.slope === null
         ? `Reset tangent at ${secs(action.t)}`
         : `Tangent at ${secs(action.t)}`;
+    case "setKeyTangents":
+      return `Tangents at ${secs(action.t)} (${action.changes.length} curve${action.changes.length === 1 ? "" : "s"})`;
     case "reset":
       return "Reset scene";
   }

@@ -6,6 +6,7 @@ import { tryApplyAction, type SceneAction } from "@/lib/studio/actions";
 import {
   MOTIONS,
   planMotion,
+  repeatable,
   type Motion,
   type MotionCategory,
 } from "@/lib/studio/motions";
@@ -56,6 +57,8 @@ export function MotionSearch({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [status, setStatus] = useState("");
+  // Optional length for moves, in seconds (typing "for 10 s" also works).
+  const [seconds, setSeconds] = useState("");
 
   const matches = useMemo(() => searchMotions(text, 8), [text]);
   const browsing = text.trim() === "";
@@ -69,15 +72,23 @@ export function MotionSearch({
       )
     : matches;
 
-  function apply(m: MotionMatch) {
+  function apply(match: MotionMatch) {
+    const typed = Number(seconds.replace(",", "."));
+    const m =
+      match.options.seconds || !(typed > 0)
+        ? match
+        : { ...match, options: { ...match.options, seconds: typed } };
     const action: SceneAction = {
       type: "applyMotion",
       motion: m.motion.id,
       figure: figure.id,
       ...(m.motion.kind === "move" ? { t: time } : {}),
       ...(m.options.mirror && m.motion.sided ? { mirror: true } : {}),
-      ...(m.options.repeat && m.motion.cycle
+      ...(m.options.repeat && repeatable(m.motion)
         ? { repeat: m.options.repeat }
+        : {}),
+      ...(m.options.seconds && m.motion.kind === "move"
+        ? { seconds: Math.min(120, m.options.seconds) }
         : {}),
       ...(m.options.slow ? { slow: m.options.slow } : {}),
       ...(m.options.inPlace ? { inPlace: true } : {}),
@@ -91,14 +102,15 @@ export function MotionSearch({
     dispatch(action);
     if (m.motion.kind === "move") {
       const plan = planMotion(m.motion, figure, m.options);
-      const len = plan.steps[plan.steps.length - 1].at;
-      const room = plan.noRoom
-        ? " On the spot: no room ahead (turn the figure or move it back)."
-        : plan.shortened
-          ? ` ${plan.repeat}× to stay in the studio.`
-          : "";
+      const room =
+        plan.path === "spot"
+          ? " On the spot: no room to walk (move the figure towards the middle)."
+          : plan.path === "circle"
+            ? " Round a circle, to stay in the studio."
+            : "";
+      const capped = plan.capped ? " (as long as one move can be)" : "";
       setStatus(
-        `${m.motion.name}: ${len.toFixed(1)} s of keyframes from ${time.toFixed(1)} s.${room}`,
+        `${m.motion.name}: ${plan.length.toFixed(1)} s${capped} from ${time.toFixed(1)} s.${room}`,
       );
       onPlayFrom?.(time);
     } else setStatus(`Pose: ${m.motion.name}`);
@@ -184,6 +196,25 @@ export function MotionSearch({
           </button>
         )}
       </div>
+      <label className="mt-1.5 flex items-center gap-2 text-xs text-ink-300">
+        Seconds
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0.5}
+          max={120}
+          step={0.5}
+          placeholder="auto"
+          value={seconds}
+          onChange={(e) => setSeconds(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
+          data-testid="motion-seconds"
+          className="h-9 w-20 rounded-md border border-ink-700 bg-ink-850 px-2 text-base text-ink-100 placeholder:text-ink-500 focus:border-accent focus:outline-none sm:h-8 sm:text-sm"
+        />
+        <span className="text-2xs text-ink-400">
+          how long a move lasts (or type &ldquo;walk for 10 s&rdquo;)
+        </span>
+      </label>
       {shown.length > 0 && (
         <ul
           id={listId}

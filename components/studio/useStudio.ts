@@ -33,6 +33,7 @@ export type Notice = { id: number; tone: "info" | "error"; text: string };
 const KEY_EDITS = new Set<SceneAction["type"]>([
   "setKeyValue",
   "setKeyTangent",
+  "setKeyTangents",
   "setKeyEase",
   "moveKey",
   "deleteKey",

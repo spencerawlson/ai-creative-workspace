@@ -457,8 +457,12 @@ export function Timeline({
               className={extra}
               size="sm"
               label="Export video"
-              disabled={keys.length === 0 || playing}
-              onClick={onVideo}
+              disabled={keys.length === 0}
+              onClick={() => {
+                // Rendering takes over the view: stop playing first.
+                if (playing) toggle();
+                onVideo();
+              }}
               data-testid="timeline-video"
             />
           )}

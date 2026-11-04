@@ -1,11 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Music, X } from "lucide-react";
 import type { ViewportHandle } from "./StudioViewport";
-import { recordVideo, videoFormat, type VideoFormat } from "./recordVideo";
+import {
+  decodeAudioFile,
+  recordVideo,
+  videoFormat,
+  type VideoFormat,
+} from "./recordVideo";
 import { downloadBlob, slug, type Studio } from "./useStudio";
-import { Button, Dialog, Kbd, Segmented, Slider, Toggle } from "./ui";
+import {
+  Button,
+  Dialog,
+  IconButton,
+  Kbd,
+  Segmented,
+  Slider,
+  Toggle,
+} from "./ui";
 
 type SizeId = "viewport" | "1080p" | "4k" | "square" | "portrait" | "custom";
 const SIZES: Record<
@@ -289,6 +302,12 @@ export function VideoExportDialog({
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  // Optional sound, decoded here in the browser.
+  const [sound, setSound] = useState<{
+    name: string;
+    buffer: AudioBuffer;
+  } | null>(null);
+  const soundInput = useRef<HTMLInputElement>(null);
   // Which format this browser really records (checked once, async).
   const [format, setFormat] = useState<VideoFormat | null | undefined>();
   useEffect(() => {
@@ -309,6 +328,7 @@ export function VideoExportDialog({
         height: size.h,
         fps: Number(fps),
         keyCamera,
+        audio: sound?.buffer,
         onProgress: setProgress,
         signal: abort.current.signal,
       });
@@ -317,7 +337,7 @@ export function VideoExportDialog({
         `${slug(studio.name)}-animation-${size.w}x${size.h}.${f.extension}`,
       );
       studio.notify(
-        `Exported ${duration} s ${size.w} × ${size.h} ${f.extension.toUpperCase()} video.`,
+        `Exported ${duration} s ${size.w} × ${size.h} ${f.extension.toUpperCase()} video${sound ? " with sound" : ""}.`,
       );
       onClose();
     } catch (e) {
@@ -396,6 +416,69 @@ export function VideoExportDialog({
           { value: "60", label: "60 fps" },
         ]}
       />
+      <fieldset className="mt-2 py-1" disabled={busy}>
+        <legend className="mb-1 text-xs text-ink-300">Sound</legend>
+        <input
+          ref={soundInput}
+          type="file"
+          accept="audio/*"
+          className="sr-only"
+          aria-label="Sound file"
+          data-testid="video-sound-input"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            setError(null);
+            try {
+              setSound({
+                name: file.name,
+                buffer: await decodeAudioFile(file),
+              });
+            } catch (err) {
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : "Couldn't read that sound.",
+              );
+            }
+          }}
+        />
+        <div className="flex min-h-8 items-center gap-2">
+          <Button
+            size="sm"
+            icon={Music}
+            onClick={() => soundInput.current?.click()}
+            data-testid="video-sound-pick"
+          >
+            {sound ? "Change sound" : "Add a sound file"}
+          </Button>
+          {sound && (
+            <>
+              <span
+                className="min-w-0 truncate text-xs text-ink-200"
+                data-testid="video-sound-name"
+              >
+                {sound.name} · {sound.buffer.duration.toFixed(1)} s
+              </span>
+              <IconButton
+                icon={X}
+                size="sm"
+                label="Remove sound"
+                onClick={() => setSound(null)}
+                data-testid="video-sound-remove"
+              />
+            </>
+          )}
+        </div>
+        <p className="mt-1 text-2xs text-ink-400">
+          {sound
+            ? sound.buffer.duration > duration
+              ? `Plays from the start and is cut at ${duration} s.`
+              : "Plays from the start; silence after it ends."
+            : "Optional: music or speech from your device, mixed into the video. It stays on your device."}
+        </p>
+      </fieldset>
       {busy && (
         <div
           role="progressbar"

@@ -773,7 +773,7 @@ export const MOTIONS: Motion[] = [
     note: "Two strides forward.",
     words: ["walking", "stroll", "step", "steps", "go", "pace", "amble"],
     cycle: 1.1,
-    repeat: 2,
+    repeat: 4,
     travel: 1.3,
     frames: timed(
       gait({
@@ -796,7 +796,7 @@ export const MOTIONS: Motion[] = [
     note: "Running strides, arms pumping.",
     words: ["running", "sprint", "sprinting", "dash", "race", "rush", "flee"],
     cycle: 0.7,
-    repeat: 3,
+    repeat: 6,
     travel: 1.4,
     frames: timed(
       gait({
@@ -821,7 +821,7 @@ export const MOTIONS: Motion[] = [
     note: "An easy run.",
     words: ["jogging", "trot", "light run"],
     cycle: 0.8,
-    repeat: 3,
+    repeat: 5,
     travel: 1.1,
     frames: timed(
       gait({
@@ -2042,6 +2042,9 @@ export interface MotionOptions {
   inPlace?: boolean;
   /** Walk backwards. */
   backwards?: boolean;
+  /** How long it should last, in seconds: repeats (and speed, a
+   * little) are chosen to fill it exactly. */
+  seconds?: number;
 }
 
 export interface MotionPlacement {
@@ -2079,12 +2082,63 @@ function roomAhead(from: MotionPlacement, dx: number, dz: number): number {
 
 export interface MotionPlan {
   steps: MotionStep[];
-  /** Cycles played (fewer than asked when there wasn't room). */
+  /** Cycles (or whole repeats) played. */
   repeat: number;
-  /** Asked to travel, but there wasn't room for a single stride. */
-  noRoom: boolean;
-  /** Fewer cycles than asked, to fit the room. */
-  shortened: boolean;
+  /** Seconds it lasts. */
+  length: number;
+  /** How it travels: straight ahead, round a circle (a long walk that
+   * wouldn't fit straight), or on the spot (no room for even that). */
+  path: "straight" | "circle" | "spot";
+  /** Fewer repeats than asked: at most MAX_STEPS keys per move. */
+  capped: boolean;
+}
+
+/** Keys one move may make. */
+const MAX_STEPS = 280;
+
+const samePose = (a: MotionFrame, b: MotionFrame) =>
+  JSON.stringify(a.pose) === JSON.stringify(b.pose) &&
+  (a.air ?? 0) === (b.air ?? 0) &&
+  JSON.stringify(a.hands ?? {}) === JSON.stringify(b.hands ?? {});
+
+/** Whether a move can be done again straight after itself: cycles, and
+ * moves that end as they start (a wave, a kick, a jump; not sit down). */
+export function repeatable(motion: Motion): boolean {
+  if (motion.kind !== "move") return false;
+  if (motion.cycle) return true;
+  const f = motion.frames;
+  return samePose(f[0], f[f.length - 1]);
+}
+
+/** A circle a travelling figure can walk round from `from`, heading the
+ * way it faces: the largest that stays in the room, turning towards the
+ * centre of the studio when both sides fit. */
+function fitCircle(
+  from: MotionPlacement,
+  sign: number,
+): { radius: number; turn: 1 | -1 } | null {
+  const th0 = (from.rotation * Math.PI) / 180;
+  for (const radius of [1.3, 1.1, 0.9, 0.7]) {
+    const fits = ([1, -1] as const).filter((k) => {
+      for (let i = 0; i <= 48; i++) {
+        const th = th0 + (k * i * 2 * Math.PI) / 48;
+        const x =
+          from.x + sign * (-radius / k) * (Math.cos(th) - Math.cos(th0));
+        const z = from.z + sign * (radius / k) * (Math.sin(th) - Math.sin(th0));
+        if (Math.abs(x) > ROOM.x || z < ROOM.back || z > ROOM.front)
+          return false;
+      }
+      return true;
+    });
+    if (fits.length === 0) continue;
+    const toCentre =
+      Math.cos(th0) * -from.x - Math.sin(th0) * -from.z >= 0 ? 1 : -1;
+    return {
+      radius,
+      turn: fits.includes(toCentre) ? toCentre : fits[0],
+    };
+  }
+  return null;
 }
 
 /** A motion's frames, laid out in time and space from a placement. */
@@ -2093,50 +2147,91 @@ export function planMotion(
   from: MotionPlacement,
   opts: MotionOptions = {},
 ): MotionPlan {
-  const asked = motion.cycle
-    ? Math.max(1, Math.min(10, Math.round(opts.repeat ?? motion.repeat ?? 1)))
+  const once = motion.frames[motion.frames.length - 1].at;
+  const unit = motion.cycle ?? once; // seconds per repeat at speed 1
+  const canRepeat = repeatable(motion) && unit > 0;
+  let slow = Math.max(0.25, Math.min(4, opts.slow ?? 1));
+  let repeat = canRepeat
+    ? Math.max(1, Math.round(opts.repeat ?? motion.repeat ?? 1))
     : 1;
-  // Travel: along the way the figure faces. Strides are never
-  // stretched or squashed (the feet would slide): with too little room
-  // the figure does fewer cycles, or stays on the spot.
-  const sign = opts.backwards ? -1 : 1;
-  const rad = (from.rotation * Math.PI) / 180;
-  const fx = Math.sin(rad) * sign;
-  const fz = Math.cos(rad) * sign;
-  let per = opts.inPlace ? 0 : (motion.travel ?? 0);
-  let repeat = asked;
-  let noRoom = false;
-  if (per > 0) {
-    const room = roomAhead(from, fx, fz);
-    const fits = Math.floor(room / per + 1e-6);
-    if (fits < 1) {
-      per = 0;
-      noRoom = true;
-    } else repeat = Math.min(asked, fits);
+  if (opts.seconds && unit > 0) {
+    if (canRepeat) {
+      // Whole repeats at about the asked speed, then the speed nudged so
+      // the move lasts exactly as long as asked.
+      repeat = Math.max(1, Math.round(opts.seconds / (unit * slow)));
+      slow = opts.seconds / (repeat * unit);
+    } else slow = opts.seconds / unit;
+    slow = Math.max(0.25, Math.min(4, slow));
   }
+  const perRepeat = motion.cycle
+    ? motion.frames.length
+    : motion.frames.length - 1;
+  const most = Math.max(1, Math.floor((MAX_STEPS - 1) / perRepeat));
+  const capped = repeat > most;
+  repeat = Math.min(repeat, most);
 
-  const slow = Math.max(0.25, Math.min(4, opts.slow ?? 1));
-  const cycle = motion.cycle ?? 0;
-  type Raw = MotionFrame & { at: number; progress: number };
+  // The frames of every repeat, end to end.
+  type Raw = MotionFrame & { at: number; progress: number; spin: number };
   const raw: Raw[] = [];
+  const endTurn = motion.frames[motion.frames.length - 1].turn ?? 0;
+  for (let r = 0; r < repeat; r++)
+    motion.frames.forEach((fr, i) => {
+      // A repeated one-off move skips its first frame: the last frame of
+      // the repeat before is the same pose.
+      if (!motion.cycle && r > 0 && i === 0) return;
+      raw.push({
+        ...fr,
+        at: r * unit + fr.at,
+        progress: motion.cycle ? r + fr.at / unit : 0,
+        spin: motion.cycle ? 0 : r * endTurn,
+        // Climbing keeps rising: each cycle starts where the last ended.
+        air: (fr.air ?? 0) + r * (motion.rise ?? 0),
+      });
+    });
   if (motion.cycle) {
-    for (let r = 0; r < repeat; r++)
-      for (const fr of motion.frames)
-        raw.push({
-          ...fr,
-          at: r * cycle + fr.at,
-          progress: r + fr.at / cycle,
-          // Climbing keeps rising: each cycle starts where the last ended.
-          air: (fr.air ?? 0) + r * (motion.rise ?? 0),
-        });
     const first = motion.frames[0];
     raw.push({
       ...first,
-      at: repeat * cycle,
+      at: repeat * unit,
       progress: repeat,
+      spin: 0,
       air: (first.air ?? 0) + repeat * (motion.rise ?? 0),
     });
-  } else raw.push(...motion.frames.map((fr) => ({ ...fr, progress: 0 })));
+  }
+
+  // Travel along the way the figure faces, in whole strides (never
+  // stretched: the feet would slide). A walk longer than the room ahead
+  // goes round a circle instead; with no room for that, on the spot.
+  const sign = opts.backwards ? -1 : 1;
+  const th0 = (from.rotation * Math.PI) / 180;
+  const per = opts.inPlace ? 0 : (motion.travel ?? 0);
+  const distance = per * repeat;
+  let path: MotionPlan["path"] = "straight";
+  let circle: { radius: number; turn: 1 | -1 } | null = null;
+  if (distance > 0) {
+    const room = roomAhead(from, Math.sin(th0) * sign, Math.cos(th0) * sign);
+    if (distance > room + 1e-6) {
+      circle = fitCircle(from, sign);
+      path = circle ? "circle" : "spot";
+    }
+  }
+  const place = (s: number) => {
+    if (path === "spot" || s === 0)
+      return { x: from.x, z: from.z, heading: th0 };
+    if (!circle)
+      return {
+        x: from.x + sign * Math.sin(th0) * s,
+        z: from.z + sign * Math.cos(th0) * s,
+        heading: th0,
+      };
+    const { radius: R, turn: k } = circle;
+    const th = th0 + (k * s) / R;
+    return {
+      x: from.x + sign * (-R / k) * (Math.cos(th) - Math.cos(th0)),
+      z: from.z + sign * (R / k) * (Math.sin(th) - Math.sin(th0)),
+      heading: th,
+    };
+  };
 
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -2144,19 +2239,26 @@ export function planMotion(
     let joints = build(fr.pose, { ...motion.hands, ...fr.hands });
     if (opts.mirror) joints = mirrorJoints(joints);
     joints = roundJoints(joints);
-    const turn = (fr.turn ?? 0) * (opts.mirror ? -1 : 1);
-    const along = per * fr.progress;
+    const turn = ((fr.turn ?? 0) + fr.spin) * (opts.mirror ? -1 : 1);
+    const at = place(per * fr.progress);
+    const heading = (at.heading * 180) / Math.PI;
     const y = Math.max(-1, Math.min(1.5, floorOffset(joints) + (fr.air ?? 0)));
     return {
       at: Math.round(fr.at * slow * 100) / 100,
-      x: r2(from.x + fx * along),
+      x: r2(at.x),
       y: r2(y),
-      z: r2(from.z + fz * along),
-      rotation: r1(((((from.rotation + turn + 180) % 360) + 360) % 360) - 180),
+      z: r2(at.z),
+      rotation: r1(((((heading + turn + 180) % 360) + 360) % 360) - 180),
       joints,
     };
   });
-  return { steps, repeat, noRoom, shortened: repeat < asked };
+  return {
+    steps,
+    repeat,
+    length: steps[steps.length - 1].at,
+    path: distance > 0 ? path : "straight",
+    capped,
+  };
 }
 
 export const motionSteps = (
@@ -2188,6 +2290,5 @@ function roundJoints(joints: PoseJoints): PoseJoints {
 
 /** How long a move lasts (seconds), with options. */
 export function motionLength(motion: Motion, opts: MotionOptions = {}) {
-  const steps = motionSteps(motion, { x: 0, z: 0, rotation: 0 }, opts);
-  return steps[steps.length - 1].at;
+  return planMotion(motion, { x: 0, z: 0, rotation: 0 }, opts).length;
 }
