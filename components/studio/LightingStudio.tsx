@@ -56,9 +56,9 @@ const TOOLS: Array<{ id: Tool; label: string; icon: typeof Layers }> = [
   { id: "history", label: "History", icon: HistoryIcon },
 ];
 
-/** Server snapshot is "desktop"; the client corrects it right after
- * hydration without a mismatch error. */
-function useMediaQuery(query: string): boolean {
+/** Before hydration a query reads as `server` (true: "desktop"); the
+ * client corrects it right after without a mismatch error. */
+function useMediaQuery(query: string, server = true): boolean {
   return useSyncExternalStore(
     (cb) => {
       const mq = window.matchMedia(query);
@@ -66,7 +66,7 @@ function useMediaQuery(query: string): boolean {
       return () => mq.removeEventListener("change", cb);
     },
     () => window.matchMedia(query).matches,
-    () => true,
+    () => server,
   );
 }
 
@@ -96,7 +96,9 @@ export function LightingStudio() {
   // Short viewports (landscape phones, ~412px tall) use the phone sheet
   // layout even when wide enough for md:, because the docked panels
   // + timeline leave too little vertical room for the canvas.
-  const isShort = useMediaQuery("(max-height: 500px)");
+  // Read as "not short" before hydration, so computers don't start on
+  // the phone layout.
+  const isShort = useMediaQuery("(max-height: 500px)", false);
   const isDesktop = useMediaQuery("(min-width: 768px)") && !isShort;
   const isWide = useMediaQuery("(min-width: 1024px)");
   const viewport = useRef<ViewportHandle>(null);
@@ -123,22 +125,12 @@ export function LightingStudio() {
   // Phones: the panels below the view fold down to a slim bar.
   const [sheetOpen, setSheetOpen] = useState(true);
   const sheetSwipe = useRef<{ y: number; moved: boolean } | null>(null);
-  // Landscape-compact: on a short viewport the sheet starts folded so
-  // the canvas gets the height; tapping a tab still opens it.
-  // NOTE: isShort's server snapshot is true, so folding on "isShort
-  // became true" would also fire on tall phones at hydration and
-  // leave the sheet folded there. Fold only on a real transition
-  // (tall -> short, e.g. rotating to landscape) or on mount when
-  // the actual window is short.
-  const prevShortRef = useRef<boolean | null>(null);
+  // Short viewports (landscape phones) start with the sheet folded so
+  // the view gets the height, and fold it on turning to landscape;
+  // tapping a tab still opens it.
   useEffect(() => {
-    if (prevShortRef.current === false && isShort) setSheetOpen(false);
-    prevShortRef.current = isShort;
+    if (isShort) setSheetOpen(false);
   }, [isShort]);
-  useEffect(() => {
-    if (window.innerHeight < 500) setSheetOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [view, setView] = useState<CameraView>("full");
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
@@ -537,7 +529,7 @@ export function LightingStudio() {
   );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-ink-950 pt-[env(safe-area-inset-top)]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-ink-950 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]">
       <Toolbar
         studio={studio}
         copied={copied}
@@ -629,14 +621,17 @@ export function LightingStudio() {
             previewing
               ? "fixed inset-0 z-50 h-dvh"
               : cx(
-                  "relative md:h-auto md:min-w-0 md:flex-1",
-                  // Phones: the view takes what the panels leave; a
-                  // shorter view while the graph editor is open.
-                  !sheetOpen
-                    ? "min-h-0 flex-1"
-                    : graphOpen && mobileTab === "animate"
-                      ? "h-[30dvh] shrink-0"
-                      : "h-[46dvh] shrink-0",
+                  "relative",
+                  // Phones (and short landscape screens, even when wide):
+                  // the view takes what the panels leave; a shorter view
+                  // while the graph editor is open.
+                  isDesktop
+                    ? "min-w-0 flex-1"
+                    : !sheetOpen
+                      ? "min-h-0 flex-1"
+                      : graphOpen && mobileTab === "animate"
+                        ? "h-[30dvh] shrink-0"
+                        : "h-[46dvh] shrink-0",
                 ),
           )}
           data-testid={previewing ? "preview-screen" : undefined}
