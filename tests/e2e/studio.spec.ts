@@ -345,6 +345,8 @@ test.describe("Lighting Studio — critical journeys", () => {
     page,
     browser,
   }, info) => {
+    // About 2 minutes on its own: three figures, two pages, a share link.
+    test.slow();
     await openStudio(page);
     await showPanel(page, "scene");
     await page.getByTestId("add-figure").click();
