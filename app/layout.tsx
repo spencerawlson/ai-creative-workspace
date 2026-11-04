@@ -18,6 +18,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // viewport-fit=cover is what makes safe-area-inset-* non-zero on
+  // notched iPhones; without it the insets below are all 0.
+  viewportFit: "cover",
   themeColor: "#09090c",
   colorScheme: "dark",
 };
