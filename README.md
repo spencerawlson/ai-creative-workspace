@@ -1,4 +1,6 @@
-# AI Creative Workspace — Lighting Studio
+# I-K-O 3D
+
+(The repository is still called ai-creative-workspace.)
 
 Light a 3D mannequin the way a studio photographer would. The scene is
 real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.

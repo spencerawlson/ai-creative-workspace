@@ -10,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Lighting Studio — AI Creative Workspace",
+  title: "I-K-O 3D",
   description:
-    "Light a 3D mannequin like a studio photographer: key, fill, rim, spot and softbox lights, six classic presets, share links and high-resolution export.",
+    "I-K-O 3D: light, pose and animate 3D mannequins in the browser. Studio lights and presets, typed poses and moves, keyframes, share links, image and video export.",
 };
 
 export const viewport: Viewport = {
