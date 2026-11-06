@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { jointQuaternion, type RigDirections } from "@/lib/engine/posing";
 import { tryApplyAction } from "@/lib/studio/actions";
 import {
+  FACE_JOINT_IDS,
   FINGERS,
   HAND_SHAPES,
   JOINT_IDS,
@@ -10,6 +11,7 @@ import {
   flattenJoints,
   groupOfJoint,
   handShapePatches,
+  isFaceJoint,
   mirrorJoints,
   neutralJoints,
   unflattenJoints,
@@ -23,11 +25,17 @@ describe("feet and fingers in the pose model", () => {
   it("adds ankles and 15 joints per hand, after the original joints", () => {
     const later = JOINT_IDS.filter((id) => LATER.test(id));
     expect(later).toHaveLength(2 + 2 * 15);
-    // All new joints come last, so older flattened poses still line up.
+    // All new joints come last, so older flattened poses still line up;
+    // the face came after them.
     const firstLater = JOINT_IDS.findIndex((id) => LATER.test(id));
-    expect(JOINT_IDS.slice(firstLater).every((id) => LATER.test(id))).toBe(
-      true,
-    );
+    expect(
+      JOINT_IDS.slice(firstLater).every(
+        (id) => LATER.test(id) || isFaceJoint(id),
+      ),
+    ).toBe(true);
+    expect(JOINT_IDS.slice(-FACE_JOINT_IDS.length)).toEqual([
+      ...FACE_JOINT_IDS,
+    ]);
     expect(groupOfJoint("index2R")).toBe("handR");
     expect(groupOfJoint("ankleL")).toBe("legL");
   });

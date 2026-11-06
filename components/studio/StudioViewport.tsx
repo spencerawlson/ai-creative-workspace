@@ -63,6 +63,7 @@ export function StudioViewport({
   onCameraEnd,
   characters,
   onCharacterProblem,
+  onCharacterFace,
   className,
   label = "3D lighting studio viewport",
 }: {
@@ -92,6 +93,8 @@ export function StudioViewport({
   /** Imported characters' file URLs, by id. */
   characters?: Record<string, string>;
   onCharacterProblem?: (character: string, message: string) => void;
+  /** A character loaded: its face controls ("expression.happy", ...). */
+  onCharacterFace?: (character: string, controls: string[]) => void;
   className?: string;
   label?: string;
 }) {
@@ -118,6 +121,7 @@ export function StudioViewport({
     onCameraEnd,
     characters,
     onCharacterProblem,
+    onCharacterFace,
   });
   latest.current = {
     scene,
@@ -137,6 +141,7 @@ export function StudioViewport({
     onCameraEnd,
     characters,
     onCharacterProblem,
+    onCharacterFace,
   };
 
   useEffect(() => {
@@ -163,6 +168,7 @@ export function StudioViewport({
             },
             onCharacterProblem: (id, m) =>
               latest.current.onCharacterProblem?.(id, m),
+            onCharacterFace: (id, c) => latest.current.onCharacterFace?.(id, c),
           });
         } catch {
           setStatus("unsupported");

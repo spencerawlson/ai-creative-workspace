@@ -15,7 +15,11 @@ import {
   describeAction,
   tryApplyAction,
 } from "@/lib/studio/actions";
-import { JOINT_IDS, neutralJoints, type PoseJoints } from "@/lib/studio/pose";
+import {
+  BODY_JOINT_IDS,
+  neutralJoints,
+  type PoseJoints,
+} from "@/lib/studio/pose";
 import { defaultScene } from "@/lib/studio/presets";
 
 /** A small world-aligned skeleton laid out like the scanned A-pose
@@ -220,7 +224,7 @@ describe("drag to pose", () => {
 describe("joint dots", () => {
   it("every posable joint has exactly one dot, driving that joint only", () => {
     expect(JOINT_DOTS.map((d) => d.joint).sort()).toEqual(
-      [...JOINT_IDS].sort(),
+      [...BODY_JOINT_IDS].sort(),
     );
     for (const d of JOINT_DOTS) {
       expect(d.vars.length).toBeGreaterThan(0);

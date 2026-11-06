@@ -15,12 +15,16 @@ export interface CharacterLibrary {
   urls: Record<string, string>;
   /** Characters the 3D view couldn't use, and why. */
   problems: Record<string, string>;
+  /** Each loaded character's face controls ("expression.happy", ...);
+   * absent until the 3D view has loaded it. */
+  faces: Record<string, string[]>;
   /** The last import's error, if it failed. */
   error: string | null;
   busy: boolean;
   importFile: (file: File) => Promise<CharacterEntry | null>;
   remove: (id: string) => Promise<void>;
   reportProblem: (id: string, message: string) => void;
+  reportFace: (id: string, controls: string[]) => void;
 }
 
 /** The device's character library: files in IndexedDB, shown through
@@ -29,6 +33,7 @@ export function useCharacters(): CharacterLibrary {
   const [list, setList] = useState<CharacterEntry[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [problems, setProblems] = useState<Record<string, string>>({});
+  const [faces, setFaces] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const made = useRef<Record<string, string>>({});
@@ -90,14 +95,20 @@ export function useCharacters(): CharacterLibrary {
     setProblems((p) => (p[id] === message ? p : { ...p, [id]: message }));
   }, []);
 
+  const reportFace = useCallback((id: string, controls: string[]) => {
+    setFaces((f) => ({ ...f, [id]: controls }));
+  }, []);
+
   return {
     list,
     urls,
     problems,
+    faces,
     error,
     busy,
     importFile,
     remove,
     reportProblem,
+    reportFace,
   };
 }

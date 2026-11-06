@@ -43,6 +43,17 @@ import {
   type RigDirections,
 } from "./posing";
 import {
+  applyFace,
+  buildFace,
+  faceControls,
+  findEyes,
+  shapeMeshes,
+  vrmExpressions,
+  vrmEyeNodes,
+  type FaceControls,
+  type FaceRig,
+} from "./face";
+import {
   JOINT_PARENT,
   computeRetarget,
   isIdentityRetarget,
@@ -138,6 +149,9 @@ export interface EngineCallbacks {
   /** An imported character couldn't be used; its figures show their
    * mannequin instead. */
   onCharacterProblem?: (character: string, message: string) => void;
+  /** An imported character is loaded: which face controls it has
+   * (empty when it has no face shapes or eye bones). */
+  onCharacterFace?: (character: string, controls: FaceControls) => void;
 }
 
 const PIVOT = new THREE.Vector3(0, LIGHT_PIVOT_Y, 0);
@@ -210,6 +224,12 @@ interface FigureInstance {
   rig: ModelRig | null;
   /** The pose last applied (by identity), to skip unchanged figures. */
   joints: unknown;
+  /** A character's face, with this clone's shape meshes and eye bones. */
+  face: {
+    rig: FaceRig;
+    meshes: THREE.Mesh[];
+    eyes: Map<string, THREE.Bone>;
+  } | null;
 }
 
 interface CachedModel {
@@ -217,6 +237,8 @@ interface CachedModel {
   headHeight: number;
   /** Null for an unrigged GLB: it renders, but can't be posed. */
   rig: ModelRig | null;
+  /** An imported character's face, when it has one. */
+  face?: FaceRig | null;
 }
 
 /** Tap targets: one invisible capsule per bone, from the joint to the
@@ -985,6 +1007,11 @@ export class StudioEngine {
           return;
         }
         this.models.set(url, model);
+        if (character)
+          this.callbacks.onCharacterFace?.(
+            character,
+            faceControls(model.face ?? null),
+          );
         this.syncFigures();
       },
       undefined,
@@ -1076,6 +1103,13 @@ export class StudioEngine {
           inst.rig.dirs,
           inst.rig.retarget,
         );
+        if (inst.face)
+          applyFace(
+            inst.face.rig,
+            inst.face.meshes,
+            inst.face.eyes,
+            f.pose.joints,
+          );
         inst.joints = f.pose.joints;
       }
     }
@@ -1151,6 +1185,16 @@ export class StudioEngine {
         })),
       };
     }
+    let face: FigureInstance["face"] = null;
+    if (template.face) {
+      const names = new Set(template.face.eyes.map((e) => e.name));
+      const eyes = new Map<string, THREE.Bone>();
+      object.traverse((o) => {
+        if ((o as THREE.Bone).isBone && names.has(o.name))
+          eyes.set(o.name, o as THREE.Bone);
+      });
+      face = { rig: template.face, meshes: shapeMeshes(object), eyes };
+    }
     this.figure.add(root);
     const inst: FigureInstance = {
       id,
@@ -1160,6 +1204,7 @@ export class StudioEngine {
       headHeight: template.headHeight,
       rig,
       joints: null,
+      face,
     };
     this.instances.set(id, inst);
     return inst;
@@ -1249,9 +1294,41 @@ export class StudioEngine {
       gltf.scene.rotation.y += Math.PI;
       holder.updateMatrixWorld(true);
     }
-    return (
-      this.prepareModel(holder, bones) ??
-      "This character's skeleton is put together in a way the studio can't pose yet."
+    const face = this.prepareFace(holder, gltf, nodes, bones.neck!);
+    const model = this.prepareModel(holder, bones);
+    if (!model)
+      return "This character's skeleton is put together in a way the studio can't pose yet.";
+    model.face = face;
+    return model;
+  }
+
+  /** The character's face shapes and eye bones, at rest, facing +Z.
+   * Clones find eye bones by name, so only uniquely named ones count. */
+  private prepareFace(
+    holder: THREE.Object3D,
+    gltf: GLTF,
+    nodes: Map<number, THREE.Object3D>,
+    neck: THREE.Bone,
+  ): FaceRig | null {
+    const meshes = shapeMeshes(holder);
+    const nodeMeshes = (i: number) => {
+      const o = nodes.get(i);
+      if (!o) return [];
+      const own = (o as THREE.Mesh).isMesh ? [o] : o.children;
+      return own
+        .map((m) => meshes.indexOf(m as THREE.Mesh))
+        .filter((k) => k >= 0);
+    };
+    const counts = new Map<string, number>();
+    holder.traverse((o) => counts.set(o.name, (counts.get(o.name) ?? 0) + 1));
+    const eyes = findEyes(
+      neck,
+      vrmEyeNodes(gltf.parser.json, (i) => nodes.get(i)),
+    ).filter((e) => e.name && counts.get(e.name) === 1);
+    return buildFace(
+      holder,
+      vrmExpressions(gltf.parser.json, nodeMeshes),
+      eyes,
     );
   }
 
@@ -1722,6 +1799,19 @@ export class StudioEngine {
     const inst = figure ? this.instances.get(figure) : this.active;
     if (!inst) return null;
     return this.characterIds.has(inst.url) ? "character" : "mannequin";
+  }
+
+  /** For automated tests: a figure's face shape weights (every shape
+   * mesh's, in order) and eye bone rotations; null without a face. */
+  faceState(figure?: string): { shapes: number[]; eyes: number[][] } | null {
+    const inst = figure ? this.instances.get(figure) : this.active;
+    if (!inst?.face) return null;
+    return {
+      shapes: inst.face.meshes.flatMap((m) => [
+        ...(m.morphTargetInfluences ?? []),
+      ]),
+      eyes: [...inst.face.eyes.values()].map((b) => b.quaternion.toArray()),
+    };
   }
 
   /** For automated tests: where each posable joint (and each hand's

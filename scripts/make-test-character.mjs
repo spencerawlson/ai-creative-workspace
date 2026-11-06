@@ -8,7 +8,9 @@
  *   and Mixamo do), so no bone is world-aligned;
  * - the skeleton under an armature scaled to centimetres;
  * - facing -Z (like VRM 0.x), so the studio must turn it round;
- * - its own skin and shirt colours.
+ * - its own skin and shirt colours;
+ * - eye bones under the head and VRoid-named face shapes on a face
+ *   panel (Fcl_ALL_Joy, Fcl_EYE_Close, Fcl_MTH_A), for the face tests.
  *
  * Run: node scripts/make-test-character.mjs */
 
@@ -27,6 +29,9 @@ const centre = [
   ["Neck", "Spine2", [0, 1.45, 0]],
   ["Head", "Neck", [0, 1.53, 0]],
   ["HeadTop_End", "Head", [0, 1.75, 0]],
+  // After HeadTop_End: the head bone still points up, at it.
+  ["LeftEye", "Head", [0.035, 1.64, 0.1]],
+  ["RightEye", "Head", [-0.035, 1.64, 0.1]],
 ];
 const left = [
   ["Shoulder", "Spine2", [0.05, 1.42, 0]],
@@ -72,6 +77,7 @@ const facing = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(0, 1, 0),
   Math.PI,
 );
+const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(facing);
 const pos = Object.fromEntries(
   joints.map(([n, , p]) => [
     n,
@@ -200,6 +206,14 @@ for (const [n] of joints) {
               ? 0.09
               : 0.1;
   if (n === "Hips") box(n, pos[n].clone().setY(0.85), pos.Spine, w);
+  else if (/Eye$/.test(n))
+    // A small block looking forward, so a turned eye shows.
+    box(
+      n,
+      pos[n],
+      pos[n].clone().add(forward.clone().multiplyScalar(0.03)),
+      0.03,
+    );
   else box(n, pos[n], end, w);
 }
 
@@ -238,6 +252,69 @@ const skin = doc
   .setInverseBindMatrices(acc("MAT4", ibm, Float32Array));
 for (const n of names) skin.addJoint(nodes[n]);
 scene.addChild(doc.createNode("Body").setMesh(mesh).setSkin(skin));
+
+// The face: a panel in front of the head, skinned to it, with three
+// face shapes that each move it a little.
+const panel = new THREE.BoxGeometry(0.12, 0.1, 0.01).toNonIndexed();
+panel.translate(0, 1.6, 0.095);
+panel.applyQuaternion(facing);
+const fp = Array.from(panel.attributes.position.array);
+const count = fp.length / 3;
+const shapes = {
+  Fcl_ALL_Joy: [0, 0.01, 0],
+  Fcl_EYE_Close: [0, 0, -0.005],
+  Fcl_MTH_A: [0, -0.02, 0],
+};
+// Shape names are written from each target's name.
+const faceMesh = doc.createMesh("Face");
+const facePrim = doc
+  .createPrimitive()
+  .setAttribute("POSITION", acc("VEC3", fp, Float32Array))
+  .setAttribute(
+    "NORMAL",
+    acc("VEC3", Array.from(panel.attributes.normal.array), Float32Array),
+  )
+  .setAttribute(
+    "JOINTS_0",
+    acc(
+      "VEC4",
+      Array.from({ length: count }, () => [
+        names.indexOf("Head"),
+        0,
+        0,
+        0,
+      ]).flat(),
+      Uint16Array,
+    ),
+  )
+  .setAttribute(
+    "WEIGHTS_0",
+    acc(
+      "VEC4",
+      Array.from({ length: count }, () => [1, 0, 0, 0]).flat(),
+      Float32Array,
+    ),
+  )
+  .setMaterial(
+    doc.createMaterial("FaceSkin").setBaseColorFactor([0.9, 0.7, 0.58, 1]),
+  );
+for (const [name, d] of Object.entries(shapes))
+  facePrim.addTarget(
+    doc
+      .createPrimitiveTarget(name)
+      .setAttribute(
+        "POSITION",
+        acc(
+          "VEC3",
+          Array.from({ length: count }, () =>
+            new THREE.Vector3(...d).applyQuaternion(facing).toArray(),
+          ).flat(),
+          Float32Array,
+        ),
+      ),
+  );
+faceMesh.addPrimitive(facePrim).setWeights(Object.keys(shapes).map(() => 0));
+scene.addChild(doc.createNode("Face").setMesh(faceMesh).setSkin(skin));
 
 await new NodeIO().write(OUT, doc);
 console.log(`wrote ${OUT}: ${names.length} bones, ${P.length / 3} vertices`);

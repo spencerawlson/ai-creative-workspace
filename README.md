@@ -61,6 +61,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Blender, Unreal rigs) from the figure's panel. It takes every pose,
   typed move and keyframe the mannequin does, keeps its own look, and
   stays on your device; share links show the mannequin to others.
+- Faces: on a character with face shapes (VRM, VRoid, ARKit
+  blendshapes, visemes) or eye bones, Pose › Face sets where the eyes
+  look, expressions (happy, angry, sad, relaxed, surprised), blinks and
+  winks, and mouth shapes (A, I, U, E, O). They key, ease and share
+  like any joint; body poses and moves leave the face as it is.
 - On phones, the panels below the view are a bottom sheet: tap the
   handle or swipe down to fold them to a slim bar and give the 3D view
   the screen. Turned on its side, a phone keeps this layout with the

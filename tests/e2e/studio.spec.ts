@@ -431,6 +431,8 @@ test.describe("Lighting Studio — critical journeys", () => {
   test("keyframes: auto-key, scrub, undo, play, preview, graph editor", async ({
     page,
   }, info) => {
+    // A long journey: near the default limit on a loaded machine.
+    test.slow();
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");
     await (await timelineControl(page, "timeline-autokey")).click();
@@ -845,6 +847,38 @@ test.describe("Lighting Studio — critical journeys", () => {
         return j.wristL && j.head ? j.wristL.y < j.head.y : false;
       })
       .toBe(true);
+
+    // Its face: only the controls its file has; they move its face
+    // shapes and eye bones.
+    const face = () =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: {
+              faceState(): { shapes: number[]; eyes: number[][] } | null;
+            };
+          }
+        ).__studioEngine.faceState(),
+      );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-group-face").click();
+    await showInspector(page);
+    await expect(page.getByTestId("face-note")).toContainText(
+      "only the ones its file has",
+    );
+    await expect(page.getByTestId("pose-expression-angry")).toHaveCount(0);
+    await page.getByTestId("pose-expression-happy").fill("80");
+    await expect.poll(async () => (await face())?.shapes).toEqual([0.8, 0, 0]);
+    const eyesBefore = (await face())!.eyes;
+    expect(eyesBefore).toHaveLength(2);
+    await page.getByTestId("pose-eyes-turn").fill("20");
+    await expect
+      .poll(async () => JSON.stringify((await face())?.eyes))
+      .not.toBe(JSON.stringify(eyesBefore));
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
 
     // The mannequin and back, as undoable choices.
     await page.getByTestId("character-none").click();

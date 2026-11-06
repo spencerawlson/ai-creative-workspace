@@ -1,7 +1,7 @@
 "use client";
 
-import { FlipHorizontal2, RotateCcw } from "lucide-react";
-import type { Selection } from "@/lib/engine/StudioEngine";
+import { FlipHorizontal2, RotateCcw, ScanFace } from "lucide-react";
+import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
 import {
   FINGERS,
   HAND_SHAPES,
@@ -10,12 +10,14 @@ import {
   POSE_PRESETS,
   groupOfJoint,
   handShapePatches,
+  neutralFace,
   posePreset,
   type Dof,
   type JointId,
 } from "@/lib/studio/pose";
 import { MotionSearch } from "./MotionSearch";
 import type { Studio } from "./useStudio";
+import type { CharacterLibrary } from "./useCharacters";
 import { figureLabel } from "@/lib/studio/figures";
 import type { Figure } from "@/lib/studio/schema";
 import { Button, PanelHeader, SectionTitle, Slider, Tip, cx } from "./ui";
@@ -39,6 +41,8 @@ export function PoseInspector({
   onSelect,
   time = 0,
   onPlayFrom,
+  characters,
+  onView,
 }: {
   studio: Studio;
   figure: Figure;
@@ -46,6 +50,8 @@ export function PoseInspector({
   onSelect: (s: Selection, figure?: string) => void;
   time?: number;
   onPlayFrom?: (t: number) => void;
+  characters?: CharacterLibrary;
+  onView?: (v: CameraView) => void;
 }) {
   const { scene, dispatch, seal } = studio;
   const target = { figure: figure.id };
@@ -57,8 +63,19 @@ export function PoseInspector({
   const finger = hand
     ? (joint?.match(/^(thumb|index|middle|ring|pinky)/)?.[1] ?? "thumb")
     : null;
+  const isFace = groupId === "face";
+  // A character's face has the controls its file supports; on the
+  // mannequin (no face) every control shows, for when a character is on.
+  const controls =
+    isFace && figure.character
+      ? characters?.faces[figure.character]
+      : undefined;
+  const has = (id: JointId, dof: string) =>
+    !controls || controls.includes(`${id}.${dof}`);
   const shown = (group.joints as readonly JointId[]).filter(
-    (id) => !finger || id.startsWith(finger),
+    (id) =>
+      (!finger || id.startsWith(finger)) &&
+      Object.keys(JOINTS[id].dofs).some((dof) => has(id, dof)),
   );
   const preset = posePreset(figure.pose.preset);
   const joints = figure.pose.joints as Record<string, Record<string, number>>;
@@ -162,11 +179,27 @@ export function PoseInspector({
             </button>
           ))}
         </div>
-        <Tip className="mt-1.5">
-          Left and right are the mannequin&apos;s own. In the viewport, drag a
-          body part to pose it; grab a palm to move the whole arm, a finger to
-          curl it. Pick a hand here to see and drag its finger joints.
-        </Tip>
+        {isFace ? (
+          <FaceNote
+            figure={figure}
+            controls={controls}
+            loaded={!!characters}
+            onView={onView}
+            onReset={() =>
+              dispatch({
+                type: "updateJoints",
+                patches: neutralFace(),
+                ...target,
+              })
+            }
+          />
+        ) : (
+          <Tip className="mt-1.5">
+            Left and right are the mannequin&apos;s own. In the viewport, drag a
+            body part to pose it; grab a palm to move the whole arm, a finger to
+            curl it. Pick a hand here to see and drag its finger joints.
+          </Tip>
+        )}
 
         {hand && (
           <>
@@ -233,8 +266,9 @@ export function PoseInspector({
             )}
           >
             <SectionTitle>{JOINTS[id].label}</SectionTitle>
-            {Object.entries(JOINTS[id].dofs as Record<string, Dof>).map(
-              ([dof, d]) => (
+            {Object.entries(JOINTS[id].dofs as Record<string, Dof>)
+              .filter(([dof]) => has(id, dof))
+              .map(([dof, d]) => (
                 <Slider
                   key={dof}
                   label={d.label}
@@ -242,7 +276,7 @@ export function PoseInspector({
                   min={d.min}
                   max={d.max}
                   step={1}
-                  unit="°"
+                  unit={d.unit ?? "°"}
                   hint={d.hint}
                   testId={`pose-${id}-${dof}`}
                   onChange={(v) =>
@@ -255,10 +289,63 @@ export function PoseInspector({
                   }
                   onCommitEnd={seal}
                 />
-              ),
-            )}
+              ))}
           </section>
         ))}
+      </div>
+    </>
+  );
+}
+
+/** What the face controls do on this figure, and its face actions. */
+function FaceNote({
+  figure,
+  controls,
+  loaded,
+  onView,
+  onReset,
+}: {
+  figure: Figure;
+  controls: string[] | undefined;
+  loaded: boolean;
+  onView?: (v: CameraView) => void;
+  onReset: () => void;
+}) {
+  const message = !figure.character
+    ? "The mannequin has no face. Import a character with face shapes (VRM, VRoid, or ARKit blendshapes) in the figure's panel; the face you set here shows on it."
+    : !loaded || !controls
+      ? "Loading the character's face…"
+      : controls.length === 0
+        ? "This character's file has no face shapes or eye bones, so the face can't move. VRM and VRoid characters have them."
+        : "Expressions come from the character's own face shapes; only the ones its file has are shown.";
+  return (
+    <>
+      <p
+        className="mt-1.5 text-2xs leading-relaxed text-ink-300"
+        data-testid="face-note"
+      >
+        {message}
+      </p>
+      <div className="mt-2 flex gap-2">
+        {onView && (
+          <Button
+            size="sm"
+            icon={ScanFace}
+            onClick={() => onView("face")}
+            data-testid="face-close-up"
+          >
+            Close-up
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={RotateCcw}
+          onClick={onReset}
+          data-testid="face-reset"
+        >
+          Reset face
+        </Button>
       </div>
     </>
   );

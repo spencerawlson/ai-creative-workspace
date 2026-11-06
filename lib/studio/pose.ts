@@ -7,7 +7,14 @@
 
 import { z } from "zod";
 
-export type Dof = { label: string; min: number; max: number; hint?: string };
+export type Dof = {
+  label: string;
+  min: number;
+  max: number;
+  hint?: string;
+  /** Shown after the value; angles (the default) are "°". */
+  unit?: string;
+};
 
 const SHOULDER = {
   raise: { label: "Raise", min: -25, max: 150, hint: "Out to the side" },
@@ -138,6 +145,43 @@ export const JOINTS = {
   // line up, missing values reading as 0.
   ...handAndFoot("L"),
   ...handAndFoot("R"),
+  // The face: no bones on the mannequin; an imported character's eye
+  // bones and face shapes (lib/engine/face.ts). Expressions are percent.
+  eyes: {
+    label: "Eyes",
+    dofs: {
+      turn: { label: "Look sideways", min: -35, max: 35, hint: "To its left" },
+      raise: { label: "Look up", min: -25, max: 25, hint: "Up" },
+    },
+  },
+  expression: {
+    label: "Expression",
+    dofs: {
+      happy: { label: "Happy", min: 0, max: 100, unit: "%" },
+      angry: { label: "Angry", min: 0, max: 100, unit: "%" },
+      sad: { label: "Sad", min: 0, max: 100, unit: "%" },
+      relaxed: { label: "Relaxed", min: 0, max: 100, unit: "%" },
+      surprised: { label: "Surprised", min: 0, max: 100, unit: "%" },
+    },
+  },
+  eyelids: {
+    label: "Eyelids",
+    dofs: {
+      blink: { label: "Blink", min: 0, max: 100, unit: "%" },
+      left: { label: "Close left eye", min: 0, max: 100, unit: "%" },
+      right: { label: "Close right eye", min: 0, max: 100, unit: "%" },
+    },
+  },
+  mouth: {
+    label: "Mouth",
+    dofs: {
+      aa: { label: "A (father)", min: 0, max: 100, unit: "%" },
+      ih: { label: "I (see)", min: 0, max: 100, unit: "%" },
+      ou: { label: "U (you)", min: 0, max: 100, unit: "%" },
+      ee: { label: "E (bed)", min: 0, max: 100, unit: "%" },
+      oh: { label: "O (go)", min: 0, max: 100, unit: "%" },
+    },
+  },
 } as const satisfies Record<
   string,
   { label: string; dofs: Record<string, Dof> }
@@ -145,6 +189,21 @@ export const JOINTS = {
 
 export type JointId = keyof typeof JOINTS;
 export const JOINT_IDS = Object.keys(JOINTS) as JointId[];
+/** The face's controls: no bone of their own on the mannequin. */
+export const FACE_JOINT_IDS = [
+  "eyes",
+  "expression",
+  "eyelids",
+  "mouth",
+] as const;
+export type FaceJointId = (typeof FACE_JOINT_IDS)[number];
+export type BodyJointId = Exclude<JointId, FaceJointId>;
+export const isFaceJoint = (id: string): id is FaceJointId =>
+  (FACE_JOINT_IDS as readonly string[]).includes(id);
+/** Joints that turn a bone of the standard skeleton. */
+export const BODY_JOINT_IDS = JOINT_IDS.filter(
+  (id) => !isFaceJoint(id),
+) as BodyJointId[];
 export type JointValues<J extends JointId = JointId> = {
   [K in keyof (typeof JOINTS)[J]["dofs"]]: number;
 };
@@ -171,6 +230,7 @@ export const POSE_GROUPS = [
   { id: "handR", label: "Right hand", joints: handJoints("R") },
   { id: "legL", label: "Left leg", joints: ["hipL", "kneeL", "ankleL"] },
   { id: "legR", label: "Right leg", joints: ["hipR", "kneeR", "ankleR"] },
+  { id: "face", label: "Face", joints: FACE_JOINT_IDS },
 ] as const satisfies ReadonlyArray<{
   id: string;
   label: string;
@@ -196,11 +256,11 @@ function jointSchema(id: JointId) {
             .finite()
             .min(
               d.min,
-              `${JOINTS[id].label} ${d.label.toLowerCase()} is below ${d.min}°`,
+              `${JOINTS[id].label} ${d.label.toLowerCase()} is below ${d.min}${d.unit ?? "°"}`,
             )
             .max(
               d.max,
-              `${JOINTS[id].label} ${d.label.toLowerCase()} is above ${d.max}°`,
+              `${JOINTS[id].label} ${d.label.toLowerCase()} is above ${d.max}${d.unit ?? "°"}`,
             ),
         ]),
       ),
@@ -209,7 +269,8 @@ function jointSchema(id: JointId) {
 }
 
 /** Joints added after poses were first saved: optional on input. */
-const LATER = (id: string) => /^(ankle|thumb|index|middle|ring|pinky)/.test(id);
+const LATER = (id: string) =>
+  /^(ankle|thumb|index|middle|ring|pinky)/.test(id) || isFaceJoint(id);
 
 export const PoseJointsSchema = z
   .object(
@@ -380,7 +441,26 @@ export function mirrorJoints(joints: PoseJoints): PoseJoints {
   out.head.turn = -src.head.turn;
   out.spine.side = -src.spine.side;
   out.spine.twist = -src.spine.twist;
+  out.eyes.turn = -src.eyes.turn || 0; // not -0
+  out.eyelids.left = src.eyelids.right;
+  out.eyelids.right = src.eyelids.left;
   return out as PoseJoints;
+}
+
+/** `joints` with the face (eyes, expression, eyelids, mouth) of
+ * `face`: body poses and moves leave the face as it was. */
+export function keepFace(joints: PoseJoints, face: PoseJoints): PoseJoints {
+  const out = { ...joints };
+  for (const id of FACE_JOINT_IDS) out[id] = { ...face[id] } as never;
+  return out;
+}
+
+export function neutralFace(): Pick<PoseJoints, FaceJointId> {
+  const n = neutralJoints();
+  return Object.fromEntries(FACE_JOINT_IDS.map((id) => [id, n[id]])) as Pick<
+    PoseJoints,
+    FaceJointId
+  >;
 }
 
 export function isNeutral(joints: PoseJoints): boolean {
