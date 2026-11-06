@@ -40,6 +40,12 @@ import {
   type RigDirections,
 } from "./posing";
 import {
+  computeRetarget,
+  isIdentityRetarget,
+  matchHumanoid,
+  type Retarget,
+} from "./humanoid";
+import {
   LIMITS,
   type CameraPlacement,
   type MannequinModel,
@@ -169,6 +175,9 @@ interface PoseDot {
 interface ModelRig {
   bones: Record<BoneName, THREE.Bone>;
   dirs: RigDirections;
+  /** Per-bone corrections when the skeleton isn't the mannequin's own
+   * (lib/engine/humanoid.ts); undefined for the mannequin. */
+  retarget?: Retarget;
   dots: PoseDot[];
   dotMaterial: THREE.Material;
   activeDotMaterial: THREE.Material;
@@ -995,7 +1004,12 @@ export class StudioEngine {
       inst.root.position.set(f.x, f.y, f.z);
       inst.root.rotation.y = THREE.MathUtils.degToRad(f.rotation);
       if (inst.rig && inst.joints !== f.pose.joints) {
-        applyPose(inst.rig.bones, f.pose.joints, inst.rig.dirs);
+        applyPose(
+          inst.rig.bones,
+          f.pose.joints,
+          inst.rig.dirs,
+          inst.rig.retarget,
+        );
         inst.joints = f.pose.joints;
       }
     }
@@ -1200,7 +1214,14 @@ export class StudioEngine {
       object: root,
       headHeight,
       rig:
-        rig && posing ? { bones: rig.bones, dirs: rig.dirs, ...posing } : null,
+        rig && posing
+          ? {
+              bones: rig.bones,
+              dirs: rig.dirs,
+              retarget: rig.retarget,
+              ...posing,
+            }
+          : null,
     };
   }
 
@@ -1269,9 +1290,19 @@ export class StudioEngine {
         }
       }
     }
+    // The standard-skeleton layer: identity for the mannequin, whose
+    // bones are world-aligned at rest; anything else gets corrections.
+    const { retarget, problems } = computeRetarget(
+      root,
+      matchHumanoid(skinned.skeleton.bones),
+      dirs,
+      dirs,
+    );
+    if (problems.length) return null;
     return {
       bones,
       dirs,
+      retarget: isIdentityRetarget(retarget) ? undefined : retarget,
       at,
       tipOf,
       full,
@@ -1615,6 +1646,7 @@ export class StudioEngine {
         t.vars,
         t.grabbed,
         t.grabbed.worldToLocal(t.origin.clone()),
+        inst.rig.retarget,
       ),
       origin: t.origin,
       start: t.at,
