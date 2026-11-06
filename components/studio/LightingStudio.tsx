@@ -869,11 +869,11 @@ function Toolbar({
           aria-hidden
           className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent text-xs font-bold text-ink-950"
         >
-          L
+          I
         </span>
         <div className="hidden min-w-0 sm:block">
           <h1 className="text-sm font-semibold leading-none text-ink-100">
-            Lighting Studio
+            I-K-O 3D
           </h1>
           <nav
             aria-label="Studios"

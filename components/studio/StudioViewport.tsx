@@ -314,7 +314,7 @@ export function StudioViewport({
           className="absolute inset-x-3 top-3 mx-auto max-w-sm rounded-lg border border-danger/40 bg-ink-900/95 p-3 text-xs text-ink-200 shadow-lg"
         >
           {status === "unsupported"
-            ? "3D could not start in this browser. Lighting Studio needs WebGL — try an up-to-date Chrome, Safari, Edge or Firefox."
+            ? "3D could not start in this browser. I-K-O 3D needs WebGL — try an up-to-date Chrome, Safari, Edge or Firefox."
             : message}
           {status === "error" && (
             <button
