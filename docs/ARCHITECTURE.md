@@ -33,6 +33,8 @@ lib/engine/StudioEngine.ts
                         handles/picking/drag, export, benchmark, disposal
 lib/engine/posing.ts    Pose angles -> bone rotations; drag-to-pose
                         solver (damped least squares; unit-tested)
+lib/engine/humanoid.ts  Standard humanoid skeleton: matches any rig's
+                        bones by name, per-bone retarget corrections
 lib/lighting.ts         Six curated presets, Kelvin→RGB, light geometry
 scripts/optimize-models.mjs
                         Source scans → rigged, compressed public/models/*.glb
@@ -73,6 +75,24 @@ fetch rebuilt rigs. In pose mode, dragging a body part or a joint circle
 runs a small damped-least-squares solver over that joint's existing
 angles, inside their limits; one drag is one undo step (a "gesture"
 commit, sealed on release).
+
+**Standard skeleton.** Poses and moves are defined once, on the
+mannequin, so they can drive any human character
+(`lib/engine/humanoid.ts`). A skeleton's bones are matched to the
+mannequin's joints by name (the mannequin's own, VRM/VRoid, Mixamo,
+Blender Rigify/MPFB and Unreal styles; fingers numbered from the hand
+outwards). Each matched bone gets a fixed correction from its rest
+pose, `bone.quaternion = pre · q · post`, where q is the mannequin's
+rotation for that joint: `post` lines the bone's rest frame up with the
+mannequin's (a T-pose arm is first turned onto the A-pose arm), `pre`
+undoes the same for its real parent. Parents cancel, so each joint is
+independent and drags still set one joint at a time. Bones with no
+joint (chest, collarbones, head, toes) keep their rest rotation. The
+mannequin's own corrections are identity and the engine skips them.
+`HUMANOID_NAME` gives each joint's standard (VRM 1.0) bone name, for
+import and export. The unit tests pose a T-pose, Mixamo-named skeleton
+with random rest rotations and extra bones, and check every joint lands
+where the mannequin's does.
 
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level

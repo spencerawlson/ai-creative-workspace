@@ -157,7 +157,8 @@ describe("keyframe actions", () => {
     for (let i = 0; i < LIMITS.maxKeys; i++)
       full = apply(full, { type: "setKey", t: Math.round(i * 30) / 100 });
     expect(applyAction(full, { type: "setKey", t: 100 }).ok).toBe(false);
-  });
+    // 300 keys, each a whole-scene validation: seconds when busy.
+  }, 30_000);
 
   it("removing a figure or light drops it from every key", () => {
     let s = apply(twoKeys(), { type: "addFigure" });

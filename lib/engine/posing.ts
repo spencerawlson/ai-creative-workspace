@@ -14,6 +14,7 @@ import {
   type JointId,
   type PoseJoints,
 } from "@/lib/studio/pose";
+import type { Retarget } from "./humanoid";
 
 export const BONE_NAMES = [
   "pelvis",
@@ -198,15 +199,36 @@ export function jointQuaternion(
   return compose([[towards(palm.normal), v("curl")]]);
 }
 
-/** Set every driven bone's rotation from a pose. */
+/** Turn one joint's bone. On a character's own skeleton the mannequin's
+ * rotation goes through that bone's correction (lib/engine/humanoid.ts);
+ * bones the skeleton doesn't have are skipped. */
+function setJoint(
+  bones: Partial<Record<BoneName, THREE.Bone>>,
+  id: JointId,
+  values: Record<string, number>,
+  dirs: RigDirections,
+  retarget?: Retarget,
+) {
+  const name = JOINT_BONE[id];
+  const bone = bones[name];
+  if (!bone) return;
+  const q = jointQuaternion(id, values, dirs);
+  const fix = retarget?.[name];
+  if (fix) q.premultiply(fix.pre).multiply(fix.post);
+  bone.quaternion.copy(q);
+}
+
+/** Set every driven bone's rotation from a pose. `dirs` are the
+ * mannequin's directions; `retarget`, a character skeleton's corrections. */
 export function applyPose(
-  bones: Record<BoneName, THREE.Bone>,
+  bones: Partial<Record<BoneName, THREE.Bone>>,
   joints: PoseJoints,
   dirs: RigDirections,
+  retarget?: Retarget,
 ): void {
   for (const id of Object.keys(JOINTS) as JointId[]) {
     const values = (joints as Record<string, Record<string, number>>)[id];
-    bones[JOINT_BONE[id]].quaternion.copy(jointQuaternion(id, values, dirs));
+    setJoint(bones, id, values, dirs, retarget);
   }
 }
 
@@ -338,6 +360,7 @@ export function makeReach(
   vars: DragVar[],
   grabbed: THREE.Object3D,
   local: THREE.Vector3,
+  retarget?: Retarget,
 ): (x: number[]) => THREE.Vector3 {
   const top = bones[JOINT_BONE[vars[0].joint]];
   const all = joints as Record<string, Record<string, number>>;
@@ -350,7 +373,7 @@ export function makeReach(
       JointId,
       Record<string, number>,
     ][]) {
-      bones[JOINT_BONE[id]].quaternion.copy(jointQuaternion(id, vals, dirs));
+      setJoint(bones, id, vals, dirs, retarget);
     }
     top.updateWorldMatrix(false, true);
     return grabbed.localToWorld(local.clone());
