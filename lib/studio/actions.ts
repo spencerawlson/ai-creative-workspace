@@ -46,6 +46,8 @@ import {
   JOINT_IDS,
   JointPatchSchema,
   POSE_GROUPS,
+  isFaceJoint,
+  keepFace,
   mirrorJoints,
   posePreset,
   type JointId,
@@ -485,7 +487,11 @@ export function applyAction(
         return { ok: false, error: `Unknown pose "${action.presetId}"` };
       return withFigure(scene, action.figure, ok, (f) => ({
         ...f,
-        pose: { preset: preset.id, joints: structuredClone(preset.joints) },
+        // A body pose; the face stays as it is.
+        pose: {
+          preset: preset.id,
+          joints: keepFace(structuredClone(preset.joints), f.pose.joints),
+        },
       }));
     }
     case "updateJoint":
@@ -628,7 +634,11 @@ function applyMotion(
   if (!motion) return { ok: false, error: `Unknown motion "${action.motion}"` };
   const figure = findFigure(scene, action.figure);
   if (!figure) return { ok: false, error: `No figure "${action.figure}"` };
-  const steps = motionSteps(motion, figure, action);
+  // Moves are body only: every step keeps the figure's face.
+  const steps = motionSteps(motion, figure, action).map((s) => ({
+    ...s,
+    joints: keepFace(s.joints, figure.pose.joints),
+  }));
   const at = (s: MotionStep): Figure => ({
     ...figure,
     x: s.x,
@@ -743,7 +753,9 @@ function patchJoints(
         };
       joints[id] = { ...joints[id], ...patch } as never;
     }
-    return { ...f, pose: { preset: "custom", joints } };
+    // The preset names a body pose: a face edit keeps it.
+    const preset = ids.every(isFaceJoint) ? f.pose.preset : "custom";
+    return { ...f, pose: { preset, joints } };
   });
 }
 

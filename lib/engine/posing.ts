@@ -11,6 +11,8 @@ import * as THREE from "three";
 import {
   FINGERS,
   JOINTS,
+  BODY_JOINT_IDS,
+  type BodyJointId,
   type JointId,
   type PoseJoints,
 } from "@/lib/studio/pose";
@@ -63,7 +65,7 @@ export const JOINT_BONE = {
   hipR: "hipR",
   kneeR: "kneeR",
   ...Object.fromEntries(BONE_NAMES.slice(13).map((b) => [b, b])),
-} as Record<JointId, BoneName>;
+} as Record<BodyJointId, BoneName>;
 
 /** Bind-pose limb directions, measured from the rig. */
 export interface RigDirections {
@@ -204,7 +206,7 @@ export function jointQuaternion(
  * bones the skeleton doesn't have are skipped. */
 function setJoint(
   bones: Partial<Record<BoneName, THREE.Bone>>,
-  id: JointId,
+  id: BodyJointId,
   values: Record<string, number>,
   dirs: RigDirections,
   retarget?: Retarget,
@@ -226,7 +228,7 @@ export function applyPose(
   dirs: RigDirections,
   retarget?: Retarget,
 ): void {
-  for (const id of Object.keys(JOINTS) as JointId[]) {
+  for (const id of BODY_JOINT_IDS) {
     const values = (joints as Record<string, Record<string, number>>)[id];
     setJoint(bones, id, values, dirs, retarget);
   }
@@ -236,7 +238,7 @@ export function applyPose(
 
 /** One angle a viewport drag may change. */
 export interface DragVar {
-  joint: JointId;
+  joint: BodyJointId;
   dof: string;
   min: number;
   max: number;
@@ -246,7 +248,7 @@ export interface DragVar {
  * hand, which carries the whole arm (shoulder + elbow) like a puppet's.
  * Twists are left to the sliders — a drag can't express them well. The
  * pelvis has no entry: dragging it orbits the camera. */
-const DRAG_CHAINS: Partial<Record<BoneName, Array<[JointId, string[]]>>> = {
+const DRAG_CHAINS: Partial<Record<BoneName, Array<[BodyJointId, string[]]>>> = {
   spine: [["spine", ["bend", "side"]]],
   neck: [["head", ["nod", "turn"]]],
   shoulderL: [["shoulderL", ["raise", "forward"]]],
@@ -292,7 +294,7 @@ export function dragVariables(bone: BoneName): DragVar[] {
  * joint down, or the limb's tip (crown, fingertips, sole). */
 export interface JointDot {
   bone: BoneName;
-  joint: JointId;
+  joint: BodyJointId;
   effector: BoneName | "tip";
   vars: DragVar[];
   /** Finger and thumb dots: shown only while that hand is being posed
@@ -327,7 +329,7 @@ export const JOINT_DOTS: JointDot[] = (
         [`${f}3${s}`, `${f}3${s}`, "tip", ["curl"]],
       ]),
     ]),
-  ] as Array<[BoneName, JointId, BoneName | "tip", string[]]>
+  ] as Array<[BoneName, BodyJointId, BoneName | "tip", string[]]>
 ).map(([bone, joint, effector, dofs]) => ({
   bone,
   joint,
@@ -338,7 +340,7 @@ export const JOINT_DOTS: JointDot[] = (
     : {}),
 }));
 
-function toVars(chain: Array<[JointId, string[]]>): DragVar[] {
+function toVars(chain: Array<[BodyJointId, string[]]>): DragVar[] {
   return chain.flatMap(([joint, dofs]) =>
     dofs.map((dof) => {
       const d = (
@@ -365,12 +367,12 @@ export function makeReach(
   const top = bones[JOINT_BONE[vars[0].joint]];
   const all = joints as Record<string, Record<string, number>>;
   return (x) => {
-    const values: Partial<Record<JointId, Record<string, number>>> = {};
+    const values: Partial<Record<BodyJointId, Record<string, number>>> = {};
     vars.forEach((v, i) => {
       (values[v.joint] ??= { ...all[v.joint] })[v.dof] = x[i];
     });
     for (const [id, vals] of Object.entries(values) as [
-      JointId,
+      BodyJointId,
       Record<string, number>,
     ][]) {
       setJoint(bones, id, vals, dirs, retarget);

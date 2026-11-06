@@ -129,7 +129,12 @@ export function channelRange(ch: Channel): {
       const d = (JOINTS[ch.joint as JointId]?.dofs as Record<string, Dof>)?.[
         ch.dof
       ];
-      return { min: d?.min ?? -180, max: d?.max ?? 180, step: 0.1, unit: "°" };
+      return {
+        min: d?.min ?? -180,
+        max: d?.max ?? 180,
+        step: 0.1,
+        unit: d?.unit ?? "°",
+      };
     }
     case "light": {
       const [min, max] = LIMITS[ch.field];

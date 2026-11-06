@@ -119,6 +119,23 @@ reports why and its figures show the mannequin. Share links carry the
 character ids (`ch`), so a reload on the same device keeps them and
 anyone else sees the mannequin in the same pose.
 
+**Faces.** The pose has four face "joints" after the body's
+(`FACE_JOINT_IDS`: eyes turn/raise in degrees; expression, eyelids and
+mouth in percent), so keys, easing, the graph editor, undo and links
+handle them like any other; old poses load with a neutral face. They
+drive no standard-skeleton bone (`BODY_JOINT_IDS` do), and body pose
+presets and moves keep the current face (`keepFace`).
+`lib/engine/face.ts` maps them onto a character: expressions from the
+VRM file's own definitions (1.0 `expressions`, 0.x
+`blendShapeMaster`, whose binds name a mesh), else by face-shape name
+(VRoid `Fcl_*`, ARKit, VRChat/Oculus visemes, plain names), as weighted
+morph-target binds; blink falls back to both winks. Eye bones come from
+the VRM humanoid or by name under the neck, and turn as
+`pre · look · post` in the figure's frame, so they follow the head.
+Without eye bones, VRM look shapes stand in. The inspector shows only
+the controls a character's file has (`onCharacterFace`); the mannequin
+has no face, and says so.
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

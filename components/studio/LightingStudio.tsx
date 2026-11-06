@@ -658,6 +658,7 @@ export function LightingStudio() {
               onCameraEnd={onCameraEnd}
               characters={characters.urls}
               onCharacterProblem={characters.reportProblem}
+              onCharacterFace={characters.reportFace}
             />
             {previewing ? (
               <div className="pointer-events-none absolute inset-x-2 top-2 flex items-center justify-between">
