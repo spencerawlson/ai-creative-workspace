@@ -865,12 +865,14 @@ function Toolbar({
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          aria-hidden
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent text-xs font-bold text-ink-950"
-        >
-          I
-        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static SVG */}
+        <img
+          src="/brand/iko-mark.svg"
+          alt=""
+          width={28}
+          height={28}
+          className="h-7 w-7 shrink-0"
+        />
         <div className="hidden min-w-0 sm:block">
           <h1 className="text-sm font-semibold leading-none text-ink-100">
             I-K-O 3D
