@@ -8,6 +8,7 @@ import { CUSTOM_NOTE, PRESETS } from "@/lib/lighting";
 import type {
   BenchmarkResult,
   CameraView,
+  RenderQuality,
   Selection,
 } from "@/lib/engine/StudioEngine";
 import {
@@ -58,6 +59,9 @@ type Props = {
   onPlayFrom?: (t: number) => void;
   /** Imported characters on this device. */
   characters?: CharacterLibrary;
+  /** This device's render quality. */
+  quality?: RenderQuality;
+  onQuality?: (q: RenderQuality) => void;
 };
 
 export function Inspector(props: Props) {
@@ -544,6 +548,62 @@ function CameraInspector({
             dispatch({ type: "updateCamera", patch: { toneMapping } })
           }
         />
+        <SectionTitle>Lens look</SectionTitle>
+        <Toggle
+          label="Depth of field"
+          checked={c.aperture > 0}
+          testId="lens-dof"
+          onChange={(on) => {
+            dispatch({
+              type: "updateCamera",
+              patch: { aperture: on ? 2.8 : 0 },
+            });
+            seal();
+          }}
+        />
+        {c.aperture > 0 && (
+          <Slider
+            label="Aperture"
+            value={c.aperture}
+            min={LIMITS.fStop[0]}
+            max={LIMITS.fStop[1]}
+            step={0.1}
+            format={(v) => `f/${v.toFixed(1)}`}
+            testId="lens-aperture"
+            onChange={(aperture) =>
+              dispatch({ type: "updateCamera", patch: { aperture } })
+            }
+            onCommitEnd={seal}
+            hint="Focus is on the figure's head. Lower f-numbers and longer lenses blur the background more."
+          />
+        )}
+        {(
+          [
+            ["bloom", "Bloom", "Bright highlights glow softly."],
+            [
+              "vignette",
+              "Vignette",
+              "Darkens the corners, drawing the eye in.",
+            ],
+            ["grain", "Film grain", "Fine grain, like film stock."],
+          ] as const
+        ).map(([key, label, hint]) => (
+          <Slider
+            key={key}
+            label={label}
+            value={c[key]}
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            testId={`lens-${key}`}
+            hint={hint}
+            onChange={(v) =>
+              dispatch({ type: "updateCamera", patch: { [key]: v } })
+            }
+            onCommitEnd={seal}
+          />
+        ))}
         <SectionTitle>Viewport</SectionTitle>
         <Toggle
           label="Show light handles"
@@ -638,7 +698,7 @@ function BackdropInspector({ studio }: Props) {
   );
 }
 
-function SceneInspector({ studio, viewport }: Props) {
+function SceneInspector({ studio, viewport, quality, onQuality }: Props) {
   const { scene, dispatch } = studio;
   const { title, note } = presetNote(scene);
   const [bench, setBench] = useState<BenchmarkResult | "running" | null>(null);
@@ -682,6 +742,27 @@ function SceneInspector({ studio, viewport }: Props) {
           {casters} light{casters === 1 ? "" : "s"} casting shadows. Each one
           re-renders the figure; on phones keep it to one or two at Medium.
         </Tip>
+
+        {quality && onQuality && (
+          <>
+            <SectionTitle>Render quality</SectionTitle>
+            <Segmented
+              label="On this device"
+              value={quality}
+              testIdPrefix="render-quality"
+              options={[
+                { value: "fast", label: "Fast" },
+                { value: "high", label: "High" },
+              ]}
+              onChange={onQuality}
+            />
+            <Tip className="">
+              High adds ambient occlusion: soft contact shadows in creases and
+              under the feet. It costs about a second render each frame, so
+              phones start on Fast. Exports use this setting too.
+            </Tip>
+          </>
+        )}
 
         <SectionTitle>Performance</SectionTitle>
         <Button

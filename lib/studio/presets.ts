@@ -202,6 +202,10 @@ export const DEFAULT_CAMERA: CameraSettings = {
   focalMm: DEFAULT_FOCAL_MM,
   exposureEv: 0,
   toneMapping: "aces",
+  aperture: 0,
+  bloom: 0,
+  vignette: 0,
+  grain: 0,
 };
 
 /** The M1–M3 look: Three-point, male figure, studio grey, dark stage. */

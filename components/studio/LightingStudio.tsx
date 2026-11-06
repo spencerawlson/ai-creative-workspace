@@ -47,6 +47,7 @@ import {
   type Studio,
 } from "./useStudio";
 import { useCharacters } from "./useCharacters";
+import { useRenderQuality } from "./useRenderQuality";
 
 type Tool = "scene" | "presets" | "history";
 type MobileTab = "presets" | "scene" | "edit" | "animate" | "history";
@@ -136,6 +137,7 @@ export function LightingStudio() {
   const [view, setView] = useState<CameraView>("full");
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
+  const [quality, setQuality] = useRenderQuality();
   const [exportOpen, setExportOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
@@ -464,6 +466,8 @@ export function LightingStudio() {
       onView={changeView}
       showHandles={showHandles}
       onShowHandles={setShowHandles}
+      quality={quality}
+      onQuality={setQuality}
       time={time}
       onPlayFrom={playFrom}
       characters={characters}
@@ -647,6 +651,7 @@ export function LightingStudio() {
               viewNonce={viewNonce}
               selection={previewing ? null : validSelection}
               showHandles={showHandles && !previewing}
+              quality={quality}
               onSelect={select}
               onLightDrag={onLightDrag}
               onLightDragEnd={seal}

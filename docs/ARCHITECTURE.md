@@ -119,6 +119,23 @@ reports why and its figures show the mannequin. Share links carry the
 character ids (`ch`), so a reload on the same device keeps them and
 anyone else sees the mannequin in the same pose.
 
+**Rendering.** Two paths (`lib/engine/post.ts`). Fast is the plain
+`renderer.render`. When the device's quality is High (ambient
+occlusion) or the scene's lens look is on (`camera.aperture` f-stop,
+`bloom`, `vignette`, `grain`), frames go through an `EffectComposer`:
+4× MSAA half-float render, GTAO, Bokeh depth of field focused on the
+active figure's head, UnrealBloom, `OutputPass` (tone mapping), then a
+vignette/grain pass; effects that are off are skipped. Editing overlays
+(light handles, joint dots, bone lines) are on layer 1 and drawn after
+the composite, plain; a depth-only pass first keeps handles behind the
+figure hidden. The composite tone-maps the backdrop colour too, so it
+clears to `untoneMap(colour)` (`lib/engine/tonemap.ts`, three's ACES,
+AgX and Neutral curves inverted by Newton's method) and looks the same
+on both paths. Shadow maps update once per frame, not per effect.
+Transparent PNG exports take the plain path. Quality is a device
+preference (`useRenderQuality`, localStorage), not part of the scene;
+if the effects can't be set up, the plain path stands in.
+
 **Faces.** The pose has four face "joints" after the body's
 (`FACE_JOINT_IDS`: eyes turn/raise in degrees; expression, eyelids and
 mouth in percent), so keys, easing, the graph editor, undo and links

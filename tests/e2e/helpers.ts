@@ -11,6 +11,16 @@ export async function openStudio(
   beforeReady?: () => Promise<void>,
 ) {
   const errors: string[] = [];
+  // Fast render quality unless a test picks High: CI's software WebGL
+  // would spend most of its time on ambient occlusion.
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("iko3d-render-quality"))
+        localStorage.setItem("iko3d-render-quality", "fast");
+    } catch {
+      // No storage: the device default applies.
+    }
+  });
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());

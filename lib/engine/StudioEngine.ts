@@ -43,6 +43,12 @@ import {
   type RigDirections,
 } from "./posing";
 import {
+  OVERLAY_LAYER,
+  PostPipeline,
+  needsPost,
+  type PostSettings,
+} from "./post";
+import {
   applyFace,
   buildFace,
   faceControls,
@@ -74,6 +80,10 @@ export type CameraView = "face" | "full" | "studio";
 /** Light id, "model", "camera", "backdrop", "pose", or `pose:<joint>`
  * (a body part tapped in the viewport). */
 export type Selection = string | null;
+/** How the viewport renders on this device: "fast" is the plain
+ * renderer; "high" adds ambient occlusion (lib/engine/post.ts). The lens
+ * look (depth of field, bloom, vignette, grain) shows in both. */
+export type RenderQuality = "fast" | "high";
 
 /** `?v=` changes whenever the GLBs are rebuilt (v2: feet and fingers),
  * so browsers don't keep a cached older rig for a week. */
@@ -307,6 +317,12 @@ export class StudioEngine {
   private readonly resizeObserver: ResizeObserver;
 
   private readonly figure = new THREE.Group();
+  private quality: RenderQuality = "fast";
+  /** Created the first time an effect is needed; null if this device's
+   * WebGL can't run it (then the plain render stands in). */
+  private post: PostPipeline | null = null;
+  private postFailed = false;
+  private postSize = "";
   private readonly handlesRoot = new THREE.Group();
   private readonly skeletonRoot = new THREE.Group();
   private readonly material = new THREE.MeshStandardMaterial();
@@ -421,6 +437,9 @@ export class StudioEngine {
 
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
     this.camera.position.copy(FULL_VIEW.position);
+    // Overlays (handles, dots, bone lines) are on their own layer, drawn
+    // after the effects on the High path; the plain path draws both.
+    this.camera.layers.enable(OVERLAY_LAYER);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.copy(FULL_VIEW.target);
@@ -480,6 +499,7 @@ export class StudioEngine {
       }),
     );
     this.selectionRing.renderOrder = 10;
+    this.selectionRing.layers.set(OVERLAY_LAYER);
     this.selectionRing.visible = false;
     this.handlesRoot.add(this.selectionRing);
 
@@ -657,8 +677,61 @@ export class StudioEngine {
       );
     }
     const t0 = performance.now();
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
     this.lastCpuMs = performance.now() - t0;
+  }
+
+  /** The device's render quality (a preference, not part of the scene). */
+  setQuality(quality: RenderQuality): void {
+    this.quality = quality;
+    this.invalidate();
+  }
+
+  /** What the High path should do this frame, from the scene's lens. */
+  private postSettings(transparent = false): PostSettings {
+    const c = this.doc?.camera;
+    const lens = transparent || !c ? null : c;
+    return {
+      ao: this.quality === "high" && !transparent,
+      fStop: lens && lens.aperture > 0 ? lens.aperture : null,
+      // Focus on the subject: the active figure's head.
+      focus: this.camera.position.distanceTo(this.activeHead()),
+      focalMm: c?.focalMm ?? 50,
+      // A transparent PNG is drawn plain: the effects don't keep alpha.
+      bloom: lens?.bloom ?? 0,
+      vignette: lens?.vignette ?? 0,
+      grain: lens?.grain ?? 0,
+    };
+  }
+
+  /** Draw a frame at the canvas's current size: through the effects when
+   * any are on and the device can run them, else the plain render. */
+  private draw(transparent = false): void {
+    const settings = this.postSettings(transparent);
+    if (needsPost(settings) && !this.postFailed) {
+      try {
+        this.post ??= new PostPipeline(this.renderer, this.scene, this.camera);
+        const size = this.renderer.getSize(new THREE.Vector2());
+        const ratio = this.renderer.getPixelRatio();
+        const key = `${size.x}x${size.y}@${ratio}`;
+        if (key !== this.postSize) {
+          this.post.setSize(size.x, size.y, ratio);
+          this.postSize = key;
+        }
+        this.post.configure(settings);
+        this.post.render(
+          this.doc?.camera.toneMapping ?? "aces",
+          this.handlesRoot.visible,
+        );
+        return;
+      } catch {
+        // No half-float targets or a shader that won't compile: plain.
+        this.postFailed = true;
+        this.post?.dispose();
+        this.post = null;
+      }
+    }
+    this.renderer.render(this.scene, this.camera);
   }
 
   private trackFrameTime(now: number, moving: boolean): void {
@@ -827,6 +900,8 @@ export class StudioEngine {
         toneMapped: false,
       }),
     );
+    icon.layers.set(OVERLAY_LAYER);
+    line.layers.set(OVERLAY_LAYER);
     this.handlesRoot.add(handle, line);
     const rig: LightRig = {
       kind: state.kind,
@@ -1703,6 +1778,7 @@ export class StudioEngine {
       ring.name = "pose-dot-ring";
       ring.userData.joint = def.joint;
       ring.renderOrder = 21;
+      ring.layers.set(OVERLAY_LAYER);
       ring.visible = false;
       ring.raycast = () => {};
       const pick = new THREE.Mesh(pickGeometry, material);
@@ -1733,6 +1809,7 @@ export class StudioEngine {
       overlay(new THREE.LineBasicMaterial({ color: BONE_BLUE, opacity: 0.75 })),
     );
     lines.renderOrder = 20;
+    lines.layers.set(OVERLAY_LAYER);
     lines.frustumCulled = false;
     lines.visible = false;
     lines.raycast = () => {};
@@ -2240,7 +2317,7 @@ export class StudioEngine {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setClearColor(0x000000, transparent ? 0 : 1);
-    this.renderer.render(this.scene, this.camera);
+    this.draw(transparent);
     // toBlob snapshots the drawing buffer synchronously, so restoring
     // the viewport right after is safe.
     const blob = new Promise<Blob>((resolve, reject) =>
@@ -2287,7 +2364,7 @@ export class StudioEngine {
     if (!this.capture) return;
     this.controls.update();
     this.layoutDots(false);
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
   }
 
   endCapture(): void {
@@ -2366,6 +2443,7 @@ export class StudioEngine {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.resizeObserver.disconnect();
+    this.post?.dispose();
     const el = this.renderer.domElement;
     el.removeEventListener("pointerdown", this.onPointerDown, {
       capture: true,
