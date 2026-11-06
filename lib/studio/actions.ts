@@ -22,6 +22,7 @@ import {
   CameraPlacementSchema,
   ChannelSchema,
   EaseSchema,
+  CharacterIdSchema,
   FigureIdSchema,
   FigureSchema,
   type Figure,
@@ -109,6 +110,16 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       type: z.literal("setModel"),
       model: ModelSchema,
       figure: figureRef,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("setCharacter"),
+      figure: figureRef,
+      /** null: back to the mannequin. */
+      character: CharacterIdSchema.nullable(),
+      /** The character's name, for history labels only. */
+      name: z.string().max(80).optional(),
     })
     .strict(),
   z
@@ -394,6 +405,14 @@ export function applyAction(
       return withFigure(scene, action.figure, ok, (f) =>
         f.model === action.model ? f : { ...f, model: action.model },
       );
+    case "setCharacter":
+      return withFigure(scene, action.figure, ok, (f) => {
+        if ((f.character ?? null) === action.character) return f;
+        const { character: _old, ...rest } = f;
+        return action.character
+          ? { ...rest, character: action.character }
+          : rest;
+      });
     case "addFigure": {
       if (scene.figures.length >= LIMITS.maxFigures)
         return { ok: false, error: `At most ${LIMITS.maxFigures} figures` };
@@ -836,6 +855,7 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
   const figure = "figure" in action ? action.figure : undefined;
   const perFigure = [
     "setModel",
+    "setCharacter",
     "applyPosePreset",
     "updateJoint",
     "updateJoints",
@@ -865,6 +885,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return `Duplicate ${lightName(action.id)}`;
     case "setModel":
       return `Mannequin: ${action.model}`;
+    case "setCharacter":
+      return action.character
+        ? `Character: ${action.name ?? "imported"}`
+        : "Back to the mannequin";
     case "addFigure":
       return "Add figure";
     case "duplicateFigure":

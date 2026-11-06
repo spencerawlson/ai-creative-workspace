@@ -61,6 +61,8 @@ export function StudioViewport({
   onFigureMove,
   onFigureMoveEnd,
   onCameraEnd,
+  characters,
+  onCharacterProblem,
   className,
   label = "3D lighting studio viewport",
 }: {
@@ -87,6 +89,9 @@ export function StudioViewport({
   onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
   onFigureMoveEnd?: () => void;
   onCameraEnd?: () => void;
+  /** Imported characters' file URLs, by id. */
+  characters?: Record<string, string>;
+  onCharacterProblem?: (character: string, message: string) => void;
   className?: string;
   label?: string;
 }) {
@@ -111,6 +116,8 @@ export function StudioViewport({
     onFigureMove,
     onFigureMoveEnd,
     onCameraEnd,
+    characters,
+    onCharacterProblem,
   });
   latest.current = {
     scene,
@@ -128,6 +135,8 @@ export function StudioViewport({
     onFigureMove,
     onFigureMoveEnd,
     onCameraEnd,
+    characters,
+    onCharacterProblem,
   };
 
   useEffect(() => {
@@ -152,6 +161,8 @@ export function StudioViewport({
               setStatus(s.model);
               setMessage(s.message ?? null);
             },
+            onCharacterProblem: (id, m) =>
+              latest.current.onCharacterProblem?.(id, m),
           });
         } catch {
           setStatus("unsupported");
@@ -165,6 +176,7 @@ export function StudioViewport({
         engine.setShowHandles(p.showHandles);
         engine.setSelection(p.selection);
         engine.setActiveFigure(p.activeFigure);
+        engine.setCharacters(p.characters ?? {});
         engine.update(p.scene, p.overrides);
         if (p.viewNonce > 0 || p.view !== "full") engine.setView(p.view);
       })
@@ -185,6 +197,10 @@ export function StudioViewport({
   useEffect(() => {
     engineRef.current?.setSelection(selection);
   }, [selection]);
+
+  useEffect(() => {
+    engineRef.current?.setCharacters(characters ?? {});
+  }, [characters]);
 
   useEffect(() => {
     engineRef.current?.setShowHandles(showHandles);

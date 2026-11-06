@@ -212,6 +212,49 @@ export type Retarget = Partial<
   Record<BoneName, { pre: THREE.Quaternion; post: THREE.Quaternion }>
 >;
 
+/** The mannequin's directions for posing other characters: the male
+ * scan's, averaged left and right, with the fingers lying straight
+ * along the forearm (scanned fingers are uneven). Fresh vectors. */
+export function referenceDirections(): RigDirections {
+  const v = (x: number, y: number, z: number) =>
+    new THREE.Vector3(x, y, z).normalize();
+  const both = (x: number, y: number, z: number) =>
+    [v(x, y, z), v(-x, y, z)] as const;
+  const [upperArmL, upperArmR] = both(0.4656, -0.8792, 0.0999);
+  const [forearmL, forearmR] = both(0.3868, -0.8901, 0.2412);
+  const [thighL, thighR] = both(0.0569, -0.9875, -0.146);
+  const dirs: RigDirections = {
+    upperArmL,
+    upperArmR,
+    forearmL,
+    forearmR,
+    thighL,
+    thighR,
+    bones: {},
+    palm: {
+      L: {
+        normal: v(-0.9646, -0.169, 0.2022),
+        thumb: v(0.1547, 0.2581, 0.9536),
+      },
+      R: {
+        normal: v(0.9646, -0.169, 0.2022),
+        thumb: v(-0.1547, 0.2581, 0.9536),
+      },
+    },
+  };
+  for (const s of ["L", "R"] as const) {
+    const sx = s === "L" ? 1 : -1;
+    for (const k of [1, 2, 3]) {
+      dirs.bones![`thumb${k}${s}` as BoneName] = v(-0.08 * sx, -0.69, 0.72);
+      for (const f of FINGERS)
+        dirs.bones![`${f}${k}${s}` as BoneName] = (
+          s === "L" ? forearmL : forearmR
+        ).clone();
+    }
+  }
+  return dirs;
+}
+
 /** Which measured direction lines a bone up with the mannequin: its
  * own limb, or (no direction of its own) the joint above it. */
 function ownDirection(
@@ -250,22 +293,31 @@ export function computeRetarget(
   for (const [name, bone] of Object.entries(bones))
     matched.set(bone!, name as BoneName);
 
-  // Alignment (figure frame) turning the bone's rest direction onto the
-  // mannequin's: absolute, so it doesn't depend on the parent's.
+  // Alignment (figure frame) taking the bone's rest frame onto the
+  // mannequin's. Each bone starts from its parent's and swings the
+  // least that lines up its own direction, so twist carries down a
+  // limb; a hand lines up its palm (which way it faces, where the thumb
+  // is), so a palms-down T-pose curls its fingers the right way.
   const align = new Map<BoneName, THREE.Quaternion>();
   const alignOf = (b: BoneName | null): THREE.Quaternion => {
     if (!b) return new THREE.Quaternion();
     const known = align.get(b);
     if (known) return known;
+    const parent = alignOf(JOINT_PARENT[b]);
+    const s = b.slice(-1) as Side;
     const from = ownDirection(b, restDirs);
     const to = ownDirection(b, refDirs);
-    const q =
-      from && to
-        ? new THREE.Quaternion().setFromUnitVectors(
-            from.clone().normalize(),
-            to.clone().normalize(),
-          )
-        : alignOf(JOINT_PARENT[b]).clone();
+    let q: THREE.Quaternion;
+    if (b.startsWith("wrist") && restDirs.palm && refDirs.palm)
+      q = frameTurn(restDirs.palm[s], refDirs.palm[s]);
+    else if (from && to)
+      q = new THREE.Quaternion()
+        .setFromUnitVectors(
+          from.clone().applyQuaternion(parent).normalize(),
+          to.clone().normalize(),
+        )
+        .multiply(parent);
+    else q = parent.clone();
     align.set(b, q);
     return q;
   };
@@ -296,6 +348,21 @@ export function computeRetarget(
   return { retarget, problems };
 }
 
+/** The rotation taking one palm frame (normal, towards the thumb) onto
+ * another. */
+function frameTurn(
+  from: { normal: THREE.Vector3; thumb: THREE.Vector3 },
+  to: { normal: THREE.Vector3; thumb: THREE.Vector3 },
+): THREE.Quaternion {
+  const basis = (p: { normal: THREE.Vector3; thumb: THREE.Vector3 }) => {
+    const n = p.normal.clone().normalize();
+    const t = p.thumb.clone().projectOnPlane(n).normalize();
+    return new THREE.Matrix4().makeBasis(n, t, n.clone().cross(t));
+  };
+  const m = basis(to).multiply(basis(from).transpose());
+  return new THREE.Quaternion().setFromRotationMatrix(m);
+}
+
 /** True when every correction is (almost) identity: the skeleton is the
  * mannequin's own, posed as before. */
 export function isIdentityRetarget(r: Retarget, eps = 1e-6): boolean {
@@ -304,4 +371,44 @@ export function isIdentityRetarget(r: Retarget, eps = 1e-6): boolean {
     (c) =>
       1 - Math.abs(c!.pre.dot(id)) < eps && 1 - Math.abs(c!.post.dot(id)) < eps,
   );
+}
+
+/** A VRM file's own bone map (VRM 1.0 `VRMC_vrm` or 0.x `VRM`
+ * extension), as mannequin joints; null for files that aren't VRM.
+ * `node(i)` gives the loaded object for glTF node i. */
+export function vrmHumanoid(
+  json: unknown,
+  node: (index: number) => THREE.Object3D | undefined,
+): Partial<Record<BoneName, THREE.Bone>> | null {
+  const ext = (json as { extensions?: Record<string, unknown> } | null)
+    ?.extensions;
+  const v1 = (ext?.VRMC_vrm as { humanoid?: { humanBones?: unknown } })
+    ?.humanoid?.humanBones;
+  const v0 = (ext?.VRM as { humanoid?: { humanBones?: unknown } })?.humanoid
+    ?.humanBones;
+  let pairs: Array<[string, unknown]>;
+  if (v1 && typeof v1 === "object")
+    pairs = Object.entries(v1 as Record<string, { node?: unknown }>).map(
+      ([k, v]) => [k, v?.node],
+    );
+  else if (Array.isArray(v0))
+    pairs = (v0 as Array<{ bone?: unknown; node?: unknown }>).map((h) => [
+      // 0.x thumbs are Proximal/Intermediate/Distal; 1.0's are
+      // Metacarpal/Proximal/Distal for the same three bones.
+      String(h?.bone ?? "")
+        .replace(/Thumb(Proximal)$/, "ThumbMetacarpal")
+        .replace(/Thumb(Intermediate)$/, "ThumbProximal"),
+      h?.node,
+    ]);
+  else return null;
+  const byHumanoid = new Map(
+    Object.entries(HUMANOID_NAME).map(([b, h]) => [h, b as BoneName]),
+  );
+  const out: Partial<Record<BoneName, THREE.Bone>> = {};
+  for (const [name, index] of pairs) {
+    const b = byHumanoid.get(name);
+    const o = typeof index === "number" ? node(index) : undefined;
+    if (b && (o as THREE.Bone | undefined)?.isBone) out[b] = o as THREE.Bone;
+  }
+  return out;
 }

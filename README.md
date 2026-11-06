@@ -57,6 +57,10 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
 - Autosave in this browser, `.lighting.json` project files, PNG/JPEG
   export up to the device limit (4K and beyond), with optional
   transparent backgrounds.
+- Characters: import your own GLB or VRM character (VRoid, Mixamo,
+  Blender, Unreal rigs) from the figure's panel. It takes every pose,
+  typed move and keyframe the mannequin does, keeps its own look, and
+  stays on your device; share links show the mannequin to others.
 - On phones, the panels below the view are a bottom sheet: tap the
   handle or swipe down to fold them to a slim bar and give the 3D view
   the screen. Turned on its side, a phone keeps this layout with the

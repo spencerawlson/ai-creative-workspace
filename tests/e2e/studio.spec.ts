@@ -797,6 +797,87 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("thirds-overlay")).toBeVisible();
     expect(errors).toEqual([]);
   });
+
+  test("import a character: it stands in for the mannequin, takes poses, stays on the device", async ({
+    page,
+  }) => {
+    const errors = await openStudio(page);
+    const shows = () =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: { figureShows(): string | null };
+          }
+        ).__studioEngine.figureShows(),
+      );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+
+    // Not a GLB: refused with a reason, nothing added.
+    await page.getByTestId("character-file").setInputFiles({
+      name: "notes.glb",
+      mimeType: "model/gltf-binary",
+      buffer: Buffer.from("hello, not a model"),
+    });
+    await expect(page.getByTestId("character-status")).toContainText(
+      "isn't a GLB",
+    );
+
+    // A Mixamo-style T-pose character facing away: imported, put on
+    // this figure, turned round and posable.
+    await page
+      .getByTestId("character-file")
+      .setInputFiles("tests/fixtures/test-character.glb");
+    const picked = page.locator('[data-testid^="character-ch-"]');
+    await expect(picked).toHaveAttribute("aria-pressed", "true");
+    await expect(picked).toContainText("test character");
+    await expect.poll(shows, { timeout: 30_000 }).toBe("character");
+    await expect(page.getByTestId("character-status")).not.toContainText(
+      "can't",
+    );
+    const box = page.getByTestId("motion-input");
+    await box.fill("arms up");
+    await box.press("Enter");
+    await expect
+      .poll(async () => {
+        const j = await jointsOnScreen(page);
+        return j.wristL && j.head ? j.wristL.y < j.head.y : false;
+      })
+      .toBe(true);
+
+    // The mannequin and back, as undoable choices.
+    await page.getByTestId("character-none").click();
+    await expect.poll(shows).toBe("mannequin");
+    await page.keyboard.press("Control+z");
+    await expect.poll(shows).toBe("character");
+
+    // Kept on the device: still there after a reload (once the address,
+    // which a reload reopens, has caught up).
+    await expect
+      .poll(() => {
+        const param = new URL(page.url()).searchParams.get("s") ?? "";
+        return Buffer.from(param, "base64url").toString().includes('"ch-');
+      })
+      .toBe(true);
+    await page.reload();
+    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
+      "data-status",
+      "ready",
+      { timeout: 60_000 },
+    );
+    await expect.poll(shows, { timeout: 30_000 }).toBe("character");
+
+    // Removed from the device: the figure goes back to the mannequin.
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    page.once("dialog", (d) => void d.accept());
+    await page.locator('[data-testid^="character-remove-ch-"]').click();
+    await expect(page.locator('[data-testid^="character-ch-"]')).toHaveCount(0);
+    await expect.poll(shows).toBe("mannequin");
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe("layout", () => {

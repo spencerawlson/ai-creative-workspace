@@ -216,12 +216,16 @@ function tPose(key: string): THREE.Vector3 {
     /^(shoulder|elbow|wrist|thumb|index)/.test(key) && "LR".includes(s);
   if (!arm) return p;
   const sh = point(`shoulder${s}`);
-  const u = point(`elbow${s}`).sub(sh);
-  const angle = Math.atan2(-u.y, Math.abs(u.x)) * (s === "L" ? 1 : -1);
   return p
     .sub(sh)
-    .applyAxisAngle(new THREE.Vector3(0, 0, 1), angle)
+    .applyAxisAngle(new THREE.Vector3(0, 0, 1), armAngle(s))
     .add(sh);
+}
+
+/** How far the T-pose turns that side's arm up from the A-pose. */
+function armAngle(s: string): number {
+  const u = point(`elbow${s}`).sub(point(`shoulder${s}`));
+  return Math.atan2(-u.y, Math.abs(u.x)) * (s === "L" ? 1 : -1);
 }
 
 /** A Mixamo-style character: T-pose, every bone at a random rest
@@ -245,8 +249,17 @@ function character(seed = 7) {
     placeAt(b, v.parent ? bones[v.parent] : armature, pos, q);
     bones[name] = b;
   }
-  // Measured where the bones are; the palm isn't used for lining up.
-  return { root, bones, restDirs: dirsFrom(tPose) };
+  // Measured where the bones are; the palms turn up with the arms.
+  const restDirs = dirsFrom(tPose);
+  for (const s of SIDES) {
+    const turn = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, 1),
+      armAngle(s),
+    );
+    restDirs.palm![s].normal.applyQuaternion(turn);
+    restDirs.palm![s].thumb.applyQuaternion(turn);
+  }
+  return { root, bones, restDirs };
 }
 
 function posesToTry(): PoseJoints[] {

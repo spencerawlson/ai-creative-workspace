@@ -34,7 +34,12 @@ lib/engine/StudioEngine.ts
 lib/engine/posing.ts    Pose angles -> bone rotations; drag-to-pose
                         solver (damped least squares; unit-tested)
 lib/engine/humanoid.ts  Standard humanoid skeleton: matches any rig's
-                        bones by name, per-bone retarget corrections
+                        bones by name or VRM map, per-bone corrections
+lib/studio/characters.ts
+                        Imported characters (GLB/VRM) kept on the device
+                        in IndexedDB; file checks
+scripts/make-test-character.mjs
+                        Builds tests/fixtures/test-character.glb from code
 lib/lighting.ts         Six curated presets, Kelvin→RGB, light geometry
 scripts/optimize-models.mjs
                         Source scans → rigged, compressed public/models/*.glb
@@ -93,6 +98,26 @@ mannequin's own corrections are identity and the engine skips them.
 import and export. The unit tests pose a T-pose, Mixamo-named skeleton
 with random rest rotations and extra bones, and check every joint lands
 where the mannequin's does.
+
+**Characters.** A figure can show an imported character
+(`figure.character`, an id) instead of its mannequin; `model` stays as
+the stand-in wherever the character's file isn't available. Files are
+GLB or VRM, checked (`lib/studio/characters.ts`) and kept in IndexedDB
+on the device, never uploaded; the page shows them through object URLs
+(`useCharacters`), which the engine loads like a mannequin. The engine
+finds the skeleton from the VRM bone map or by bone names, turns the
+character to face +Z (VRM 0.x faces -Z), keeps its own materials,
+measures limb ends from end bones (or extends the last bone) and the
+palms from the knuckles, and poses it through the reference directions
+(`referenceDirections`, the male scan's averaged left and right) and
+per-bone corrections. Each bone's alignment starts from its parent's
+and swings the least that lines up its own direction; a hand also
+lines up its palm, so palms-down T-poses curl their fingers the right
+way. Tap capsules, joint dots and bone lines are placed in each bone's
+own frame. A file with no human skeleton, or one that won't load,
+reports why and its figures show the mannequin. Share links carry the
+character ids (`ch`), so a reload on the same device keeps them and
+anyone else sees the mannequin in the same pose.
 
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level

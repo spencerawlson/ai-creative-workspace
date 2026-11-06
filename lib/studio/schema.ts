@@ -121,6 +121,8 @@ export const ModelSchema = z.enum(MODELS);
 export type MannequinModel = z.infer<typeof ModelSchema>;
 
 export const FigureIdSchema = z.string().regex(/^fig-\d{1,3}$/);
+/** An imported character, kept on this device (lib/studio/characters.ts). */
+export const CharacterIdSchema = z.string().regex(/^ch-[a-z0-9]{6,24}$/);
 
 /** One mannequin in the scene: which model, where it stands, which way
  * it faces, and its pose. */
@@ -132,6 +134,10 @@ export const FigureSchema = z.object({
   rotation: num("rotation"),
   /** Optional on input: added with the motion library. */
   y: num("figureY").default(0),
+  /** An imported character to show instead of the mannequin. Where it
+   * isn't available (another device, a share link) the mannequin in
+   * `model` stands in, in the same pose. */
+  character: CharacterIdSchema.optional(),
   /** Optional on input: scenes saved before posing existed load in
    * the scan's A-pose. */
   pose: PoseSchema.default(defaultPose),

@@ -46,6 +46,7 @@ import {
   useStudio,
   type Studio,
 } from "./useStudio";
+import { useCharacters } from "./useCharacters";
 
 type Tool = "scene" | "presets" | "history";
 type MobileTab = "presets" | "scene" | "edit" | "animate" | "history";
@@ -91,6 +92,7 @@ function isTextField(el: EventTarget | null): boolean {
 export function LightingStudio() {
   const studio = useStudio();
   const { scene, dispatch, seal, undo, redo } = studio;
+  const characters = useCharacters();
   // md+: docked panels. lg+: room for both side panels; below that the
   // tool panel floats over the viewport and starts collapsed.
   // Short viewports (landscape phones, ~412px tall) use the phone sheet
@@ -464,6 +466,7 @@ export function LightingStudio() {
       onShowHandles={setShowHandles}
       time={time}
       onPlayFrom={playFrom}
+      characters={characters}
     />
   );
   const panels: Record<Tool, React.ReactNode> = {
@@ -653,6 +656,8 @@ export function LightingStudio() {
               onFigureMove={onFigureMove}
               onFigureMoveEnd={seal}
               onCameraEnd={onCameraEnd}
+              characters={characters.urls}
+              onCharacterProblem={characters.reportProblem}
             />
             {previewing ? (
               <div className="pointer-events-none absolute inset-x-2 top-2 flex items-center justify-between">

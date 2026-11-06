@@ -24,7 +24,9 @@ import {
   type StudioLight,
 } from "@/lib/studio/schema";
 import type { Studio } from "./useStudio";
+import { CharacterPicker } from "./CharacterPicker";
 import { MotionSearch } from "./MotionSearch";
+import type { CharacterLibrary } from "./useCharacters";
 import { PoseInspector, isPoseSelection } from "./PoseInspector";
 import type { ViewportHandle } from "./StudioViewport";
 import {
@@ -54,6 +56,8 @@ type Props = {
   /** The timeline's current time: where typed moves start. */
   time: number;
   onPlayFrom?: (t: number) => void;
+  /** Imported characters on this device. */
+  characters?: CharacterLibrary;
 };
 
 export function Inspector(props: Props) {
@@ -271,7 +275,14 @@ function LightInspector({
   );
 }
 
-function ModelInspector({ studio, figure, onSelect, time, onPlayFrom }: Props) {
+function ModelInspector({
+  studio,
+  figure,
+  onSelect,
+  time,
+  onPlayFrom,
+  characters,
+}: Props) {
   const { scene, dispatch, seal } = studio;
   const m = scene.material;
   const many = scene.figures.length > 1;
@@ -284,7 +295,15 @@ function ModelInspector({ studio, figure, onSelect, time, onPlayFrom }: Props) {
   }) => dispatch({ type: "updateFigure", figure: figure.id, patch });
   return (
     <>
-      <PanelHeader title={many ? figureLabel(scene, figure.id) : "Mannequin"}>
+      <PanelHeader
+        title={
+          many
+            ? figureLabel(scene, figure.id)
+            : figure.character
+              ? "Character"
+              : "Mannequin"
+        }
+      >
         <IconButton
           icon={Copy}
           size="sm"
@@ -321,6 +340,15 @@ function ModelInspector({ studio, figure, onSelect, time, onPlayFrom }: Props) {
             dispatch({ type: "setModel", model, figure: figure.id })
           }
         />
+        {characters && (
+          <div className="mt-3">
+            <CharacterPicker
+              studio={studio}
+              figure={figure}
+              characters={characters}
+            />
+          </div>
+        )}
         <div className="mt-3">
           <MotionSearch
             studio={studio}
