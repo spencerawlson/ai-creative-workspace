@@ -275,8 +275,14 @@ export function ScenePanel({
             <Row
               key={f.id}
               icon={User}
-              label={many ? `Figure ${i + 1}` : "Mannequin"}
-              detail={`${f.model === "male" ? "Male" : "Female"} · ${
+              label={
+                many
+                  ? `Figure ${i + 1}`
+                  : f.character
+                    ? "Character"
+                    : "Mannequin"
+              }
+              detail={`${f.character ? "Imported" : f.model === "male" ? "Male" : "Female"} · ${
                 posePreset(f.pose.preset)?.name ?? "Custom pose"
               }`}
               selected={selection === "model" && f.id === figure.id}

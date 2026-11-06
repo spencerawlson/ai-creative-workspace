@@ -8,7 +8,8 @@
  *     b: [preset, color, style, shadowOpacity],
  *     q: shadowQuality,
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
- *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...] }
+ *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...],
+ *     ch?: [characterId | null, ...] }  (one per fg row)
  *
  * `y` (up/down) is only written when it isn't 0; older rows have the
  * pose preset (a string) in that place.
@@ -17,6 +18,10 @@
  * `m` (+ `po`, omitted for the scan's A-pose), exactly as before several
  * figures existed, so those links are unchanged and old links still
  * open. Anything else is written as `fg`, one row per figure.
+ *
+ * `ch` names each figure's imported character. The files stay on the
+ * device that imported them, so elsewhere the mannequin stands in; on
+ * that device a reload (which reopens the address) keeps them.
  *
  * Links made by M3 (v1: three lights, no `v`) still open: they are
  * decoded by the original strict v1 decoder and upgraded with defaults.
@@ -164,7 +169,15 @@ const poseRow = (f: Figure) =>
 
 function encodeFigures(figures: Figure[]) {
   const [only] = figures;
-  if (figures.length === 1 && !only.x && !only.y && !only.z && !only.rotation) {
+  const characters = figures.some((f) => f.character);
+  if (
+    figures.length === 1 &&
+    !only.x &&
+    !only.y &&
+    !only.z &&
+    !only.rotation &&
+    !characters
+  ) {
     const po = poseRow(only);
     return { m: only.model, ...(po.length ? { po } : {}) };
   }
@@ -177,6 +190,7 @@ function encodeFigures(figures: Figure[]) {
       ...(f.y ? [round2(f.y)] : []),
       ...poseRow(f),
     ]),
+    ...(characters ? { ch: figures.map((f) => f.character ?? null) } : {}),
   };
 }
 
@@ -188,7 +202,8 @@ function decodeFigures(
     preset,
     joints: unflattenJoints(arr(angles)),
   });
-  if ("fg" in p)
+  if ("fg" in p) {
+    const ch = "ch" in p ? arr(p.ch) : [];
     return {
       figures: arr(p.fg).map((row, i) => {
         const r = arr(row);
@@ -202,9 +217,11 @@ function decodeFigures(
           rotation: r[3],
           ...(lifted ? { y: r[4] } : {}),
           ...(r.length > at ? { pose: pose(r[at], r[at + 1]) } : {}),
+          ...(typeof ch[i] === "string" ? { character: ch[i] } : {}),
         };
       }),
     };
+  }
   // One figure, old layout: SceneSchema upgrades `model` + `pose`.
   return {
     model: p.m,

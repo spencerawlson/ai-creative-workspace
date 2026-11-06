@@ -21,7 +21,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import {
+  GLTFLoader,
+  type GLTF,
+} from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
@@ -40,9 +43,12 @@ import {
   type RigDirections,
 } from "./posing";
 import {
+  JOINT_PARENT,
   computeRetarget,
   isIdentityRetarget,
   matchHumanoid,
+  referenceDirections,
+  vrmHumanoid,
   type Retarget,
 } from "./humanoid";
 import {
@@ -129,6 +135,9 @@ export interface EngineCallbacks {
   /** The user finished orbiting or zooming the camera. */
   onCameraEnd?: () => void;
   onStatus?: (status: EngineStatus) => void;
+  /** An imported character couldn't be used; its figures show their
+   * mannequin instead. */
+  onCharacterProblem?: (character: string, message: string) => void;
 }
 
 const PIVOT = new THREE.Vector3(0, LIGHT_PIVOT_Y, 0);
@@ -178,6 +187,8 @@ interface ModelRig {
   /** Per-bone corrections when the skeleton isn't the mannequin's own
    * (lib/engine/humanoid.ts); undefined for the mannequin. */
   retarget?: Retarget;
+  /** Each joint's bone name in the file, to find it again in clones. */
+  names: Partial<Record<BoneName, string>>;
   dots: PoseDot[];
   dotMaterial: THREE.Material;
   activeDotMaterial: THREE.Material;
@@ -302,6 +313,11 @@ export class StudioEngine {
   private models = new Map<string, CachedModel>();
   private loading = new Set<string>();
   private failed = new Set<string>();
+  /** Imported characters: file URL by character id, and back. */
+  private characterUrls = new Map<string, string>();
+  private characterIds = new Map<string, string>();
+  /** Character files that loaded but can't be posed. */
+  private unusable = new Set<string>();
   private instances = new Map<string, FigureInstance>();
   private activeFigure: string | null = null;
   private statusKey = "";
@@ -952,7 +968,18 @@ export class StudioEngine {
       url,
       (gltf) => {
         this.loading.delete(url);
-        const model = this.prepareModel(gltf.scene);
+        const character = this.characterIds.get(url);
+        const model = character
+          ? this.prepareCharacter(gltf)
+          : this.prepareModel(gltf.scene);
+        if (typeof model === "string") {
+          disposeObject(gltf.scene, this.material);
+          if (this.disposed) return;
+          this.unusable.add(url);
+          this.callbacks.onCharacterProblem?.(character!, model);
+          this.syncFigures();
+          return;
+        }
         if (this.disposed) {
           disposeModel(model, this.material);
           return;
@@ -966,9 +993,48 @@ export class StudioEngine {
         if (this.disposed) return;
         // Figures already on stage keep their model rather than vanish.
         this.failed.add(url);
+        const character = this.characterIds.get(url);
+        if (character)
+          this.callbacks.onCharacterProblem?.(
+            character,
+            "The file couldn't be read as a 3D model (GLB or VRM).",
+          );
         this.syncFigures();
       },
     );
+  }
+
+  /** Imported characters' files (object URLs), by character id. A
+   * figure whose character isn't here, or can't be used, shows its
+   * mannequin. */
+  setCharacters(urls: Record<string, string>): void {
+    const before = [...this.characterIds.keys()];
+    this.characterUrls = new Map(Object.entries(urls));
+    this.characterIds = new Map(
+      [...this.characterUrls].map(([id, url]) => [url, id]),
+    );
+    this.syncFigures();
+    // Free characters no longer on the device (their figures have just
+    // gone back to the mannequin).
+    for (const url of before) {
+      if (this.characterIds.has(url)) continue;
+      const model = this.models.get(url);
+      const used = [...this.instances.values()].some((i) => i.url === url);
+      if (model && !used) {
+        disposeModel(model, this.material);
+        this.models.delete(url);
+      }
+      this.failed.delete(url);
+      this.unusable.delete(url);
+    }
+  }
+
+  /** The file a figure shows: its character's when that can be used. */
+  private figureUrl(f: SceneDoc["figures"][number]): string {
+    const url = f.character ? this.characterUrls.get(f.character) : undefined;
+    return url && !this.failed.has(url) && !this.unusable.has(url)
+      ? url
+      : MODEL_URLS[f.model];
   }
 
   retryModel(): void {
@@ -988,7 +1054,7 @@ export class StudioEngine {
     let waiting = false;
     let failed = false;
     for (const f of doc.figures) {
-      const url = MODEL_URLS[f.model];
+      const url = this.figureUrl(f);
       const template = this.models.get(url);
       let inst = this.instances.get(f.id);
       if (!template) {
@@ -1050,9 +1116,12 @@ export class StudioEngine {
       const rings = new Map<string, THREE.Mesh>();
       const picks = new Map<string, THREE.Mesh>();
       // Cloning copies properties but not the raycast overrides.
+      const byName = new Map(
+        Object.entries(t.names).map(([b, n]) => [n, b as BoneName]),
+      );
       object.traverse((o) => {
-        if ((o as THREE.Bone).isBone)
-          bones[o.name as BoneName] = o as THREE.Bone;
+        const joint = (o as THREE.Bone).isBone ? byName.get(o.name) : undefined;
+        if (joint && !bones[joint]) bones[joint] = o as THREE.Bone;
         if ((o as THREE.SkinnedMesh).isSkinnedMesh)
           (o as THREE.Mesh).raycast = () => {};
         if (o.name === "pose-dot-ring") {
@@ -1151,9 +1220,55 @@ export class StudioEngine {
     return null;
   }
 
-  private prepareModel(root: THREE.Object3D): CachedModel {
+  /** An imported character: its own skeleton (from the VRM bone map or
+   * by bone names), turned to face +Z, with its own materials. Returns
+   * why it can't be used instead, when it can't. */
+  private prepareCharacter(gltf: GLTF): CachedModel | string {
+    const holder = new THREE.Group();
+    holder.add(gltf.scene);
+    holder.updateMatrixWorld(true);
+    const nodes = new Map<number, THREE.Object3D>();
+    for (const [o, a] of gltf.parser.associations)
+      if ((o as THREE.Object3D).isObject3D && a?.nodes !== undefined)
+        nodes.set(a.nodes, o as THREE.Object3D);
+    const all: THREE.Bone[] = [];
+    gltf.scene.traverse((o) => {
+      if ((o as THREE.Bone).isBone) all.push(o as THREE.Bone);
+    });
+    const bones =
+      vrmHumanoid(gltf.parser.json, (i) => nodes.get(i)) ?? matchHumanoid(all);
+    const missing = CORE_BONES.filter((b) => !bones[b]);
+    if (missing.length)
+      return all.length === 0
+        ? "This file has no skeleton, so it can't be posed. Rig it first (for example with Mixamo, or export from VRoid Studio)."
+        : "This file's skeleton isn't one the studio knows (it needs a human rig: VRM, VRoid, Mixamo, Blender or Unreal bone names).";
+    // Face +Z, its left on +X (VRM 0.x and some exports face -Z).
+    const x = (b: BoneName) =>
+      bones[b]!.getWorldPosition(new THREE.Vector3()).x;
+    if (x("shoulderL") < x("shoulderR")) {
+      gltf.scene.rotation.y += Math.PI;
+      holder.updateMatrixWorld(true);
+    }
+    return (
+      this.prepareModel(holder, bones) ??
+      "This character's skeleton is put together in a way the studio can't pose yet."
+    );
+  }
+
+  private prepareModel(root: THREE.Object3D): CachedModel;
+  private prepareModel(
+    root: THREE.Object3D,
+    character: Partial<Record<BoneName, THREE.Bone>>,
+  ): CachedModel | null;
+  private prepareModel(
+    root: THREE.Object3D,
+    character?: Partial<Record<BoneName, THREE.Bone>>,
+  ): CachedModel | null {
     root.updateMatrixWorld(true);
-    const rig = this.prepareRig(root);
+    const rig = character
+      ? this.characterRig(root, character)
+      : this.prepareRig(root);
+    if (character && !rig) return null;
     // Bounds in the bind pose (the skinned box applies the bones).
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
@@ -1164,11 +1279,14 @@ export class StudioEngine {
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
-      // The studio material replaces whatever the GLB shipped with.
-      const old = mesh.material;
-      for (const m of Array.isArray(old) ? old : [old])
-        if (m !== this.material) m.dispose();
-      mesh.material = this.material;
+      // The studio material replaces whatever the mannequin GLB shipped
+      // with; characters keep their own (skin, clothes, face).
+      if (!character) {
+        const old = mesh.material;
+        for (const m of Array.isArray(old) ? old : [old])
+          if (m !== this.material) m.dispose();
+        mesh.material = this.material;
+      }
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.name = "model";
@@ -1219,6 +1337,7 @@ export class StudioEngine {
               bones: rig.bones,
               dirs: rig.dirs,
               retarget: rig.retarget,
+              names: rig.names,
               ...posing,
             }
           : null,
@@ -1303,10 +1422,133 @@ export class StudioEngine {
       bones,
       dirs,
       retarget: isIdentityRetarget(retarget) ? undefined : retarget,
+      names: Object.fromEntries(
+        Object.keys(bones).map((b) => [b, b]),
+      ) as Partial<Record<BoneName, string>>,
       at,
       tipOf,
       full,
       neckY: at("neck").y,
+      crownY: tipOf.neck!.y,
+    };
+  }
+
+  /** Measure an imported character's skeleton at rest, like prepareRig
+   * does the mannequin's: limb ends come from end bones where the file
+   * has them, else are extended from the last bone. Poses go through
+   * the mannequin's reference directions and per-bone corrections. */
+  private characterRig(
+    root: THREE.Object3D,
+    matched: Partial<Record<BoneName, THREE.Bone>>,
+  ) {
+    const bones = matched as Record<BoneName, THREE.Bone>;
+    const full = BONE_NAMES.every((n) => bones[n]);
+    root.traverse((o) => {
+      const mesh = o as THREE.SkinnedMesh;
+      if (!mesh.isMesh) return;
+      // As for the mannequin: no culling, and taps hit the capsules.
+      mesh.frustumCulled = false;
+      mesh.raycast = () => {};
+    });
+    const at = (b: BoneName) => bones[b].getWorldPosition(new THREE.Vector3());
+    const dir = (a: THREE.Vector3, b: THREE.Vector3) =>
+      b.clone().sub(a).normalize();
+    const box = new THREE.Box3().setFromObject(root);
+    const owned = new Set<THREE.Object3D>(Object.values(bones));
+    /** Where a bone's end is: its first child bone that isn't a joint
+     * (an "end" bone), else the bone's length again past its joint. */
+    const end = (b: BoneName, from?: BoneName) => {
+      const child = bones[b].children.find(
+        (c) => (c as THREE.Bone).isBone && !owned.has(c),
+      );
+      if (child) return child.getWorldPosition(new THREE.Vector3());
+      const p = at(b);
+      return from ? p.clone().add(p.clone().sub(at(from))) : p;
+    };
+    const dirs: RigDirections = {
+      upperArmL: dir(at("shoulderL"), at("elbowL")),
+      upperArmR: dir(at("shoulderR"), at("elbowR")),
+      forearmL: dir(at("elbowL"), at("wristL")),
+      forearmR: dir(at("elbowR"), at("wristR")),
+      thighL: dir(at("hipL"), at("kneeL")),
+      thighR: dir(at("hipR"), at("kneeR")),
+    };
+    const neck = at("neck");
+    const tipOf: Partial<Record<BoneName, THREE.Vector3>> = {
+      // The crown: the top of the model above the neck.
+      neck: new THREE.Vector3(neck.x, box.max.y, neck.z),
+    };
+    for (const s of ["L", "R"] as const) {
+      const wrist = at(`wrist${s}`);
+      tipOf[`wrist${s}`] = wrist.clone().add(
+        at(`wrist${s}`)
+          .sub(at(`elbow${s}`))
+          .multiplyScalar(0.4),
+      );
+      tipOf[`knee${s}`] = bones[`ankle${s}`]
+        ? at(`ankle${s}`)
+        : end(`knee${s}`, `hip${s}`);
+    }
+    if (full) {
+      dirs.bones = {};
+      dirs.palm = { L: undefined!, R: undefined! };
+      for (const s of ["L", "R"] as const) {
+        delete tipOf[`knee${s}`]; // the shin ends at the ankle
+        // The toes' end bone if there is one; else forward along the floor.
+        const ankle = at(`ankle${s}`);
+        const isBone = (c: THREE.Object3D) => (c as THREE.Bone).isBone;
+        const toe = bones[`ankle${s}`].children.find(isBone);
+        const toeEnd = toe?.children.find(isBone);
+        tipOf[`ankle${s}`] =
+          (toeEnd ?? toe)?.getWorldPosition(new THREE.Vector3()) ??
+          new THREE.Vector3(
+            ankle.x,
+            box.min.y,
+            ankle.z + 0.06 * (box.max.y - box.min.y),
+          );
+        for (const f of ["thumb", ...FINGERS] as const) {
+          const [b1, b2, b3] = ([1, 2, 3] as const).map(
+            (k) => `${f}${k}${s}` as BoneName,
+          );
+          tipOf[b3] = end(b3, b2);
+          dirs.bones[b1] = dir(at(b1), at(b2));
+          dirs.bones[b2] = dir(at(b2), at(b3));
+          dirs.bones[b3] = dir(at(b3), tipOf[b3]!);
+        }
+        // The hand ends at the middle fingertip, as the mannequin's does.
+        tipOf[`wrist${s}`] = tipOf[`middle3${s}`]!.clone();
+        // The palm from the knuckles: towards the thumb runs from the
+        // little finger to the index; the normal is across the hand.
+        const hand = dir(at(`wrist${s}`), at(`middle1${s}`));
+        const thumb = at(`index1${s}`)
+          .sub(at(`pinky1${s}`))
+          .normalize();
+        const normal =
+          s === "L"
+            ? hand.clone().cross(thumb).normalize()
+            : thumb.clone().cross(hand).normalize();
+        dirs.palm[s] = { normal, thumb };
+      }
+    }
+    const ref = referenceDirections();
+    const { retarget, problems } = computeRetarget(root, bones, dirs, ref);
+    if (problems.length) return null;
+    const names = Object.fromEntries(
+      Object.entries(bones).map(([b, bone]) => [b, bone.name]),
+    ) as Partial<Record<BoneName, string>>;
+    // Clones find bones by name, so each joint's must be unique.
+    const counts = new Map<string, number>();
+    root.traverse((o) => counts.set(o.name, (counts.get(o.name) ?? 0) + 1));
+    if (Object.values(names).some((n) => !n || counts.get(n)! > 1)) return null;
+    return {
+      bones,
+      dirs: ref,
+      retarget,
+      names,
+      at,
+      tipOf,
+      full,
+      neckY: neck.y,
       crownY: tipOf.neck!.y,
     };
   }
@@ -1318,12 +1560,14 @@ export class StudioEngine {
     rig: NonNullable<ReturnType<StudioEngine["prepareRig"]>>,
     height: number,
   ) {
-    // Work in the GLB's own units, like the stored tips: bones are
-    // world-aligned there, so a bone-local offset is the difference of
-    // two positions. (The figure has been scaled into the studio since
-    // the rig was measured.)
+    // Work in the GLB's own units, like the stored tips. (The figure has
+    // been scaled into the studio since the rig was measured.) Offsets
+    // on a bone go into its own frame: a character's bones can point
+    // any way, unlike the mannequin's world-aligned ones.
     root.updateMatrixWorld(true);
     const at = (b: BoneName) => root.worldToLocal(rig.at(b));
+    const onBone = (b: BoneName, p: THREE.Vector3) =>
+      rig.bones[b].worldToLocal(root.localToWorld(p.clone()));
     const material = new THREE.MeshBasicMaterial();
     const up = new THREE.Vector3(0, 1, 0);
     for (const [bone, to, radius, joint, from = 0] of pickCapsules(rig.full)) {
@@ -1344,12 +1588,13 @@ export class StudioEngine {
       capsule.userData.joint = joint;
       capsule.userData.bone = bone;
       capsule.visible = false;
-      // Bones are world-aligned in the bind pose, so a bone-local offset
-      // is the world offset from the joint.
-      // Relative to the bone's own joint (the capsule may start further out).
-      capsule.position.copy(a.clone().lerp(b, 0.5).sub(joint0));
+      // Placed in the model's frame, then moved onto the bone keeping
+      // where it is (whatever the bone's rotation and scale).
+      capsule.position.copy(a.clone().lerp(b, 0.5));
       capsule.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
-      rig.bones[bone].add(capsule);
+      root.add(capsule);
+      capsule.updateMatrixWorld();
+      rig.bones[bone].attach(capsule);
     }
     // Maya-style skeleton overlay: a small hollow circle on each joint,
     // thin bone lines between them, drawn through the mesh.
@@ -1375,7 +1620,6 @@ export class StudioEngine {
         (d.effector === "tip" ? rig.tipOf[d.bone] : rig.bones[d.effector]),
     );
     const dots: PoseDot[] = defs.map((def) => {
-      const joint = at(def.bone);
       const end =
         def.effector === "tip" ? rig.tipOf[def.bone]! : at(def.effector);
       const ring = new THREE.Mesh(ringGeometry, dotMaterial);
@@ -1389,20 +1633,19 @@ export class StudioEngine {
       pick.userData.joint = def.joint;
       pick.visible = false;
       rig.bones[def.bone].add(ring, pick);
-      // World-aligned bind pose: the world offset is the local one.
-      return { def, ring, pick, effector: end.clone().sub(joint) };
+      return { def, ring, pick, effector: onBone(def.bone, end) };
     });
     // Bones: each joint to its children, and on to the limb tips.
     const segments: Array<[BoneName, BoneName | THREE.Vector3]> = [];
     for (const name of BONE_NAMES) {
-      const parent = rig.bones[name].parent as THREE.Bone | null;
-      if (parent?.isBone && parent.name in rig.bones)
-        segments.push([parent.name as BoneName, name]);
+      const parent = JOINT_PARENT[name];
+      if (parent && rig.bones[name] && rig.bones[parent])
+        segments.push([parent, name]);
     }
     for (const [bone, tip] of Object.entries(rig.tipOf) as Array<
       [BoneName, THREE.Vector3]
     >)
-      segments.push([bone, tip.clone().sub(at(bone))]);
+      segments.push([bone, onBone(bone, tip)]);
     const lineGeometry = new THREE.BufferGeometry();
     lineGeometry.setAttribute(
       "position",
@@ -1439,11 +1682,13 @@ export class StudioEngine {
       for (const d of rig.dots)
         d.ring.visible = on && (!d.def.detail || d.def.detail === hand);
       if (!on) continue;
-      const scale = inst.object.scale.x;
       const p = new THREE.Vector3();
       const q = new THREE.Quaternion();
+      const k = new THREE.Vector3();
       for (const d of rig.dots) {
         const bone = rig.bones[d.def.bone];
+        // A character's bones may carry a scale of their own.
+        const scale = bone.getWorldScale(k).x;
         const dist = this.camera.position.distanceTo(bone.getWorldPosition(p));
         const selected = d.def.joint === joint;
         const r = Math.max(0.0035, dist * 0.0035) * (selected ? 1.3 : 1);
@@ -1469,6 +1714,14 @@ export class StudioEngine {
       });
       pos.needsUpdate = true;
     }
+  }
+
+  /** For automated tests: what a figure (default: the active one) is
+   * showing, an imported character or its mannequin. */
+  figureShows(figure?: string): "character" | "mannequin" | null {
+    const inst = figure ? this.instances.get(figure) : this.active;
+    if (!inst) return null;
+    return this.characterIds.has(inst.url) ? "character" : "mannequin";
   }
 
   /** For automated tests: where each posable joint (and each hand's
@@ -2083,7 +2336,11 @@ function disposeObject(root: THREE.Object3D, keep: THREE.Material): void {
     for (const m of Array.isArray(mesh.material)
       ? mesh.material
       : [mesh.material]) {
-      if (m !== keep) m.dispose();
+      if (m === keep) continue;
+      for (const v of Object.values(m))
+        if ((v as THREE.Texture | null)?.isTexture)
+          (v as THREE.Texture).dispose();
+      m.dispose();
     }
   });
 }
