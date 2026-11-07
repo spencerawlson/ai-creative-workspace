@@ -153,6 +153,33 @@ Without eye bones, VRM look shapes stand in. The inspector shows only
 the controls a character's file has (`onCharacterFace`); the mannequin
 has no face, and says so.
 
+**Pose from a photo.** Pose › From photo finds the body on the device
+with MediaPipe Pose Landmarker (Apache-2.0, `@mediapipe/tasks-vision`
+pinned): its WebAssembly runtime is copied from `node_modules` into
+`public/mediapipe/wasm` before `dev` and `build`
+(`scripts/copy-mediapipe.mjs`, git-ignored); the model
+(`pose_landmarker_full.task`, 9.4 MB) is committed. Nothing loads from
+another origin (the CSP allows none) and the photo is never uploaded.
+`components/studio/poseDetector.ts` loads it on first use (CPU
+delegate, so no second WebGL context) and returns 33 landmarks, both
+3D (metres) and on the image. `lib/engine/photoPose.ts` turns them into
+joint angles: each body part's direction in the hips' frame (limbs
+take their direction across the photo from the image and only length
+and depth sign from 3D; the trunk and head use the 3D points), then a
+Levenberg–Marquardt fit per chain (torso, head, each arm with wrist,
+each leg with ankle) through the same `jointQuaternion` as posing,
+within joint limits, from several starts. Two corrections came from
+measurement: MediaPipe's landmarks sit on the body's surface, so parts
+are lined up with how it _sees_ the mannequin at rest (`SEEN`, renders
+with a level camera), applied to each figure's own rig; and depth
+counts for a quarter of across-the-photo, with a soft penalty on an
+arm swung forward over the top (raised arms read that way from the
+front). Parts it can't see clearly keep their angles; fingers and the
+face are never changed. The dialog draws what was found over the
+photo before one undoable `updateJoints`. Regression data:
+`tests/fixtures/photo-landmarks.json` (MediaPipe output for
+public-domain photos and mannequin renders; landmarks only).
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

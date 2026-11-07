@@ -43,6 +43,14 @@ import {
   type RigDirections,
 } from "./posing";
 import {
+  poseFromLandmarks,
+  photoRest,
+  type Landmark,
+  type PhotoImage,
+  type PhotoPoseResult,
+  type PhotoRest,
+} from "./photoPose";
+import {
   OVERLAY_LAYER,
   PostPipeline,
   needsPost,
@@ -211,6 +219,8 @@ interface ModelRig {
   /** Per-bone corrections when the skeleton isn't the mannequin's own
    * (lib/engine/humanoid.ts); undefined for the mannequin. */
   retarget?: Retarget;
+  /** Rest directions for fitting a pose from a photo. */
+  photo: PhotoRest;
   /** Each joint's bone name in the file, to find it again in clones. */
   names: Partial<Record<BoneName, string>>;
   dots: PoseDot[];
@@ -1489,6 +1499,7 @@ export class StudioEngine {
               bones: rig.bones,
               dirs: rig.dirs,
               retarget: rig.retarget,
+              photo: rig.photo,
               names: rig.names,
               ...posing,
             }
@@ -1570,9 +1581,20 @@ export class StudioEngine {
       dirs,
     );
     if (problems.length) return null;
+    const mid = (a: BoneName, b: BoneName) =>
+      at(a).add(at(b)).multiplyScalar(0.5);
+    const photo = photoRest(
+      dirs,
+      dir(mid("hipL", "hipR"), mid("shoulderL", "shoulderR")),
+      {
+        L: full ? dir(at("kneeL"), at("ankleL")) : dirs.thighL.clone(),
+        R: full ? dir(at("kneeR"), at("ankleR")) : dirs.thighR.clone(),
+      },
+    );
     return {
       bones,
       dirs,
+      photo,
       retarget: isIdentityRetarget(retarget) ? undefined : retarget,
       names: Object.fromEntries(
         Object.keys(bones).map((b) => [b, b]),
@@ -1695,6 +1717,7 @@ export class StudioEngine {
     return {
       bones,
       dirs: ref,
+      photo: photoRest(ref),
       retarget,
       names,
       at,
@@ -1876,6 +1899,19 @@ export class StudioEngine {
     const inst = figure ? this.instances.get(figure) : this.active;
     if (!inst) return null;
     return this.characterIds.has(inst.url) ? "character" : "mannequin";
+  }
+
+  /** A figure's pose (default: the active one) fitted to a photo's body
+   * landmarks (lib/engine/photoPose.ts); null if it can't be posed.
+   * Throws PhotoPoseError when the photo shows no usable body. */
+  poseFromPhoto(
+    landmarks: Landmark[],
+    image: PhotoImage,
+    figure?: string,
+  ): PhotoPoseResult | null {
+    const inst = figure ? this.instances.get(figure) : this.active;
+    if (!inst?.rig) return null;
+    return poseFromLandmarks(landmarks, inst.rig.photo, image);
   }
 
   /** For automated tests: a figure's face shape weights (every shape

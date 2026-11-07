@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 
-/** No third-party origins: fonts are self-hosted by next/font, models are
- * same-origin, and there is no analytics. 'wasm-unsafe-eval' is for the
- * meshopt decoder (WebAssembly). 'unsafe-inline' scripts are needed by
+/** No third-party origins: fonts are self-hosted by next/font, models
+ * (the pose finder's too) are same-origin, and there is no analytics.
+ * 'wasm-unsafe-eval' is for WebAssembly (the meshopt decoder, the pose
+ * finder). 'unsafe-inline' scripts are needed by
  * Next's inline bootstrap without a nonce middleware. Dev mode needs
  * eval for HMR, so the CSP is production-only. */
 const csp = [
@@ -44,6 +45,16 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/models/:file*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=604800, stale-while-revalidate=86400",
+          },
+        ],
+      },
+      {
+        // The pose finder's runtime and model (components/studio/poseDetector.ts).
+        source: "/mediapipe/:file*",
         headers: [
           {
             key: "Cache-Control",

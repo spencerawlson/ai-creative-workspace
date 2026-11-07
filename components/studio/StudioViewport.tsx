@@ -22,6 +22,11 @@ import type {
   Selection,
   StudioEngine,
 } from "@/lib/engine/StudioEngine";
+import type {
+  Landmark,
+  PhotoImage,
+  PhotoPoseResult,
+} from "@/lib/engine/photoPose";
 import type { JointId } from "@/lib/studio/pose";
 import { nudgeLight } from "@/lib/studio/actions";
 import type { CameraPlacement, SceneDoc } from "@/lib/studio/schema";
@@ -41,6 +46,13 @@ export interface ViewportHandle {
   beginCapture(width: number, height: number): HTMLCanvasElement | null;
   renderCapture(): void;
   endCapture(): void;
+  /** A figure's angles fitted to a photo's body landmarks; null until
+   * the 3D view is ready. Throws when the body can't be used. */
+  poseFromPhoto(
+    landmarks: Landmark[],
+    image: PhotoImage,
+    figure: string,
+  ): PhotoPoseResult | null;
 }
 
 type Status = "starting" | "loading" | "ready" | "error" | "unsupported";
@@ -258,6 +270,8 @@ export function StudioViewport({
       beginCapture: (w, h) => engineRef.current?.beginCapture(w, h) ?? null,
       renderCapture: () => engineRef.current?.renderCapture(),
       endCapture: () => engineRef.current?.endCapture(),
+      poseFromPhoto: (lms, image, figure) =>
+        engineRef.current?.poseFromPhoto(lms, image, figure) ?? null,
     }),
     [],
   );

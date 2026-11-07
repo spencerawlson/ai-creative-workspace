@@ -71,13 +71,19 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   look, expressions (happy, angry, sad, relaxed, surprised), blinks and
   winks, and mouth shapes (A, I, U, E, O). They key, ease and share
   like any joint; body poses and moves leave the face as it is.
+- Pose from a photo: Pose › From photo finds the body in a picture on
+  your device (MediaPipe, loaded once, about 20 MB; the photo is not
+  uploaded), shows what it found over the photo, and poses the figure
+  in one undoable step. Parts the photo doesn't show clearly, fingers
+  and the face stay as they are.
 - On phones, the panels below the view are a bottom sheet: tap the
   handle or swipe down to fold them to a slim bar and give the 3D view
   the screen. Turned on its side, a phone keeps this layout with the
   sheet folded, and nothing sits under the notch or the home bar.
 - `/photography`: the Camera Basics lesson on the same engine.
 
-There are no accounts, backend, or AI features yet. See
+There are no accounts or backend. The one machine-learning feature,
+pose from a photo, runs entirely in the browser. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the designed next steps.
 
 ## Develop
