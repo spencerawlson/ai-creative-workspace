@@ -180,6 +180,23 @@ photo before one undoable `updateJoints`. Regression data:
 `tests/fixtures/photo-landmarks.json` (MediaPipe output for
 public-domain photos and mannequin renders; landmarks only).
 
+**3D file export.** Export › 3D file writes a glTF binary with three's
+`GLTFExporter` (`lib/engine/gltfExport.ts`, loaded on demand). Each
+figure is cloned with its skeleton (`SkeletonUtils.clone`) at its world
+place; the studio's helpers under its bones (`pose-dot`,
+`pose-dot-ring`, `pose-pick`) are removed, and the clone's geometry is
+copied to plain float attributes, so no `KHR_mesh_quantization` is
+needed (the meshopt-compressed models load quantized). With the
+animation, `StudioEngine.exportGltf` passes a `seek` that runs
+`evaluate` and `update`, the same path as playback, and every bone,
+figure root and face mesh is sampled at `EXPORT_FPS` (30), the live
+objects paired with their clones by traversal order; tracks whose
+values never change are dropped, and the scene is restored afterwards.
+The camera (animated if keyed) and the directional, spot and point
+lights (`KHR_lights_punctual`, aimed down −z with the target as a
+child) are optional; area lights have no glTF form and are counted
+out. Tested with Khronos's `gltf-validator` (unit and E2E).
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

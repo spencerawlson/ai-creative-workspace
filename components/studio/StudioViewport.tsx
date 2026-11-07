@@ -27,6 +27,7 @@ import type {
   PhotoImage,
   PhotoPoseResult,
 } from "@/lib/engine/photoPose";
+import type { GlbOptions, GlbResult } from "@/lib/engine/gltfExport";
 import type { JointId } from "@/lib/studio/pose";
 import { nudgeLight } from "@/lib/studio/actions";
 import type { CameraPlacement, SceneDoc } from "@/lib/studio/schema";
@@ -34,6 +35,8 @@ import { cx } from "./ui";
 
 export interface ViewportHandle {
   exportImage(opts: ExportOptions): Promise<Blob>;
+  /** The figures as a glTF binary (lib/engine/gltfExport.ts). */
+  exportGltf(opts: GlbOptions): Promise<GlbResult>;
   runBenchmark(durationMs?: number): Promise<BenchmarkResult>;
   getStats(): EngineStats | null;
   viewportSize(): { width: number; height: number };
@@ -250,6 +253,12 @@ export function StudioViewport({
         const e = engineRef.current;
         return e
           ? e.exportImage(opts)
+          : Promise.reject(new Error("The 3D view is not ready yet."));
+      },
+      exportGltf: (opts) => {
+        const e = engineRef.current;
+        return e
+          ? e.exportGltf(opts)
           : Promise.reject(new Error("The 3D view is not ready yet."));
       },
       runBenchmark: (ms) => {
