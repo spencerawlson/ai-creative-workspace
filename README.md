@@ -57,6 +57,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
 - Autosave in this browser, `.lighting.json` project files, PNG/JPEG
   export up to the device limit (4K and beyond), with optional
   transparent backgrounds.
+- 3D file export (Export › 3D file): the figures as posed, with their
+  skeletons and faces, as one glTF binary (`.glb`) for Blender, Unity,
+  Unreal, Maya and other 3D tools; optionally with the animation
+  (sampled at 30 fps), the camera and the lights (softboxes have no glTF
+  equivalent and are left out).
 - Characters: import your own GLB or VRM character (VRoid, Mixamo,
   Blender, Unreal rigs) from the figure's panel. It takes every pose,
   typed move and keyframe the mannequin does, keeps its own look, and
