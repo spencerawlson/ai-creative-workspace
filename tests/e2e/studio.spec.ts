@@ -605,6 +605,76 @@ test.describe("Lighting Studio — critical journeys", () => {
     await other.close();
   });
 
+  test("exports a 3D file: valid glTF, skeletons, the animation, no studio helpers", async ({
+    page,
+  }) => {
+    test.slow(); // sampling every frame, then the validator
+    await openStudio(page);
+    const scrub = page.getByTestId("timeline-scrub");
+    await (await timelineControl(page, "timeline-duration")).fill("1");
+    await (await timelineControl(page, "timeline-autokey")).click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-neutral").click();
+    await scrub.fill("1");
+    await page.getByTestId("pose-preset-arms-up").click();
+    await expect(
+      await timelineControl(page, "timeline-key-1.00"),
+    ).toBeVisible();
+
+    await page.getByTestId("export-open").click();
+    await page.getByTestId("export-3d-open").click();
+    const dialog = page.getByTestId("export-3d-dialog");
+    await expect(dialog).toContainText("1 s at 30 frames a second");
+    await dialog.getByTestId("export-3d-stage").click();
+    const download = page.waitForEvent("download", { timeout: 100_000 });
+    await dialog.getByTestId("export-3d-confirm").click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/.glb$/);
+    const fs = await import("node:fs");
+    const bytes = new Uint8Array(await fs.promises.readFile(await file.path()));
+
+    // Khronos's reference validator: no errors.
+    const validator = await import("gltf-validator");
+    const report = await validator.validateBytes(bytes);
+    expect(report.issues.messages.filter((m) => m.severity === 0)).toEqual([]);
+
+    const { NodeIO } = await import("@gltf-transform/core");
+    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+    const doc = await new NodeIO()
+      .registerExtensions(ALL_EXTENSIONS)
+      .readBinary(bytes);
+    const root = doc.getRoot();
+    const names = root.listNodes().map((n) => n.getName());
+    expect(names).toContain("Figure 1");
+    expect(names).toContain("Camera");
+    expect(names.filter((n) => /^pose-(dot|pick)/.test(n))).toEqual([]);
+    expect(root.listSkins().length).toBeGreaterThan(0);
+    const [clip] = root.listAnimations();
+    expect(clip).toBeTruthy();
+    // One second at 30 fps, the left shoulder swinging up by far more
+    // than 90°.
+    const shoulder = clip
+      .listChannels()
+      .find(
+        (c) =>
+          c.getTargetNode()?.getName() === "shoulderL" &&
+          c.getTargetPath() === "rotation",
+      )!;
+    expect(shoulder).toBeTruthy();
+    const input = shoulder.getSampler()!.getInput()!.getArray()!;
+    expect(input.length).toBe(31);
+    expect(input[input.length - 1]).toBeCloseTo(1, 3);
+    const q = shoulder.getSampler()!.getOutput()!.getArray()!;
+    const n = q.length;
+    const dot = Math.abs(
+      q[0] * q[n - 4] + q[1] * q[n - 3] + q[2] * q[n - 2] + q[3] * q[n - 1],
+    );
+    expect((2 * Math.acos(Math.min(1, dot)) * 180) / Math.PI).toBeGreaterThan(
+      90,
+    );
+  });
+
   test("exports the animation as a video file", async ({ page }) => {
     await openStudio(page);
     const scrub = page.getByTestId("timeline-scrub");

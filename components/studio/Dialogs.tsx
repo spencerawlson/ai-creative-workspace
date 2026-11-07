@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Music, X } from "lucide-react";
+import { Box, Download, Music, X } from "lucide-react";
 import type { ViewportHandle } from "./StudioViewport";
 import {
   decodeAudioFile,
@@ -36,11 +36,14 @@ export function ExportDialog({
   onClose,
   studio,
   viewport,
+  onExport3D,
 }: {
   open: boolean;
   onClose: () => void;
   studio: Studio;
   viewport: React.RefObject<ViewportHandle | null>;
+  /** Switch to the 3D file export. */
+  onExport3D?: () => void;
 }) {
   const [sizeId, setSizeId] = useState<SizeId>("viewport");
   const [custom, setCustom] = useState({ w: 2400, h: 3000 });
@@ -98,6 +101,17 @@ export function ExportDialog({
       testId="export-dialog"
       footer={
         <>
+          {onExport3D && (
+            <Button
+              variant="ghost"
+              icon={Box}
+              className="mr-auto"
+              onClick={onExport3D}
+              data-testid="export-3d-open"
+            >
+              3D file
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -503,6 +517,112 @@ export function VideoExportDialog({
               ? "There's no animation yet: set keyframes on the timeline first."
               : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()} (${format.codec === "avc" ? "H.264" : format.codec.toUpperCase()}). Every frame is rendered exactly; a slow device just takes longer. Light handles are hidden.`}
       </p>
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          {error}
+        </p>
+      )}
+    </Dialog>
+  );
+}
+
+/** The figures as a 3D file (lib/engine/gltfExport.ts). */
+export function Export3DDialog({
+  open,
+  onClose,
+  studio,
+  viewport,
+}: {
+  open: boolean;
+  onClose: () => void;
+  studio: Studio;
+  viewport: React.RefObject<ViewportHandle | null>;
+}) {
+  const animated = studio.scene.animation.keys.length > 0;
+  const [animation, setAnimation] = useState(true);
+  const [stage, setStage] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const seconds = studio.scene.animation.duration;
+  const areaLights = studio.scene.lights.filter(
+    (l) => l.kind === "area",
+  ).length;
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await viewport.current!.exportGltf({
+        animation: animated && animation,
+        stage,
+      });
+      downloadBlob(r.blob, `${slug(studio.name)}.glb`);
+      const mb = (r.blob.size / 1e6).toFixed(1);
+      studio.notify(
+        `Exported a 3D file (${mb} MB${r.frames ? `, ${r.frames} frames` : ""}${
+          r.skippedLights
+            ? `; ${r.skippedLights} softbox light${r.skippedLights > 1 ? "s" : ""} left out`
+            : ""
+        }).`,
+      );
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Export 3D file"
+      testId="export-3d-dialog"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon={Download}
+            onClick={run}
+            disabled={busy}
+            data-testid="export-3d-confirm"
+          >
+            {busy ? "Exporting…" : "Export GLB"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-ink-200">
+        The figures as posed, with their skeletons and faces, in one glTF file
+        (.glb) that opens in Blender, Unity, Unreal, Maya and most 3D tools.
+      </p>
+      <Toggle
+        label="Include the animation"
+        checked={animated && animation}
+        onChange={setAnimation}
+        disabled={!animated}
+        testId="export-3d-animation"
+        hint={
+          animated
+            ? `${seconds} s at 30 frames a second: every bone, where the figures move, their faces.`
+            : "This scene has no keyframes, so the file holds the pose as it is now."
+        }
+      />
+      <Toggle
+        label="Include the camera and lights"
+        checked={stage}
+        onChange={setStage}
+        testId="export-3d-stage"
+        hint={
+          areaLights
+            ? `glTF has no area lights, so ${areaLights === 1 ? "the softbox is" : `the ${areaLights} softboxes are`} left out; the other lights come along.`
+            : "The camera as it is now (and as animated), and the lights."
+        }
+      />
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">
           {error}

@@ -29,7 +29,12 @@ import {
 import { PRESETS } from "@/lib/lighting";
 import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
 import { parseProject, serializeProject } from "@/lib/studio/persistence";
-import { ExportDialog, ShortcutsDialog, VideoExportDialog } from "./Dialogs";
+import {
+  Export3DDialog,
+  ExportDialog,
+  ShortcutsDialog,
+  VideoExportDialog,
+} from "./Dialogs";
 import { Inspector } from "./Inspector";
 import type { JointId } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
@@ -139,6 +144,7 @@ export function LightingStudio() {
   const [showHandles, setShowHandles] = useState(true);
   const [quality, setQuality] = useRenderQuality();
   const [exportOpen, setExportOpen] = useState(false);
+  const [export3DOpen, setExport3DOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -287,7 +293,7 @@ export function LightingStudio() {
   // Keyboard shortcuts.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (exportOpen || shortcutsOpen) return;
+      if (exportOpen || export3DOpen || shortcutsOpen) return;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
       if (mod && !e.altKey) {
@@ -439,6 +445,7 @@ export function LightingStudio() {
   }, [
     select,
     exportOpen,
+    export3DOpen,
     shortcutsOpen,
     undo,
     redo,
@@ -842,6 +849,16 @@ export function LightingStudio() {
       <ExportDialog
         open={exportOpen}
         onClose={() => setExportOpen(false)}
+        studio={studio}
+        viewport={viewport}
+        onExport3D={() => {
+          setExportOpen(false);
+          setExport3DOpen(true);
+        }}
+      />
+      <Export3DDialog
+        open={export3DOpen}
+        onClose={() => setExport3DOpen(false)}
         studio={studio}
         viewport={viewport}
       />

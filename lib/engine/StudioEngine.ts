@@ -27,6 +27,7 @@ import {
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
+import { evaluate } from "@/lib/studio/animation";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
 import { FINGERS, type JointId } from "@/lib/studio/pose";
 import {
@@ -50,6 +51,7 @@ import {
   type PhotoPoseResult,
   type PhotoRest,
 } from "./photoPose";
+import { exportGlb, type GlbOptions, type GlbResult } from "./gltfExport";
 import {
   OVERLAY_LAYER,
   PostPipeline,
@@ -335,7 +337,9 @@ export class StudioEngine {
   private postSize = "";
   private readonly handlesRoot = new THREE.Group();
   private readonly skeletonRoot = new THREE.Group();
-  private readonly material = new THREE.MeshStandardMaterial();
+  private readonly material = Object.assign(new THREE.MeshStandardMaterial(), {
+    name: "Mannequin",
+  });
   private readonly catcher: THREE.Mesh<
     THREE.CircleGeometry,
     THREE.ShadowMaterial
@@ -2322,6 +2326,46 @@ export class StudioEngine {
   };
 
   // ---------------------------------------------------------------- export
+
+  /** The figures as a glTF binary (lib/engine/gltfExport.ts): posed and
+   * placed as now; with `animation`, the scene's animation sampled at
+   * EXPORT_FPS; with `stage`, the camera and lights. */
+  async exportGltf(opts: GlbOptions): Promise<GlbResult> {
+    const doc = this.doc;
+    if (!doc) throw new Error("The 3D view is not ready yet.");
+    const figures = doc.figures.flatMap((f, i) => {
+      const inst = this.instances.get(f.id);
+      return inst ? [{ name: `Figure ${i + 1}`, root: inst.root }] : [];
+    });
+    if (figures.length < doc.figures.length)
+      throw new Error("The figures are still loading. Try again in a moment.");
+    const overrides = this.overrides;
+    const placement = this.getCameraPlacement();
+    const animated = doc.animation.keys.length > 0;
+    return exportGlb(
+      {
+        figures,
+        camera: this.camera,
+        lights: [...this.rigs.values()].map((r) => ({
+          name: r.state.label,
+          light: r.light,
+        })),
+        duration: doc.animation.duration,
+        seek: animated
+          ? (t) => {
+              const frame = evaluate(doc, t);
+              this.update(frame.scene, overrides);
+              if (frame.view) this.setCameraPlacement(frame.view);
+            }
+          : undefined,
+        restore: () => {
+          this.update(doc, overrides);
+          this.setCameraPlacement(placement);
+        },
+      },
+      opts,
+    );
+  }
 
   /** Render one frame at an arbitrary size and return it as a Blob.
    * Handles and the selection ring are hidden; the viewport is restored
