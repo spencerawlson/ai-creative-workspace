@@ -181,6 +181,7 @@ export function Timeline({
   // Dragging a diamond retimes the key; a click without moving jumps.
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<{ at: number; x: number; moved: boolean } | null>(null);
+  const beatDrag = useRef<{ x: number; moved: boolean } | null>(null);
   const timeAt = (clientX: number) => {
     const r = track.current!.getBoundingClientRect();
     const u = (clientX - r.left - THUMB) / Math.max(1, r.width - 2 * THUMB);
@@ -299,20 +300,52 @@ export function Timeline({
         {/* Direction beats: a marker at the top where each starts. */}
         {scene.beats.map((b, i) => {
           const where = `${b.text} at ${b.t.toFixed(1)} s${b.note ? ` — ${b.note}` : ""}`;
+          // Which of its figure's beats: stays the same while retiming.
+          const index = scene.beats
+            .slice(0, i)
+            .filter((o) => o.figure === b.figure).length;
+          const move = (to: number) =>
+            dispatch(
+              { type: "moveBeat", figure: b.figure, index, to },
+              { gesture: true },
+            );
           return (
             <button
-              key={`${b.figure}-${b.t}`}
+              key={`${b.figure}-${index}`}
               type="button"
               aria-label={`Beat: ${where}`}
-              title={where}
-              disabled={playing}
+              title={`${where} — drag to retime it and what follows`}
+              disabled={playing || preview}
               data-testid={`timeline-beat-${i}`}
               style={{
                 left: `calc(${THUMB}px + (100% - ${2 * THUMB}px) * ${Math.min(1, b.t / duration)})`,
               }}
-              // Above the keys: a beat usually starts on one.
-              className="absolute -top-1 z-10 h-3 w-2.5 -translate-x-1/2 rounded-b-sm border border-ink-950 bg-emerald-400 hover:bg-emerald-300"
-              onClick={() => onSeek(b.t)}
+              // Above the keys (a beat usually starts on one), with a
+              // finger-sized area round the small flag.
+              className="absolute -top-1 z-10 h-3 w-2.5 -translate-x-1/2 touch-none rounded-b-sm border border-ink-950 bg-emerald-400 before:absolute before:-inset-x-2 before:-inset-y-2 before:content-[''] hover:bg-emerald-300"
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                beatDrag.current = { x: e.clientX, moved: false };
+              }}
+              onPointerMove={(e) => {
+                const d = beatDrag.current;
+                if (!d || (!d.moved && Math.abs(e.clientX - d.x) < 3)) return;
+                d.moved = true;
+                move(timeAt(e.clientX));
+              }}
+              onPointerUp={() => {
+                const d = beatDrag.current;
+                beatDrag.current = null;
+                if (d?.moved) seal();
+                else onSeek(b.t);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                e.preventDefault();
+                e.stopPropagation();
+                move(b.t + (e.key === "ArrowRight" ? 0.1 : -0.1));
+                seal();
+              }}
             />
           );
         })}

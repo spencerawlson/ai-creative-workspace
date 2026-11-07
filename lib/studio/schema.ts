@@ -330,6 +330,8 @@ export const SpeechSchema = z.object({
   name: z.string().trim().min(1).max(64),
   /** The sound on this device; absent or missing elsewhere: silent. */
   sound: SoundIdSchema.optional(),
+  /** Made by a direction beat: directing again over it replaces it. */
+  beat: z.literal(true).optional(),
   /** SPEECH_FPS frames of the five mouth shapes, 0–100, as base64. At
    * most the longest animation. */
   mouth: z

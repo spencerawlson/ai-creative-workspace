@@ -3,18 +3,11 @@
 import { useRef, useState } from "react";
 import { AudioLines, X } from "lucide-react";
 import { roundTime } from "@/lib/studio/animation";
-import { lipSync } from "@/lib/studio/lipSync";
 import { LIMITS, type Figure } from "@/lib/studio/schema";
-import { addSoundFile, soundName } from "@/lib/studio/sounds";
-import { encodeMouth, speechEnd } from "@/lib/studio/speech";
-import { decodeAudioFile } from "./recordVideo";
-import { rememberSound } from "./speechAudio";
+import { speechEnd } from "@/lib/studio/speech";
+import { readVoice } from "./speechAudio";
 import type { Studio } from "./useStudio";
 import { Button, IconButton, SectionTitle } from "./ui";
-
-/** Below this share of the sound with a voice heard, there's no speech
- * to follow. */
-const MIN_VOICED = 0.03;
 
 const secs = (t: number) => `${Math.round(t * 10) / 10} s`;
 
@@ -45,36 +38,15 @@ export function LipSyncSection({
     setError(null);
     try {
       const start = roundTime(time);
-      const room = LIMITS.duration[1] - start;
-      const buffer = await decodeAudioFile(file);
-      if (buffer.duration > room + 0.05)
-        throw new Error(
-          `That sound is ${secs(buffer.duration)}; from ${secs(start)} there's room for ${secs(room)}. Move the playhead earlier or trim the sound.`,
-        );
-      // Let the "Reading…" state paint before the analysis runs.
-      await new Promise((r) => setTimeout(r, 0));
-      const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) =>
-        buffer.getChannelData(i),
-      );
-      const result = lipSync(channels, buffer.sampleRate);
-      if (result.voiced < MIN_VOICED)
-        throw new Error("No voice was heard in that sound.");
-      const kept = await addSoundFile(file);
-      if ("id" in kept) rememberSound(kept.id, buffer);
+      const voice = await readVoice(file, LIMITS.duration[1] - start);
       dispatch({
         type: "addSpeech",
-        speech: {
-          figure: figure.id,
-          start,
-          name: soundName(file.name),
-          ...("id" in kept ? { sound: kept.id } : {}),
-          mouth: encodeMouth(result.frames),
-        },
+        speech: { figure: figure.id, start, ...voice.speech },
       });
       notify(
-        "id" in kept
-          ? `Lip sync: ${secs(result.duration)} from ${secs(start)}. Press Space to play it with the sound.`
-          : `Lip sync: ${secs(result.duration)} from ${secs(start)}. ${kept.error} The mouth moves; the sound won't play.`,
+        voice.kept
+          ? `Lip sync: ${secs(voice.seconds)} from ${secs(start)}. ${voice.kept} The mouth moves; the sound won't play.`
+          : `Lip sync: ${secs(voice.seconds)} from ${secs(start)}. Press Space to play it with the sound.`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't read that sound.");

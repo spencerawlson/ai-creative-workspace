@@ -13,6 +13,8 @@ import {
 import { defaultScene } from "@/lib/studio/presets";
 import { SceneSchema, type SceneDoc } from "@/lib/studio/schema";
 import { decodeSceneLink, encodeSceneLink } from "@/lib/studio/share";
+import { SPEECH_FPS, VISEMES } from "@/lib/studio/lipSync";
+import { encodeMouth } from "@/lib/studio/speech";
 
 function apply(scene: SceneDoc, action: SceneAction) {
   const r = applyAction(scene, action);
@@ -190,4 +192,108 @@ describe("direction beats", () => {
     delete old.beats;
     expect(SceneSchema.parse(old).beats).toEqual([]);
   }, 30_000);
+});
+
+/** `seconds` of a mouth, as a beat's sound. */
+const voice = (seconds: number, name = "hello") => ({
+  name,
+  mouth: encodeMouth(
+    new Uint8Array(Math.round(seconds * SPEECH_FPS) * VISEMES.length).fill(40),
+  ),
+});
+
+describe("direction beats with sounds, and retiming", () => {
+  it("a say beat lasts as long as its sound, and any beat can speak", () => {
+    expect(parseBeat("say hello — friendly")).toMatchObject({
+      ok: true,
+      beat: { do: { kind: "say" }, note: "friendly" },
+    });
+    const spec = beats("say hello\nwave");
+    // Without its sound, a say beat can't be directed.
+    expect(
+      applyAction(defaultScene(), {
+        type: "directBeats",
+        figure: "fig-1",
+        t: 1,
+        beats: spec,
+      }).ok,
+    ).toBe(false);
+    const s = apply(defaultScene(), {
+      type: "directBeats",
+      figure: "fig-1",
+      t: 1,
+      beats: [
+        { ...spec[0], speech: voice(2) },
+        { ...spec[1], speech: voice(0.5, "hi") },
+      ],
+    });
+    expect(s.beats[0]).toMatchObject({ t: 1, length: 2 });
+    expect(s.speech.map((sp) => [sp.name, sp.start, sp.beat])).toEqual([
+      ["hello", 1, true],
+      ["hi", 3, true],
+    ]);
+    // Directed again over its time (1–2 s): that beat's sound is
+    // replaced; the wave's at 3 s, outside it, and a lip-sync track
+    // added by hand are kept.
+    const withOwn = apply(s, {
+      type: "addSpeech",
+      speech: { figure: "fig-1", start: 1.5, ...voice(1, "own") },
+    });
+    const again = apply(withOwn, {
+      type: "directBeats",
+      figure: "fig-1",
+      t: 1,
+      beats: [{ ...spec[0], speech: voice(1, "bye") }],
+    });
+    expect(again.speech.map((sp) => sp.name).sort()).toEqual([
+      "bye",
+      "hi",
+      "own",
+    ]);
+  });
+
+  it("dragging a beat later moves it and what follows; the figure holds in the gap", () => {
+    let s = apply(defaultScene(), {
+      type: "updateFigure",
+      figure: "fig-1",
+      patch: { rotation: 90 },
+    });
+    s = apply(s, {
+      type: "directBeats",
+      figure: "fig-1",
+      t: 0,
+      beats: [
+        ...beats("face the camera"),
+        { ...beats("say hello")[0], speech: voice(1) },
+        ...beats("turn left"),
+      ],
+    });
+    const [, say, turn] = s.beats;
+    expect(say.t).toBeCloseTo(POSE_TIME, 5);
+    const moved = apply(s, {
+      type: "moveBeat",
+      figure: "fig-1",
+      index: 1,
+      to: say.t + 2,
+    });
+    // It and the beat after it moved by 2 s, with its sound.
+    expect(moved.beats.map((b) => b.t)).toEqual([0, say.t + 2, turn.t + 2]);
+    expect(moved.speech[0].start).toBeCloseTo(say.t + 2, 5);
+    // In the gap the figure holds where the first beat left it.
+    const at = (t: number) => evaluate(moved, t).scene.figures[0];
+    expect(at(say.t + 1).rotation).toBe(0);
+    expect(at(turn.t + 2 + POSE_TIME).rotation).toBe(90);
+    // Never before the beat ahead ends; back to where it was works.
+    const early = apply(moved, {
+      type: "moveBeat",
+      figure: "fig-1",
+      index: 1,
+      to: 0,
+    });
+    expect(early.beats[1].t).toBeCloseTo(say.t, 5);
+    expect(early.beats[2].t).toBeCloseTo(turn.t, 5);
+    expect(evaluate(early, turn.t + POSE_TIME).scene.figures[0].rotation).toBe(
+      90,
+    );
+  });
 });

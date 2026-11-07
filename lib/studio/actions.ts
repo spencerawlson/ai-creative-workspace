@@ -26,6 +26,7 @@ import {
   FigureIdSchema,
   FigureSchema,
   type Figure,
+  type Keyframe,
   ShadowSchema,
   SpeechSchema,
   type SceneDoc,
@@ -97,6 +98,10 @@ const BeatSpecSchema = z
   .object({
     text: z.string().trim().min(1).max(80),
     note: z.string().trim().min(1).max(120).optional(),
+    /** Lip sync from the beat's start (a "say" beat lasts as long). */
+    speech: SpeechSchema.pick({ name: true, sound: true, mouth: true })
+      .strict()
+      .optional(),
     do: z.discriminatedUnion("kind", [
       z
         .object({
@@ -112,6 +117,7 @@ const BeatSpecSchema = z
         })
         .strict(),
       z.object({ kind: z.literal("turn"), to: z.enum(TURN_TARGETS) }).strict(),
+      z.object({ kind: z.literal("say") }).strict(),
     ]),
   })
   .strict();
@@ -271,6 +277,21 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("clearBeats"), figure: FigureIdSchema }).strict(),
+  z
+    .object({
+      // Drag a beat's marker: it and everything after it on this figure
+      // (keys, beats, beat sounds) move to start at `to`. `index` counts
+      // this figure's beats in time order (retiming never reorders them).
+      type: z.literal("moveBeat"),
+      figure: FigureIdSchema,
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .max(LIMITS.maxBeats - 1),
+      to: keyTime,
+    })
+    .strict(),
   z
     .object({
       // Record what moves, at time `t`; replaces a key already there.
@@ -574,6 +595,8 @@ export function applyAction(
       return applyMotion(scene, action, ok);
     case "directBeats":
       return directBeats(scene, action, ok);
+    case "moveBeat":
+      return moveBeat(scene, action, ok);
     case "clearBeats":
       return ok({
         ...scene,
@@ -799,6 +822,40 @@ function directBeats(
       ok: false,
       error: `That would make ${beats.length} beats; at most ${LIMITS.maxBeats}`,
     };
+  // Their sounds are lip sync from each beat's start; lip sync made by
+  // beats over the same span is replaced.
+  const speech = [
+    ...scene.speech.filter(
+      (sp) =>
+        !sp.beat ||
+        sp.figure !== figure.id ||
+        sp.start < t0 - KEY_EPSILON ||
+        sp.start >= plan.end - KEY_EPSILON,
+    ),
+    ...action.beats.flatMap((b, i) =>
+      b.speech
+        ? [
+            {
+              figure: figure.id,
+              start: plan.markers[i].t,
+              ...b.speech,
+              beat: true as const,
+            },
+          ]
+        : [],
+    ),
+  ];
+  if (speech.length > LIMITS.maxSpeech)
+    return {
+      ok: false,
+      error: `That would make ${speech.length} lip-sync tracks; at most ${LIMITS.maxSpeech}`,
+    };
+  const heard = Math.max(plan.end, ...speech.map(speechEnd));
+  if (heard > LIMITS.duration[1] + 0.05)
+    return {
+      ok: false,
+      error: `A sound would run to ${Math.round(heard * 10) / 10} s; animations are at most ${LIMITS.duration[1]} s`,
+    };
   const r = withFigureKeys(
     scene,
     figure.id,
@@ -808,7 +865,145 @@ function directBeats(
     scene.figures,
     (next) => ({ ok: true, scene: next }),
   );
-  return r.ok ? ok({ ...r.scene, beats }) : r;
+  if (!r.ok) return r;
+  const duration = Math.min(
+    LIMITS.duration[1],
+    Math.max(r.scene.animation.duration, Math.ceil(heard - 0.01)),
+  );
+  return ok({
+    ...r.scene,
+    animation: { ...r.scene.animation, duration },
+    beats,
+    speech,
+  });
+}
+
+/** Retime a beat: it and everything after it on its figure (that
+ * figure's keys, its beats, its beats' sounds) start at `to`, never
+ * before the beat ahead of it ends. Moved later, the figure holds still
+ * in the gap. */
+function moveBeat(
+  scene: SceneDoc,
+  action: Extract<SceneAction, { type: "moveBeat" }>,
+  ok: (next: SceneDoc) => ActionResult,
+): ActionResult {
+  const id = action.figure;
+  const mine = scene.beats.filter((b) => b.figure === id);
+  const i = action.index;
+  if (!mine[i]) return { ok: false, error: "No such beat" };
+  const from = mine[i].t;
+  const prev = mine[i - 1];
+  const floor = prev ? prev.t + prev.length : 0;
+  const last = Math.max(...mine.slice(i).map((b) => b.t + b.length));
+  const to = roundTime(
+    Math.min(Math.max(action.to, floor), LIMITS.duration[1] - (last - from)),
+  );
+  const shift = roundTime(to - from);
+  if (Math.abs(shift) < KEY_EPSILON) return { ok: true, scene };
+  // Touching the beat ahead, the key at the start is where that beat
+  // ends: it stays, and a copy holds the figure until the new start.
+  // After a gap, that key is this beat's own and moves with it.
+  const touching = !!prev && Math.abs(floor - from) < KEY_EPSILON;
+  const moves = (t: number) =>
+    touching ? t > from + KEY_EPSILON : t > from - KEY_EPSILON;
+  const held = scene.animation.keys.find(
+    (k) => Math.abs(k.t - from) < KEY_EPSILON,
+  )?.figures[id];
+  const own = (ch: string) => ch.startsWith(`${id}.`);
+  const moved: Array<{
+    t: number;
+    entry: FigureState;
+    ease?: Keyframe["ease"];
+    tangents?: Keyframe["tangents"];
+  }> = [];
+  let keys: Keyframe[] = scene.animation.keys
+    .map((k) => {
+      const entry = k.figures[id];
+      if (!entry || !moves(k.t)) return k;
+      const all = Object.entries(k.tangents ?? {});
+      const mineT = all.filter(([ch]) => own(ch));
+      const rest = all.filter(([ch]) => !own(ch));
+      moved.push({
+        t: roundTime(k.t + shift),
+        entry,
+        ease: k.ease,
+        ...(mineT.length ? { tangents: Object.fromEntries(mineT) } : {}),
+      });
+      const figures = { ...k.figures };
+      delete figures[id];
+      const { tangents: _old, ...key } = k;
+      return {
+        ...key,
+        figures,
+        ...(rest.length ? { tangents: Object.fromEntries(rest) } : {}),
+      };
+    })
+    .filter(
+      (k) =>
+        Object.keys(k.figures).length > 0 ||
+        Object.keys(k.lights).length > 0 ||
+        !!k.camera,
+    );
+  if (touching && held) moved.push({ t: to, entry: held });
+  for (const m of moved) {
+    const at = keys.find((k) => Math.abs(k.t - m.t) < KEY_EPSILON);
+    keys = at
+      ? keys.map((k) =>
+          k === at
+            ? {
+                ...k,
+                figures: { ...k.figures, [id]: m.entry },
+                ...(m.tangents
+                  ? { tangents: { ...k.tangents, ...m.tangents } }
+                  : {}),
+              }
+            : k,
+        )
+      : [
+          ...keys,
+          {
+            t: m.t,
+            ease: m.ease ?? "spline",
+            ...(m.tangents ? { tangents: m.tangents } : {}),
+            figures: { [id]: m.entry },
+            lights: {},
+          },
+        ];
+  }
+  keys.sort((a, b) => a.t - b.t);
+  if (keys.length > LIMITS.maxKeys)
+    return {
+      ok: false,
+      error: `That would make ${keys.length} keyframes; at most ${LIMITS.maxKeys}`,
+    };
+  const beats = scene.beats.map((b) =>
+    b.figure === id && b.t >= from - KEY_EPSILON
+      ? { ...b, t: roundTime(b.t + shift) }
+      : b,
+  );
+  const speech = scene.speech.map((sp) =>
+    sp.beat && sp.figure === id && sp.start >= from - KEY_EPSILON
+      ? { ...sp, start: roundTime(sp.start + shift) }
+      : sp,
+  );
+  const end = Math.max(
+    keys.at(-1)?.t ?? 0,
+    ...beats.map((b) => b.t + b.length),
+    ...speech.map(speechEnd),
+  );
+  return ok({
+    ...scene,
+    animation: {
+      ...scene.animation,
+      duration: Math.min(
+        LIMITS.duration[1],
+        Math.max(scene.animation.duration, Math.ceil(end - 0.01)),
+      ),
+      keys,
+    },
+    beats,
+    speech,
+  });
 }
 
 /** `entries` as this figure's keys from `t0` to `end`, replacing its
@@ -956,6 +1151,9 @@ export function coalesceKey(action: SceneAction): string | null {
     case "moveKey":
       // Dragging a key on the timeline is one undo step.
       return "moveKey";
+    case "moveBeat":
+      // So is dragging a beat marker.
+      return `moveBeat:${action.figure}:${action.index}`;
     case "setKeyValue":
       return `keyValue:${action.t}:${channelId(action.channel)}`;
     case "setKeyTangent":
@@ -1032,7 +1230,9 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
   if (action.type === "addSpeech" && scene.figures.length > 1)
     return `${figureLabel(scene, action.speech.figure)} · ${label}`;
   if (
-    (action.type === "directBeats" || action.type === "clearBeats") &&
+    (action.type === "directBeats" ||
+      action.type === "clearBeats" ||
+      action.type === "moveBeat") &&
     scene.figures.length > 1
   )
     return `${figureLabel(scene, action.figure)} · ${label}`;
@@ -1095,6 +1295,8 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return `Direct ${action.beats.length} beat${action.beats.length === 1 ? "" : "s"} at ${secs(action.t)}`;
     case "clearBeats":
       return "Clear beat markers";
+    case "moveBeat":
+      return `Move beat to ${secs(action.to)}`;
     case "removeSpeech":
       return `Remove lip sync: ${scene.speech[action.index]?.name ?? "track"}`;
     case "applyPosePreset":
