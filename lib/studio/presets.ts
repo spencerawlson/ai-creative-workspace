@@ -220,6 +220,8 @@ export function defaultScene(): SceneDoc {
     shadows: { quality: "medium" },
     figures: [newFigure("fig-1", "male", { x: 0, z: 0 })],
     animation: defaultAnimation(),
+    speech: [],
+    beats: [],
   };
 }
 

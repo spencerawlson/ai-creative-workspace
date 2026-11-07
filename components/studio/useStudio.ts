@@ -23,6 +23,7 @@ import {
 import { loadAutosave, saveAutosave } from "@/lib/studio/persistence";
 import { defaultScene } from "@/lib/studio/presets";
 import { decodeSceneLink, encodeSceneLink } from "@/lib/studio/share";
+import { isAnimated } from "@/lib/studio/speech";
 import type { CameraPlacement } from "@/lib/studio/schema";
 
 export const DEFAULT_PROJECT_NAME = "Untitled lighting setup";
@@ -128,7 +129,7 @@ export function useStudio() {
         if (shared) {
           send({ type: "replace", scene: shared, label: "Open shared link" });
           notify(
-            shared.animation.keys.length > 0
+            isAnimated(shared)
               ? "Opened a shared animation. Press Space to play it."
               : "Opened a shared lighting setup.",
           );

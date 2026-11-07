@@ -197,6 +197,44 @@ lights (`KHR_lights_punctual`, aimed down −z with the target as a
 child) are optional; area lights have no glTF form and are counted
 out. Tested with Khronos's `gltf-validator` (unit and E2E).
 
+**Lip sync.** `lib/studio/lipSync.ts` reads a sound on the device
+(Web Audio decodes it; nothing is uploaded) into `SPEECH_FPS` (20)
+frames of the five mouth shapes. It mixes to mono, low-passes and
+decimates to about 11 kHz, then per 30 ms window: loudness, relative to
+the recording's own quiet (10th percentile + 6 dB, at most 40 dB under
+its loud 95th) and loud parts, sets how open the mouth is; hisses
+(many zero crossings) and formants no vowel has count as consonants,
+about a third as open; and on vowels the first two formants, peaks of
+an order-10 LPC envelope (pre-emphasis 0.8, a 30 Hz lag window against
+high voices' harmonics), are compared with each vowel's on a log scale,
+after scaling the references to the speaker (median formants, clamped
+0.85–1.3). The mouth opens fast and closes a little slower. Settings
+were chosen against a formant synthesiser (unit tests) and checked on
+two Windows voices: 8 of 10 test words each got the right shape; the
+rounded U and O are the usual mix-up. A track (`scene.speech`:
+figure, start, name, sound id, mouth as base64) is laid over what's
+shown by `withSpeech` (the viewport at the playhead, playback, video,
+glTF), never written into the figure, so keyframes keep their own
+mouth. The sound is kept in IndexedDB (`lib/studio/sounds.ts`, 24 at
+most, oldest dropped) and played with the timeline
+(`components/studio/speechAudio.ts`); videos take a mix of them.
+Share links carry the mouth and the sound's id, not the sound.
+
+**Direction beats.** `lib/studio/beats.ts` reads a script, one beat
+per line (`;` also splits; a note follows `—`, `--` or `//`):
+a hold ("pause 2 s"), a turn on the spot ("face the camera", "turn
+left/right", "turn away"), or anything the motion search reads with
+confidence (score ≥ 1.85: a typo in a move's name passes, half a line
+doesn't). `planBeats` lays them end to end from the figure as it is:
+moves through `planMotion` from where the last beat left it, blending
+in over `BLEND` (0.4 s) when the first pose differs; poses and turns
+over `POSE_TIME` (0.8 s); holds as a repeated key. The `directBeats`
+action writes the keys through the same `withFigureKeys` as a typed
+move (the figure's keys over the span are replaced) and keeps each beat
+in `scene.beats` (figure, t, length, text, note) as a timeline marker;
+beats directed again over the same span replace the old markers.
+Links carry the markers (`bt`).
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

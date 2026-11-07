@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -43,6 +44,7 @@ import { StudioViewport, type ViewportHandle } from "./StudioViewport";
 import { Timeline } from "./Timeline";
 import { GraphEditor } from "./GraphEditor";
 import { evaluate } from "@/lib/studio/animation";
+import { isAnimated, withSpeech } from "@/lib/studio/speech";
 import { Button, IconButton, Tip, cx } from "./ui";
 import {
   copyText,
@@ -192,6 +194,10 @@ export function LightingStudio() {
       ),
     [dispatch],
   );
+
+  // What the view shows: the scene, with lip sync's mouths at the
+  // playhead (laid over, never written in: lib/studio/speech.ts).
+  const shown = useMemo(() => withSpeech(scene, time), [scene, time]);
 
   // Show the animation at time t (also where the next edit is keyed).
   const sceneNow = useRef(scene);
@@ -358,7 +364,7 @@ export function LightingStudio() {
         setGraphOpen((v) => !v);
         return;
       }
-      if ((e.key === "v" || e.key === "V") && keys.length > 0) {
+      if ((e.key === "v" || e.key === "V") && isAnimated(scene)) {
         setPreviewing(true);
         return;
       }
@@ -518,7 +524,7 @@ export function LightingStudio() {
     !isDesktop &&
     !previewing &&
     mobileTab !== "animate" &&
-    scene.animation.keys.length > 0 ? (
+    isAnimated(scene) ? (
       <Timeline {...timelineProps} mini />
     ) : null;
   const timeline = (
@@ -653,7 +659,7 @@ export function LightingStudio() {
           <div className="relative min-h-0 flex-1">
             <StudioViewport
               ref={viewport}
-              scene={scene}
+              scene={shown}
               view={view}
               viewNonce={viewNonce}
               selection={previewing ? null : validSelection}

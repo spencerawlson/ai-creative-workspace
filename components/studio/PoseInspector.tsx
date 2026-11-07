@@ -15,6 +15,8 @@ import {
   type Dof,
   type JointId,
 } from "@/lib/studio/pose";
+import { DirectBeats } from "./DirectBeats";
+import { LipSyncSection } from "./LipSync";
 import { MotionSearch } from "./MotionSearch";
 import { PhotoPoseButton } from "./PhotoPose";
 import type { ViewportHandle } from "./StudioViewport";
@@ -95,6 +97,13 @@ export function PoseInspector({
       />
       <div className="px-3 py-3">
         <MotionSearch
+          studio={studio}
+          figure={figure}
+          time={time}
+          onPlayFrom={onPlayFrom}
+        />
+        <DirectBeats
+          key={figure.id}
           studio={studio}
           figure={figure}
           time={time}
@@ -311,6 +320,14 @@ export function PoseInspector({
               ))}
           </section>
         ))}
+        {isFace && (
+          <LipSyncSection
+            studio={studio}
+            figure={figure}
+            time={time}
+            canSpeak={!controls || controls.some((c) => c.startsWith("mouth."))}
+          />
+        )}
       </div>
     </>
   );

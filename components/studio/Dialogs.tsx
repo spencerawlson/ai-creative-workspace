@@ -10,6 +10,8 @@ import {
   type VideoFormat,
 } from "./recordVideo";
 import { downloadBlob, slug, type Studio } from "./useStudio";
+import { isAnimated } from "@/lib/studio/speech";
+import { mixSpeech } from "./speechAudio";
 import {
   Button,
   Dialog,
@@ -327,7 +329,20 @@ export function VideoExportDialog({
   useEffect(() => {
     if (open) void videoFormat().then(setFormat);
   }, [open]);
-  const { duration, keys } = studio.scene.animation;
+  // With lip sync, its sounds are the video's unless another is picked.
+  const speechScene = useRef(studio.scene);
+  speechScene.current = studio.scene;
+  useEffect(() => {
+    if (!open || speechScene.current.speech.length === 0) return;
+    let cancelled = false;
+    void mixSpeech(speechScene.current).then((mixed) => {
+      if (mixed && !cancelled) setSound((s) => s ?? mixed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+  const { duration } = studio.scene.animation;
   const size = VIDEO_SIZES[sizeId];
 
   async function run() {
@@ -387,7 +402,7 @@ export function VideoExportDialog({
             variant="primary"
             icon={Download}
             onClick={run}
-            disabled={busy || !format || keys.length === 0}
+            disabled={busy || !format || !isAnimated(studio.scene)}
             data-testid="video-confirm"
           >
             {busy
@@ -513,7 +528,7 @@ export function VideoExportDialog({
           ? "Checking which video format this browser can encode…"
           : !format
             ? "This browser can't encode video. Try a current Chrome, Edge, Firefox or Safari."
-            : keys.length === 0
+            : !isAnimated(studio.scene)
               ? "There's no animation yet: set keyframes on the timeline first."
               : `${duration} s at ${fps} fps, ${size.w} × ${size.h}, as ${format.extension.toUpperCase()} (${format.codec === "avc" ? "H.264" : format.codec.toUpperCase()}). Every frame is rendered exactly; a slow device just takes longer. Light handles are hidden.`}
       </p>
@@ -538,7 +553,7 @@ export function Export3DDialog({
   studio: Studio;
   viewport: React.RefObject<ViewportHandle | null>;
 }) {
-  const animated = studio.scene.animation.keys.length > 0;
+  const animated = isAnimated(studio.scene);
   const [animation, setAnimation] = useState(true);
   const [stage, setStage] = useState(false);
   const [busy, setBusy] = useState(false);

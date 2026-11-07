@@ -23,6 +23,8 @@ import {
   Video,
 } from "lucide-react";
 import { evaluate, keyAt } from "@/lib/studio/animation";
+import { isAnimated, speechEnd, withSpeech } from "@/lib/studio/speech";
+import { SpeechPlayer, preloadSpeech, wakeAudio } from "./speechAudio";
 import { LIMITS } from "@/lib/studio/schema";
 import type { ViewportHandle } from "./StudioViewport";
 import type { Studio } from "./useStudio";
@@ -79,6 +81,7 @@ export function Timeline({
 }) {
   const { scene, dispatch, seal } = studio;
   const { duration, keys } = scene.animation;
+  const animated = isAnimated(scene);
   const [playing, setPlaying] = useState(false);
   // Phones: the secondary controls fold away behind "More".
   const [moreToggle, setMore] = useState(false);
@@ -92,8 +95,14 @@ export function Timeline({
   const live = useRef({ scene, keyCamera, loop, duration, onSeek });
   live.current = { scene, keyCamera, loop, duration, onSeek };
 
+  // Lip sync's sounds: ready before playing, started with it.
+  const speaker = useRef<SpeechPlayer | null>(null);
+  useEffect(() => preloadSpeech(scene), [scene]);
+
   function play() {
-    if (keys.length === 0) return;
+    if (!animated) return;
+    // Inside the tap or key press: phones only start sound from one.
+    if (scene.speech.length) wakeAudio();
     setPlayT(time >= duration - 0.01 ? 0 : time);
     setPlaying(true);
   }
@@ -118,20 +127,24 @@ export function Timeline({
     let raf = 0;
     let last = performance.now();
     let t = playT;
+    const player = (speaker.current ??= new SpeechPlayer());
+    player.start(live.current.scene, t);
     const step = (now: number) => {
       const l = live.current;
       t += (now - last) / 1000;
       last = now;
       let done = false;
       if (t >= l.duration) {
-        if (l.loop) t %= l.duration;
-        else {
+        if (l.loop) {
+          t %= l.duration;
+          player.start(l.scene, t);
+        } else {
           t = l.duration;
           done = true;
         }
       }
       const frame = evaluate(l.scene, t);
-      viewport.current?.preview(frame.scene);
+      viewport.current?.preview(withSpeech(frame.scene, t));
       if (l.keyCamera && frame.view)
         viewport.current?.setCameraPlacement(frame.view);
       setPlayT(t);
@@ -143,6 +156,7 @@ export function Timeline({
     // studio moves to where it stopped.
     return () => {
       cancelAnimationFrame(raf);
+      player.stop();
       live.current.onSeek(Math.round(t * 100) / 100);
     };
     // playT is the start time; later changes come from this loop.
@@ -151,7 +165,7 @@ export function Timeline({
 
   // Preview mode starts playing; leaving it stops.
   useEffect(() => {
-    if (preview && keys.length > 0) {
+    if (preview && animated) {
       setPlayT(0);
       setPlaying(true);
     }
@@ -231,7 +245,7 @@ export function Timeline({
         size="sm"
         label={playing ? "Pause" : "Play"}
         shortcut="Space"
-        disabled={keys.length === 0}
+        disabled={!animated}
         onClick={toggle}
         data-testid="timeline-play"
       />
@@ -282,6 +296,44 @@ export function Timeline({
           className="absolute inset-0 h-full w-full cursor-pointer accent-accent"
           data-testid="timeline-scrub"
         />
+        {/* Direction beats: a marker at the top where each starts. */}
+        {scene.beats.map((b, i) => {
+          const where = `${b.text} at ${b.t.toFixed(1)} s${b.note ? ` — ${b.note}` : ""}`;
+          return (
+            <button
+              key={`${b.figure}-${b.t}`}
+              type="button"
+              aria-label={`Beat: ${where}`}
+              title={where}
+              disabled={playing}
+              data-testid={`timeline-beat-${i}`}
+              style={{
+                left: `calc(${THUMB}px + (100% - ${2 * THUMB}px) * ${Math.min(1, b.t / duration)})`,
+              }}
+              // Above the keys: a beat usually starts on one.
+              className="absolute -top-1 z-10 h-3 w-2.5 -translate-x-1/2 rounded-b-sm border border-ink-950 bg-emerald-400 hover:bg-emerald-300"
+              onClick={() => onSeek(b.t)}
+            />
+          );
+        })}
+        {/* Where lip sync speaks: a strip under the keys. */}
+        {scene.speech.map((sp, i) => {
+          const a = Math.min(1, sp.start / duration);
+          const b = Math.min(1, speechEnd(sp) / duration);
+          return (
+            <span
+              key={i}
+              aria-hidden
+              title={`Lip sync: ${sp.name}`}
+              data-testid={`timeline-speech-${i}`}
+              style={{
+                left: `calc(${THUMB}px + (100% - ${2 * THUMB}px) * ${a})`,
+                width: `calc((100% - ${2 * THUMB}px) * ${b - a})`,
+              }}
+              className="pointer-events-none absolute bottom-0.5 h-1 rounded-full bg-sky-400/70"
+            />
+          );
+        })}
         {keys.map((k) => {
           const current = Math.abs(k.t - time) < 0.005;
           return (
@@ -447,7 +499,7 @@ export function Timeline({
             size="sm"
             label="Preview animation"
             shortcut="V"
-            disabled={keys.length === 0}
+            disabled={!animated}
             onClick={() => onPreview(true)}
             data-testid="timeline-preview"
           />
@@ -457,7 +509,7 @@ export function Timeline({
               className={extra}
               size="sm"
               label="Export video"
-              disabled={keys.length === 0}
+              disabled={!animated}
               onClick={() => {
                 // Rendering takes over the view: stop playing first.
                 if (playing) toggle();
