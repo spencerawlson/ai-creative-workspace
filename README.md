@@ -61,6 +61,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   Blender, Unreal rigs) from the figure's panel. It takes every pose,
   typed move and keyframe the mannequin does, keeps its own look, and
   stays on your device; share links show the mannequin to others.
+- Render quality and lens look: Scene settings › Render quality picks
+  Fast or High on each device (High adds ambient occlusion; computers
+  start on High, phones on Fast). The Camera panel's lens look adds
+  depth of field (an f-stop, focused on the figure's head), bloom,
+  vignette and film grain, saved with the scene and its links.
 - Faces: on a character with face shapes (VRM, VRoid, ARKit
   blendshapes, visemes) or eye bones, Pose › Face sets where the eyes
   look, expressions (happy, angry, sad, relaxed, surprised), blinks and

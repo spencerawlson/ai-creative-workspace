@@ -37,6 +37,10 @@ export const LIMITS = {
   roughness: [0, 1],
   metalness: [0, 1],
   shadowOpacity: [0, 1],
+  /** Lens f-stop for depth of field (0 in a scene = everything sharp). */
+  fStop: [1.2, 22],
+  /** Bloom, vignette and film grain, 0..1. */
+  lensEffect: [0, 1],
 } as const satisfies Record<string, number | readonly [number, number]>;
 
 type RangeKey = Exclude<
@@ -81,14 +85,35 @@ export const LightPatchSchema = LightSchema.omit({ id: true, kind: true })
 export type LightPatch = z.infer<typeof LightPatchSchema>;
 
 export const TONE_MAPPINGS = ["aces", "agx", "neutral"] as const;
-export const CameraSchema = z.object({
+const CameraFields = {
   /** 35 mm-equivalent focal length; drives vertical field of view. */
   focalMm: num("focalMm"),
   /** Exposure compensation in stops, relative to the studio default. */
   exposureEv: num("exposureEv"),
   toneMapping: z.enum(TONE_MAPPINGS),
+};
+/** The lens look (lib/engine/post.ts). Depth of field: an f-stop, or 0
+ * for everything sharp. */
+const LensFields = {
+  aperture: z.union([z.literal(0), num("fStop")]),
+  bloom: num("lensEffect"),
+  vignette: num("lensEffect"),
+  grain: num("lensEffect"),
+};
+export const CameraSchema = z.object({
+  ...CameraFields,
+  // Optional on input: scenes from before the lens look have none.
+  aperture: LensFields.aperture.default(0),
+  bloom: LensFields.bloom.default(0),
+  vignette: LensFields.vignette.default(0),
+  grain: LensFields.grain.default(0),
 });
 export type CameraSettings = z.infer<typeof CameraSchema>;
+/** An edit to the camera: no defaults, so it only sets what it names. */
+export const CameraPatchSchema = z
+  .object({ ...CameraFields, ...LensFields })
+  .partial()
+  .strict();
 
 export const MaterialSchema = z.object({
   /** Material preset id, or "custom" after a manual edit. */

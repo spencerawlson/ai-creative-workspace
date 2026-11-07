@@ -11,7 +11,7 @@ import { z } from "zod";
 import { PRESETS } from "@/lib/lighting";
 import {
   BackdropSchema,
-  CameraSchema,
+  CameraPatchSchema,
   LIMITS,
   LightKindSchema,
   LightPatchSchema,
@@ -143,7 +143,7 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("updateCamera"),
-      patch: CameraSchema.partial().strict(),
+      patch: CameraPatchSchema,
     })
     .strict(),
   z

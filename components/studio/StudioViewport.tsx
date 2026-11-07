@@ -18,6 +18,7 @@ import type {
   EngineOverrides,
   EngineStats,
   ExportOptions,
+  RenderQuality,
   Selection,
   StudioEngine,
 } from "@/lib/engine/StudioEngine";
@@ -52,6 +53,7 @@ export function StudioViewport({
   viewNonce,
   selection = null,
   showHandles = true,
+  quality = "fast",
   onSelect,
   onLightDrag,
   onLightDragEnd,
@@ -74,6 +76,8 @@ export function StudioViewport({
   viewNonce: number;
   selection?: Selection;
   showHandles?: boolean;
+  /** This device's render quality (lib/engine/post.ts). */
+  quality?: RenderQuality;
   onSelect?: (s: Selection, figure?: string) => void;
   onLightDrag?: (
     id: string,
@@ -110,6 +114,7 @@ export function StudioViewport({
     viewNonce,
     selection,
     showHandles,
+    quality,
     onSelect,
     onLightDrag,
     onLightDragEnd,
@@ -130,6 +135,7 @@ export function StudioViewport({
     viewNonce,
     selection,
     showHandles,
+    quality,
     onSelect,
     onLightDrag,
     onLightDragEnd,
@@ -180,6 +186,7 @@ export function StudioViewport({
           Object.assign(window, { __studioEngine: engine });
         const p = latest.current;
         engine.setShowHandles(p.showHandles);
+        engine.setQuality(p.quality);
         engine.setSelection(p.selection);
         engine.setActiveFigure(p.activeFigure);
         engine.setCharacters(p.characters ?? {});
@@ -211,6 +218,10 @@ export function StudioViewport({
   useEffect(() => {
     engineRef.current?.setShowHandles(showHandles);
   }, [showHandles]);
+
+  useEffect(() => {
+    engineRef.current?.setQuality(quality);
+  }, [quality]);
 
   useEffect(() => {
     engineRef.current?.setActiveFigure(activeFigure);

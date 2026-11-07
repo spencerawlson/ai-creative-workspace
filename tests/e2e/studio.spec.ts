@@ -213,6 +213,50 @@ test.describe("Lighting Studio — critical journeys", () => {
     );
   });
 
+  test("render quality High and the lens look: effects show, export still works", async ({
+    page,
+  }) => {
+    test.slow();
+    const errors = await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-scene").click();
+    await showInspector(page);
+    await page.getByTestId("render-quality-high").click();
+    await expect(page.getByTestId("render-quality-high")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const plain = await canvasBrightness(page);
+
+    // A strong vignette darkens the frame; depth of field and grain on.
+    await showPanel(page, "scene");
+    await page.getByTestId("node-camera").click();
+    await showInspector(page);
+    await page.getByTestId("lens-dof").click();
+    await expect(page.getByTestId("lens-aperture")).toBeVisible();
+    await page.getByTestId("lens-grain").fill("0.2");
+    await page.getByTestId("lens-vignette").fill("1");
+    await expect.poll(() => canvasBrightness(page)).toBeLessThan(plain - 1);
+
+    // Kept in the link, and exported through the same path.
+    await expect
+      .poll(() => {
+        const s = new URL(page.url()).searchParams.get("s") ?? "";
+        return Buffer.from(s, "base64url").toString();
+      })
+      .toContain("2.8");
+    await page.getByTestId("export-open").click();
+    await page.getByLabel("1920 × 1080 (16:9)").check();
+    const download = page.waitForEvent("download");
+    await page.getByTestId("export-confirm").click();
+    const buf = await (
+      await import("node:fs/promises")
+    ).readFile((await (await download).path())!);
+    expect(buf.readUInt32BE(16)).toBe(1920);
+    expect(buf.length).toBeGreaterThan(20_000);
+    expect(errors).toEqual([]);
+  });
+
   test("exports a PNG at the requested size", async ({ page }) => {
     await openStudio(page);
     await page.getByTestId("export-open").click();

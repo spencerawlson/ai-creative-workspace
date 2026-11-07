@@ -3,7 +3,8 @@
  * v2 payload, base64url JSON with positional arrays to keep links short:
  *   { v: 2, p: preset, m: model,
  *     l: [[id, label, kind, on, az, el, dist, int, temp, soft, shadows, spot, size], ...],
- *     c: [focalMm, exposureEv, toneMapping],
+ *     c: [focalMm, exposureEv, toneMapping, aperture, bloom, vignette,
+ *         grain],
  *     mt: [preset, color, roughness, metalness],
  *     b: [preset, color, style, shadowOpacity],
  *     q: shadowQuality,
@@ -72,6 +73,10 @@ function scenePayload(scene: SceneDoc) {
       Math.round(scene.camera.focalMm),
       round1(scene.camera.exposureEv),
       scene.camera.toneMapping,
+      round1(scene.camera.aperture),
+      round2(scene.camera.bloom),
+      round2(scene.camera.vignette),
+      round2(scene.camera.grain),
     ],
     mt: [
       scene.material.preset,
@@ -133,6 +138,11 @@ function decodePayload(parsed: object): SceneDoc | null {
       focalMm: arr(p.c)[0],
       exposureEv: arr(p.c)[1],
       toneMapping: arr(p.c)[2],
+      // Links from before the lens look have three values.
+      aperture: arr(p.c)[3] ?? 0,
+      bloom: arr(p.c)[4] ?? 0,
+      vignette: arr(p.c)[5] ?? 0,
+      grain: arr(p.c)[6] ?? 0,
     },
     material: {
       preset: arr(p.mt)[0],
