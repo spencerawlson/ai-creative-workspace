@@ -14,6 +14,7 @@
  * mediabunny is loaded only when a video is exported. */
 
 import { evaluate } from "@/lib/studio/animation";
+import { withSpeech } from "@/lib/studio/speech";
 import type { SceneDoc } from "@/lib/studio/schema";
 import type { ViewportHandle } from "./StudioViewport";
 
@@ -122,11 +123,9 @@ export async function recordVideo(opts: {
     for (let i = 0; i < frames; i++) {
       if (opts.signal?.aborted)
         throw new DOMException("Export cancelled", "AbortError");
-      const frame = evaluate(
-        scene,
-        Math.min(i / fps, scene.animation.duration),
-      );
-      viewport.preview(frame.scene);
+      const t = Math.min(i / fps, scene.animation.duration);
+      const frame = evaluate(scene, t);
+      viewport.preview(withSpeech(frame.scene, t));
       if (opts.keyCamera && frame.view) viewport.setCameraPlacement(frame.view);
       viewport.renderCapture();
       await source.add(i / fps, 1 / fps); // waits for the encoder

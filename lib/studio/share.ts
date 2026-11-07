@@ -10,7 +10,9 @@
  *     q: shadowQuality,
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
  *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...],
- *     ch?: [characterId | null, ...] }  (one per fg row)
+ *     ch?: [characterId | null, ...],  (one per fg row)
+ *     sp?: [[figure index, start, name, mouth, soundId?], ...] }
+ *          (lip sync; compressed links only)
  *
  * `y` (up/down) is only written when it isn't 0; older rows have the
  * pose preset (a string) in that place.
@@ -24,6 +26,10 @@
  * device that imported them, so elsewhere the mannequin stands in; on
  * that device a reload (which reopens the address) keeps them.
  *
+ * `sp` carries each lip-sync track's mouth (lib/studio/speech.ts) but
+ * not its sound, which stays on the device that read it, like a
+ * character; there the sound id lets a reload play it again.
+ *
  * Links made by M3 (v1: three lights, no `v`) still open: they are
  * decoded by the original strict v1 decoder and upgraded with defaults.
  * Decoding always ends in SceneSchema validation; anything malformed
@@ -33,6 +39,7 @@
 import { decodeSetup } from "@/lib/share";
 import { defaultScene, fromLegacyLight, presetLights } from "./presets";
 import { flattenJoints, isNeutral, unflattenJoints } from "./pose";
+import { isAnimated } from "./speech";
 import {
   EASES,
   LIGHT_KINDS,
@@ -165,6 +172,20 @@ function decodePayload(parsed: object): SceneDoc | null {
             arr,
             arr(p.l).map((row) => arr(row)[0]),
           ),
+        }
+      : {}),
+    ...("sp" in p
+      ? {
+          speech: arr(p.sp).map((row) => {
+            const [figure, start, name, mouth, sound] = arr(row);
+            return {
+              figure: typeof figure === "number" ? `fig-${figure + 1}` : null,
+              start,
+              name,
+              mouth,
+              ...(typeof sound === "string" ? { sound } : {}),
+            };
+          }),
         }
       : {}),
   };
@@ -418,19 +439,31 @@ function decodeAnimation(
   };
 }
 
-/** A share link for the scene: with keyframes, the animation goes in
- * too, compressed (`z` + base64url of deflate-raw JSON). Falls back to
- * the current frame when there are no keys or the result would be too
- * long for a URL. */
+/** A share link for the scene: with keyframes or lip sync, the
+ * animation goes in too, compressed (`z` + base64url of deflate-raw
+ * JSON). Falls back to the current frame when nothing moves or the
+ * result would be too long for a URL. */
 export async function encodeSceneLink(
   scene: SceneDoc,
 ): Promise<{ param: string; animated: boolean; tooLong: boolean }> {
   const plain = encodeScene(scene);
-  if (scene.animation.keys.length === 0)
+  if (!isAnimated(scene))
     return { param: plain, animated: false, tooLong: false };
+  const order = new Map(scene.figures.map((f, i) => [f.id, i]));
   const json = JSON.stringify({
     ...scenePayload(scene),
     an: encodeAnimation(scene),
+    ...(scene.speech.length
+      ? {
+          sp: scene.speech.map((sp) => [
+            order.get(sp.figure),
+            sp.start,
+            sp.name,
+            sp.mouth,
+            ...(sp.sound ? [sp.sound] : []),
+          ]),
+        }
+      : {}),
   });
   const param = "z" + bytesToBase64Url(await deflate(json));
   return param.length > MAX_LINK

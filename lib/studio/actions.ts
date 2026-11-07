@@ -27,6 +27,7 @@ import {
   FigureSchema,
   type Figure,
   ShadowSchema,
+  SpeechSchema,
   type SceneDoc,
   type StudioLight,
 } from "./schema";
@@ -64,6 +65,7 @@ import {
   withKeyValue,
 } from "./animation";
 import { findMotion, motionSteps, type MotionStep } from "./motions";
+import { speechEnd } from "./speech";
 import {
   figureLabel,
   findFigure,
@@ -295,6 +297,23 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
         .max(400),
     })
     .strict(),
+  z
+    .object({
+      // Lip sync from a sound (lib/studio/speech.ts), in one undo step.
+      type: z.literal("addSpeech"),
+      speech: SpeechSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("removeSpeech"),
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .max(LIMITS.maxSpeech - 1),
+    })
+    .strict(),
   z.object({ type: z.literal("reset") }).strict(),
 ]);
 export type SceneAction = z.infer<typeof SceneActionSchema>;
@@ -446,6 +465,7 @@ export function applyAction(
         ...scene,
         figures: scene.figures.filter((f) => f.id !== action.figure),
         animation: forget(scene.animation, { figure: action.figure }),
+        speech: scene.speech.filter((sp) => sp.figure !== action.figure),
       });
     }
     case "updateFigure":
@@ -556,6 +576,39 @@ export function applyAction(
     }
     case "clearKeys":
       return ok({ ...scene, animation: { ...scene.animation, keys: [] } });
+    case "addSpeech": {
+      const sp = action.speech;
+      if (!findFigure(scene, sp.figure))
+        return { ok: false, error: `No figure "${sp.figure}"` };
+      if (scene.speech.length >= LIMITS.maxSpeech)
+        return {
+          ok: false,
+          error: `At most ${LIMITS.maxSpeech} lip-sync tracks; remove one first`,
+        };
+      const end = speechEnd(sp);
+      if (end > LIMITS.duration[1] + 0.05)
+        return {
+          ok: false,
+          error: `That would run to ${Math.round(end * 10) / 10} s; animations are at most ${LIMITS.duration[1]} s`,
+        };
+      // The animation grows to hold all of it.
+      const duration = Math.min(
+        LIMITS.duration[1],
+        Math.max(scene.animation.duration, Math.ceil(end - 0.01)),
+      );
+      return ok({
+        ...scene,
+        animation: { ...scene.animation, duration },
+        speech: [...scene.speech, sp],
+      });
+    }
+    case "removeSpeech":
+      if (!scene.speech[action.index])
+        return { ok: false, error: "No such lip-sync track" };
+      return ok({
+        ...scene,
+        speech: scene.speech.filter((_, i) => i !== action.index),
+      });
     case "setKeyTangent":
     case "setKeyTangents": {
       const key = keyAt(scene.animation, action.t);
@@ -874,6 +927,8 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
     "mirrorPose",
     "applyMotion",
   ].includes(action.type);
+  if (action.type === "addSpeech" && scene.figures.length > 1)
+    return `${figureLabel(scene, action.speech.figure)} · ${label}`;
   return perFigure && scene.figures.length > 1
     ? `${figureLabel(scene, figure ?? scene.figures[0].id)} · ${label}`
     : label;
@@ -927,6 +982,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return `Shadows: ${fields(action.patch)}`;
     case "loadScene":
       return action.label ?? "Load scene";
+    case "addSpeech":
+      return `Lip sync: ${action.speech.name}`;
+    case "removeSpeech":
+      return `Remove lip sync: ${scene.speech[action.index]?.name ?? "track"}`;
     case "applyPosePreset":
       return `Pose: ${posePreset(action.presetId)?.name ?? action.presetId}`;
     case "applyMotion": {

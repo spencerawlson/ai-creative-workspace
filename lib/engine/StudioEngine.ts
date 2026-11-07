@@ -28,6 +28,7 @@ import {
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { evaluate } from "@/lib/studio/animation";
+import { isAnimated, withSpeech } from "@/lib/studio/speech";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
 import { FINGERS, type JointId } from "@/lib/studio/pose";
 import {
@@ -2341,7 +2342,7 @@ export class StudioEngine {
       throw new Error("The figures are still loading. Try again in a moment.");
     const overrides = this.overrides;
     const placement = this.getCameraPlacement();
-    const animated = doc.animation.keys.length > 0;
+    const animated = isAnimated(doc);
     return exportGlb(
       {
         figures,
@@ -2354,7 +2355,7 @@ export class StudioEngine {
         seek: animated
           ? (t) => {
               const frame = evaluate(doc, t);
-              this.update(frame.scene, overrides);
+              this.update(withSpeech(frame.scene, t), overrides);
               if (frame.view) this.setCameraPlacement(frame.view);
             }
           : undefined,

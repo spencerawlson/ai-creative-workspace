@@ -24,6 +24,8 @@ export const LIMITS = {
   /** Keyframe animation: length in seconds, and at most this many keys. */
   duration: [1, 120],
   maxKeys: 300,
+  /** Lip-sync tracks (lib/studio/speech.ts) in a scene. */
+  maxSpeech: 16,
   azimuth: [0, 360],
   elevation: [-45, 85],
   distance: [1.5, 8],
@@ -45,7 +47,7 @@ export const LIMITS = {
 
 type RangeKey = Exclude<
   keyof typeof LIMITS,
-  "maxLights" | "maxFigures" | "maxKeys"
+  "maxLights" | "maxFigures" | "maxKeys" | "maxSpeech"
 >;
 
 const num = (key: RangeKey) =>
@@ -311,6 +313,40 @@ export type Animation = z.infer<typeof AnimationSchema>;
 
 export const defaultAnimation = (): Animation => ({ duration: 5, keys: [] });
 
+// ---------------------------------------------------------------- speech
+
+/** A sound kept on this device (lib/studio/sounds.ts). */
+export const SoundIdSchema = z.string().regex(/^snd-[a-z0-9]{6,24}$/);
+
+/** Lip sync: a figure's mouth, read from a sound (lib/studio/lipSync.ts),
+ * from `start` seconds on. The mouth travels with the scene (links,
+ * files); the sound itself stays on the device that read it. */
+export const SpeechSchema = z.object({
+  figure: FigureIdSchema,
+  start: z.number().finite().min(0).max(LIMITS.duration[1]),
+  /** The sound file's name, as shown. */
+  name: z.string().trim().min(1).max(64),
+  /** The sound on this device; absent or missing elsewhere: silent. */
+  sound: SoundIdSchema.optional(),
+  /** SPEECH_FPS frames of the five mouth shapes, 0–100, as base64. At
+   * most the longest animation. */
+  mouth: z
+    .string()
+    .min(4)
+    .max(Math.ceil((LIMITS.duration[1] * 20 * 5) / 3) * 4)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+    .refine(
+      (m) => {
+        // Whole base64, decoding to whole frames of five shapes.
+        if (m.length % 4 !== 0) return false;
+        const bytes = (m.length / 4) * 3 - (m.match(/=+$/)?.[0].length ?? 0);
+        return bytes % 5 === 0;
+      },
+      { message: "Lip-sync mouth data is damaged" },
+    ),
+});
+export type Speech = z.infer<typeof SpeechSchema>;
+
 export const SceneSchema = z
   .preprocess(
     upgradeSingleFigure,
@@ -326,6 +362,8 @@ export const SceneSchema = z
       figures: z.array(FigureSchema).min(1).max(LIMITS.maxFigures),
       /** Optional on input: scenes from before keyframes had none. */
       animation: AnimationSchema.default(defaultAnimation),
+      /** Optional on input: scenes from before lip sync had none. */
+      speech: z.array(SpeechSchema).max(LIMITS.maxSpeech).default([]),
     }),
   )
   .refine((s) => new Set(s.lights.map((l) => l.id)).size === s.lights.length, {
@@ -335,6 +373,10 @@ export const SceneSchema = z
   .refine(
     (s) => new Set(s.figures.map((f) => f.id)).size === s.figures.length,
     { message: "Figure ids must be unique", path: ["figures"] },
+  )
+  .refine(
+    (s) => s.speech.every((sp) => s.figures.some((f) => f.id === sp.figure)),
+    { message: "Lip sync for a figure that isn't there", path: ["speech"] },
   );
 export type SceneDoc = z.infer<typeof SceneSchema>;
 

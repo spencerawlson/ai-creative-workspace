@@ -197,6 +197,29 @@ lights (`KHR_lights_punctual`, aimed down −z with the target as a
 child) are optional; area lights have no glTF form and are counted
 out. Tested with Khronos's `gltf-validator` (unit and E2E).
 
+**Lip sync.** `lib/studio/lipSync.ts` reads a sound on the device
+(Web Audio decodes it; nothing is uploaded) into `SPEECH_FPS` (20)
+frames of the five mouth shapes. It mixes to mono, low-passes and
+decimates to about 11 kHz, then per 30 ms window: loudness, relative to
+the recording's own quiet (10th percentile + 6 dB, at most 40 dB under
+its loud 95th) and loud parts, sets how open the mouth is; hisses
+(many zero crossings) and formants no vowel has count as consonants,
+about a third as open; and on vowels the first two formants, peaks of
+an order-10 LPC envelope (pre-emphasis 0.8, a 30 Hz lag window against
+high voices' harmonics), are compared with each vowel's on a log scale,
+after scaling the references to the speaker (median formants, clamped
+0.85–1.3). The mouth opens fast and closes a little slower. Settings
+were chosen against a formant synthesiser (unit tests) and checked on
+two Windows voices: 8 of 10 test words each got the right shape; the
+rounded U and O are the usual mix-up. A track (`scene.speech`:
+figure, start, name, sound id, mouth as base64) is laid over what's
+shown by `withSpeech` (the viewport at the playhead, playback, video,
+glTF), never written into the figure, so keyframes keep their own
+mouth. The sound is kept in IndexedDB (`lib/studio/sounds.ts`, 24 at
+most, oldest dropped) and played with the timeline
+(`components/studio/speechAudio.ts`); videos take a mix of them.
+Share links carry the mouth and the sound's id, not the sound.
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

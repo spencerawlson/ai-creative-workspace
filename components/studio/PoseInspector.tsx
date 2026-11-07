@@ -15,6 +15,7 @@ import {
   type Dof,
   type JointId,
 } from "@/lib/studio/pose";
+import { LipSyncSection } from "./LipSync";
 import { MotionSearch } from "./MotionSearch";
 import { PhotoPoseButton } from "./PhotoPose";
 import type { ViewportHandle } from "./StudioViewport";
@@ -311,6 +312,14 @@ export function PoseInspector({
               ))}
           </section>
         ))}
+        {isFace && (
+          <LipSyncSection
+            studio={studio}
+            figure={figure}
+            time={time}
+            canSpeak={!controls || controls.some((c) => c.startsWith("mouth."))}
+          />
+        )}
       </div>
     </>
   );

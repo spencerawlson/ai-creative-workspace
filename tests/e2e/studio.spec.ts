@@ -1027,7 +1027,128 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect.poll(shows).toBe("mannequin");
     expect(errors).toEqual([]);
   });
+
+  test("lip sync: a voice moves the character's mouth, read on the device", async ({
+    page,
+  }) => {
+    test.slow();
+    const errors = await openStudio(page);
+    const elsewhere: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).origin !== new URL(page.url()).origin)
+        elsewhere.push(r.url());
+    });
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await page
+      .getByTestId("character-file")
+      .setInputFiles("tests/fixtures/test-character.glb");
+    await expect(
+      page.locator('[data-testid^="character-ch-"]'),
+    ).toHaveAttribute("aria-pressed", "true");
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-group-face").click();
+    await showInspector(page);
+    await expect(page.getByTestId("face-note")).toContainText(
+      "only the ones its file has",
+      { timeout: 30_000 },
+    );
+
+    // Half a second of quiet, a second of "ah", a second of quiet.
+    await page.getByTestId("lip-sync-input").setInputFiles({
+      name: "hello.wav",
+      mimeType: "audio/wav",
+      buffer: wav([
+        [0.5, null],
+        [1, [730, 1090, 2440, 3400]],
+        [1, null],
+      ]),
+    });
+    await expect(page.getByTestId("lip-sync-tracks")).toContainText("hello");
+    await expect(page.getByTestId("lip-sync-tracks")).toContainText(
+      "0 s–2.5 s",
+    );
+    // Shown on the timeline (on phones, the full one in Animate).
+    await expect(
+      await timelineControl(page, "timeline-speech-0"),
+    ).toBeVisible();
+
+    // The test character's third face shape is its "A" mouth.
+    const mouthA = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __studioEngine: { faceState(): { shapes: number[] } | null };
+            }
+          ).__studioEngine.faceState()?.shapes[2] ?? -1,
+      );
+    await (await timelineControl(page, "timeline-scrub")).fill("1");
+    await expect.poll(mouthA).toBeGreaterThan(0.3);
+    await (await timelineControl(page, "timeline-scrub")).fill("2.2");
+    await expect.poll(mouthA).toBe(0);
+    // Laid over what's shown: the figure's own mouth stays as it was.
+    await showInspector(page);
+    await expect(page.getByTestId("pose-mouth-aa")).toHaveValue("0");
+
+    // It plays, and a video takes its sound.
+    await (await timelineControl(page, "timeline-play")).click();
+    await (await timelineControl(page, "timeline-play")).click();
+    await (await timelineControl(page, "timeline-video")).click();
+    await expect(page.getByTestId("video-sound-name")).toContainText("hello");
+    await page.getByTestId("video-cancel").click();
+
+    // One undo step takes it away.
+    await page.getByTestId("undo").click();
+    await showInspector(page);
+    await expect(page.getByTestId("lip-sync-tracks")).toHaveCount(0);
+    expect(elsewhere).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 });
+
+/** A 16-bit mono WAV: each part is [seconds, formants of a vowel or
+ * null for quiet], from a small formant synthesiser. */
+function wav(parts: Array<[number, number[] | null]>): Buffer {
+  const rate = 22050;
+  const samples: number[] = [];
+  for (const [seconds, formants] of parts) {
+    const n = Math.round(seconds * rate);
+    let x: number[] = Array.from({ length: n }, (_, i) =>
+      formants && i % Math.round(rate / 120) === 0 ? 1 : 0,
+    );
+    for (const [k, f] of (formants ?? []).entries()) {
+      const r = Math.exp((-Math.PI * [80, 100, 140, 200][k]) / rate);
+      const b = 2 * r * Math.cos((2 * Math.PI * f) / rate);
+      const c = -r * r;
+      const y: number[] = [];
+      for (let i = 0; i < n; i++)
+        y.push((1 - b - c) * x[i] + b * (y[i - 1] ?? 0) + c * (y[i - 2] ?? 0));
+      x = y;
+    }
+    const peak = Math.max(1e-9, ...x.map(Math.abs));
+    samples.push(...x.map((v) => (v / peak) * 0.5));
+  }
+  const out = Buffer.alloc(44 + samples.length * 2);
+  out.write("RIFF", 0);
+  out.writeUInt32LE(36 + samples.length * 2, 4);
+  out.write("WAVEfmt ", 8);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20); // PCM
+  out.writeUInt16LE(1, 22); // mono
+  out.writeUInt32LE(rate, 24);
+  out.writeUInt32LE(rate * 2, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write("data", 36);
+  out.writeUInt32LE(samples.length * 2, 40);
+  samples.forEach((v, i) =>
+    out.writeInt16LE(Math.round(v * 32767), 44 + i * 2),
+  );
+  return out;
+}
 
 test.describe("layout", () => {
   test("no horizontal scroll and the viewport keeps a usable size", async ({
