@@ -876,9 +876,9 @@ function Toolbar({
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
       <div className="flex min-w-0 items-center gap-2">
-        {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static SVG */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static logo */}
         <img
-          src="/brand/iko-mark.svg"
+          src="/brand/iko-logo-128.png"
           alt=""
           width={28}
           height={28}
