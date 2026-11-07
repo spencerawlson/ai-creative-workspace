@@ -296,6 +296,26 @@ export function Timeline({
           className="absolute inset-0 h-full w-full cursor-pointer accent-accent"
           data-testid="timeline-scrub"
         />
+        {/* Direction beats: a marker at the top where each starts. */}
+        {scene.beats.map((b, i) => {
+          const where = `${b.text} at ${b.t.toFixed(1)} s${b.note ? ` — ${b.note}` : ""}`;
+          return (
+            <button
+              key={`${b.figure}-${b.t}`}
+              type="button"
+              aria-label={`Beat: ${where}`}
+              title={where}
+              disabled={playing}
+              data-testid={`timeline-beat-${i}`}
+              style={{
+                left: `calc(${THUMB}px + (100% - ${2 * THUMB}px) * ${Math.min(1, b.t / duration)})`,
+              }}
+              // Above the keys: a beat usually starts on one.
+              className="absolute -top-1 z-10 h-3 w-2.5 -translate-x-1/2 rounded-b-sm border border-ink-950 bg-emerald-400 hover:bg-emerald-300"
+              onClick={() => onSeek(b.t)}
+            />
+          );
+        })}
         {/* Where lip sync speaks: a strip under the keys. */}
         {scene.speech.map((sp, i) => {
           const a = Math.min(1, sp.start / duration);

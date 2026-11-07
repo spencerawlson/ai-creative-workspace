@@ -66,6 +66,7 @@ import {
 } from "./animation";
 import { findMotion, motionSteps, type MotionStep } from "./motions";
 import { speechEnd } from "./speech";
+import { MAX_BEATS, TURN_TARGETS, planBeats, type FigureState } from "./beats";
 import {
   figureLabel,
   findFigure,
@@ -79,6 +80,41 @@ const slopeValue = z.number().finite().min(-1e5).max(1e5);
 const keyTime = z.number().finite().min(0).max(LIMITS.duration[1]);
 /** Which figure a pose/model action targets; omitted = the first one. */
 const figureRef = FigureIdSchema.optional();
+
+/** How a library move is done (lib/studio/motions.ts MotionOptions). */
+const MotionOptionFields = {
+  mirror: z.boolean().optional(),
+  repeat: z.number().int().min(1).max(100).optional(),
+  slow: z.number().finite().min(0.25).max(4).optional(),
+  inPlace: z.boolean().optional(),
+  backwards: z.boolean().optional(),
+  /** How long the move lasts (it repeats to fill it). */
+  seconds: z.number().finite().min(0.2).max(LIMITS.duration[1]).optional(),
+};
+
+/** One direction beat (lib/studio/beats.ts). */
+const BeatSpecSchema = z
+  .object({
+    text: z.string().trim().min(1).max(80),
+    note: z.string().trim().min(1).max(120).optional(),
+    do: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("motion"),
+          motion: z.string().max(32),
+          ...MotionOptionFields,
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("hold"),
+          seconds: z.number().finite().min(0.2).max(30),
+        })
+        .strict(),
+      z.object({ kind: z.literal("turn"), to: z.enum(TURN_TARGETS) }).strict(),
+    ]),
+  })
+  .strict();
 
 const FigurePatchSchema = FigureSchema.pick({
   x: true,
@@ -221,15 +257,20 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       motion: z.string().max(32),
       figure: figureRef,
       t: keyTime.optional(),
-      mirror: z.boolean().optional(),
-      repeat: z.number().int().min(1).max(100).optional(),
-      slow: z.number().finite().min(0.25).max(4).optional(),
-      inPlace: z.boolean().optional(),
-      backwards: z.boolean().optional(),
-      /** How long the move lasts (it repeats to fill it). */
-      seconds: z.number().finite().min(0.2).max(LIMITS.duration[1]).optional(),
+      ...MotionOptionFields,
     })
     .strict(),
+  z
+    .object({
+      // Direction beats: played one after another by this figure from
+      // time `t`, as keys, in one undo step; kept as timeline markers.
+      type: z.literal("directBeats"),
+      figure: FigureIdSchema,
+      t: keyTime,
+      beats: z.array(BeatSpecSchema).min(1).max(MAX_BEATS),
+    })
+    .strict(),
+  z.object({ type: z.literal("clearBeats"), figure: FigureIdSchema }).strict(),
   z
     .object({
       // Record what moves, at time `t`; replaces a key already there.
@@ -466,6 +507,7 @@ export function applyAction(
         figures: scene.figures.filter((f) => f.id !== action.figure),
         animation: forget(scene.animation, { figure: action.figure }),
         speech: scene.speech.filter((sp) => sp.figure !== action.figure),
+        beats: scene.beats.filter((b) => b.figure !== action.figure),
       });
     }
     case "updateFigure":
@@ -530,6 +572,13 @@ export function applyAction(
       }));
     case "applyMotion":
       return applyMotion(scene, action, ok);
+    case "directBeats":
+      return directBeats(scene, action, ok);
+    case "clearBeats":
+      return ok({
+        ...scene,
+        beats: scene.beats.filter((b) => b.figure !== action.figure),
+      });
     case "setKey": {
       const r = upsertKey(
         scene.animation,
@@ -710,9 +759,70 @@ function applyMotion(
       ok: false,
       error: `${motion.name} would end at ${secs(end)}; animations are at most ${LIMITS.duration[1]} s`,
     };
-  // The move replaces this figure's keys over its span; other figures,
-  // lights and the camera keep theirs.
-  const id = figure.id;
+  const entries = steps.map((s) => ({
+    t: roundTime(t0 + s.at),
+    entry: {
+      x: s.x,
+      y: s.y,
+      z: s.z,
+      rotation: s.rotation,
+      joints: s.joints,
+    },
+  }));
+  return withFigureKeys(scene, figure.id, t0, end, entries, figures, ok);
+}
+
+/** Direction beats as keys and markers (lib/studio/beats.ts). */
+function directBeats(
+  scene: SceneDoc,
+  action: Extract<SceneAction, { type: "directBeats" }>,
+  ok: (next: SceneDoc) => ActionResult,
+): ActionResult {
+  const figure = findFigure(scene, action.figure);
+  if (!figure) return { ok: false, error: `No figure "${action.figure}"` };
+  const plan = planBeats(figure, action.t, action.beats);
+  if ("error" in plan) return { ok: false, ...plan };
+  const t0 = plan.entries[0].t;
+  // Beats directed again over the same span replace the old ones.
+  const kept = scene.beats.filter(
+    (b) =>
+      b.figure !== figure.id ||
+      b.t + b.length <= t0 + KEY_EPSILON ||
+      b.t >= plan.end - KEY_EPSILON,
+  );
+  const beats = [
+    ...kept,
+    ...plan.markers.map((m) => ({ figure: figure.id, ...m })),
+  ].sort((a, b) => a.t - b.t);
+  if (beats.length > LIMITS.maxBeats)
+    return {
+      ok: false,
+      error: `That would make ${beats.length} beats; at most ${LIMITS.maxBeats}`,
+    };
+  const r = withFigureKeys(
+    scene,
+    figure.id,
+    t0,
+    plan.end,
+    plan.entries,
+    scene.figures,
+    (next) => ({ ok: true, scene: next }),
+  );
+  return r.ok ? ok({ ...r.scene, beats }) : r;
+}
+
+/** `entries` as this figure's keys from `t0` to `end`, replacing its
+ * keys over that span; other figures, lights and the camera keep
+ * theirs. The animation grows to hold them. */
+function withFigureKeys(
+  scene: SceneDoc,
+  id: string,
+  t0: number,
+  end: number,
+  entries: Array<{ t: number; entry: FigureState }>,
+  figures: Figure[],
+  ok: (next: SceneDoc) => ActionResult,
+): ActionResult {
   let keys = scene.animation.keys
     .map((k) => {
       if (k.t < t0 - KEY_EPSILON || k.t > end + KEY_EPSILON) return k;
@@ -727,15 +837,7 @@ function applyMotion(
         Object.keys(k.lights).length > 0 ||
         k.camera,
     );
-  for (const s of steps) {
-    const t = roundTime(t0 + s.at);
-    const entry = {
-      x: s.x,
-      y: s.y,
-      z: s.z,
-      rotation: s.rotation,
-      joints: s.joints,
-    };
+  for (const { t, entry } of entries) {
     const same = keys.find((k) => Math.abs(k.t - t) < KEY_EPSILON);
     keys = same
       ? keys.map((k) =>
@@ -756,8 +858,8 @@ function applyMotion(
     figures,
     animation: {
       ...scene.animation,
-      // A first move sets the length (so it loops without a long pause);
-      // later ones only ever lengthen it.
+      // A first move (or beats) sets the length (so it loops without a
+      // long pause); later ones only ever lengthen it.
       duration:
         scene.animation.keys.length === 0
           ? Math.max(LIMITS.duration[0], Math.ceil(end))
@@ -929,6 +1031,11 @@ export function describeAction(scene: SceneDoc, action: SceneAction): string {
   ].includes(action.type);
   if (action.type === "addSpeech" && scene.figures.length > 1)
     return `${figureLabel(scene, action.speech.figure)} · ${label}`;
+  if (
+    (action.type === "directBeats" || action.type === "clearBeats") &&
+    scene.figures.length > 1
+  )
+    return `${figureLabel(scene, action.figure)} · ${label}`;
   return perFigure && scene.figures.length > 1
     ? `${figureLabel(scene, figure ?? scene.figures[0].id)} · ${label}`
     : label;
@@ -984,6 +1091,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return action.label ?? "Load scene";
     case "addSpeech":
       return `Lip sync: ${action.speech.name}`;
+    case "directBeats":
+      return `Direct ${action.beats.length} beat${action.beats.length === 1 ? "" : "s"} at ${secs(action.t)}`;
+    case "clearBeats":
+      return "Clear beat markers";
     case "removeSpeech":
       return `Remove lip sync: ${scene.speech[action.index]?.name ?? "track"}`;
     case "applyPosePreset":

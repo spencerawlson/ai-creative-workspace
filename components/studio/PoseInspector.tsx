@@ -15,6 +15,7 @@ import {
   type Dof,
   type JointId,
 } from "@/lib/studio/pose";
+import { DirectBeats } from "./DirectBeats";
 import { LipSyncSection } from "./LipSync";
 import { MotionSearch } from "./MotionSearch";
 import { PhotoPoseButton } from "./PhotoPose";
@@ -96,6 +97,13 @@ export function PoseInspector({
       />
       <div className="px-3 py-3">
         <MotionSearch
+          studio={studio}
+          figure={figure}
+          time={time}
+          onPlayFrom={onPlayFrom}
+        />
+        <DirectBeats
+          key={figure.id}
           studio={studio}
           figure={figure}
           time={time}

@@ -221,6 +221,7 @@ export function defaultScene(): SceneDoc {
     figures: [newFigure("fig-1", "male", { x: 0, z: 0 })],
     animation: defaultAnimation(),
     speech: [],
+    beats: [],
   };
 }
 

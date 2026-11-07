@@ -11,8 +11,10 @@
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
  *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...],
  *     ch?: [characterId | null, ...],  (one per fg row)
- *     sp?: [[figure index, start, name, mouth, soundId?], ...] }
+ *     sp?: [[figure index, start, name, mouth, soundId?], ...],
  *          (lip sync; compressed links only)
+ *     bt?: [[figure index, t, length, text, note?], ...] }
+ *          (direction beats' markers; compressed links only)
  *
  * `y` (up/down) is only written when it isn't 0; older rows have the
  * pose preset (a string) in that place.
@@ -172,6 +174,20 @@ function decodePayload(parsed: object): SceneDoc | null {
             arr,
             arr(p.l).map((row) => arr(row)[0]),
           ),
+        }
+      : {}),
+    ...("bt" in p
+      ? {
+          beats: arr(p.bt).map((row) => {
+            const [figure, t, length, text, note] = arr(row);
+            return {
+              figure: typeof figure === "number" ? `fig-${figure + 1}` : null,
+              t,
+              length,
+              text,
+              ...(typeof note === "string" ? { note } : {}),
+            };
+          }),
         }
       : {}),
     ...("sp" in p
@@ -453,6 +469,17 @@ export async function encodeSceneLink(
   const json = JSON.stringify({
     ...scenePayload(scene),
     an: encodeAnimation(scene),
+    ...(scene.beats.length
+      ? {
+          bt: scene.beats.map((b) => [
+            order.get(b.figure),
+            b.t,
+            b.length,
+            b.text,
+            ...(b.note ? [b.note] : []),
+          ]),
+        }
+      : {}),
     ...(scene.speech.length
       ? {
           sp: scene.speech.map((sp) => [

@@ -83,6 +83,17 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   the timeline and goes into videos; share links carry the mouth
   movement, not the sound. It reads vowels, not words, and sometimes
   mixes up the rounded U and O.
+- Direct a scene in beats: Pose › Direct takes one beat per line (a
+  move or pose from the library, "face the camera", "turn left",
+  "pause 1 s"), with an optional note after "—", shows how each line
+  was read and how long it lasts, and plays them one after another from
+  the playhead, each starting where the last ended (one undo step). The
+  beats stay on the timeline as markers with their notes.
+- Pose from a photo: Pose › From photo finds the body in a picture on
+  your device (MediaPipe, loaded once, about 20 MB; the photo is not
+  uploaded), shows what it found over the photo, and poses the figure
+  in one undoable step. Parts the photo doesn't show clearly, fingers
+  and the face stay as they are.
 - On phones, the panels below the view are a bottom sheet: tap the
   handle or swipe down to fold them to a slim bar and give the 3D view
   the screen. Turned on its side, a phone keeps this layout with the

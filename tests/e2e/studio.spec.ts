@@ -1109,6 +1109,67 @@ test.describe("Lighting Studio — critical journeys", () => {
   });
 });
 
+test.describe("Direction beats", () => {
+  test("a scene written as beats plays one after another, with markers", async ({
+    page,
+  }) => {
+    const errors = await openStudio(page);
+    const rotation = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __studioEngine: { doc: { figures: { rotation: number }[] } };
+            }
+          ).__studioEngine.doc.figures[0].rotation,
+      );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await showInspector(page);
+    const script = page.getByTestId("beats-script");
+    const go = page.getByTestId("beats-direct");
+
+    // A line it can't read is flagged, and nothing can be directed.
+    await script.fill("turn left\nfly to the moon");
+    await expect(page.getByTestId("beats-preview")).toContainText(
+      "isn't a move the figure knows",
+    );
+    await expect(go).toBeDisabled();
+
+    // Each line shows how it was read.
+    await script.fill(
+      "turn left\nface the camera — finds us\npause 1 s\nwave twice",
+    );
+    const preview = page.getByTestId("beats-preview");
+    await expect(preview).toContainText("Turn to its left");
+    await expect(preview).toContainText("Face the camera");
+    await expect(preview).toContainText("finds us");
+    await expect(preview).toContainText("Hold 1 s");
+    await expect(preview).toContainText("Wave");
+    await go.click();
+    // Directing plays them; pause to look at each.
+    const play = await timelineControl(page, "timeline-play");
+    await expect(play).toHaveAttribute("aria-label", "Pause");
+    await play.click();
+
+    // Kept as markers on the timeline, with their notes.
+    const second = await timelineControl(page, "timeline-beat-1");
+    await expect(second).toHaveAttribute("title", /face the camera.*finds us/);
+    await expect(await timelineControl(page, "timeline-beat-3")).toHaveCount(1);
+    // The second beat starts once the turn is done: the figure faces
+    // its left there, and the camera once it has turned back.
+    await second.click();
+    await expect.poll(rotation).toBe(90);
+    await (await timelineControl(page, "timeline-beat-2")).click();
+    await expect.poll(rotation).toBe(0);
+
+    // One undo step takes the beats and their keys away.
+    await page.getByTestId("undo").click();
+    await expect(page.getByTestId("timeline-beat-0")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+});
+
 /** A 16-bit mono WAV: each part is [seconds, formants of a vowel or
  * null for quiet], from a small formant synthesiser. */
 function wav(parts: Array<[number, number[] | null]>): Buffer {

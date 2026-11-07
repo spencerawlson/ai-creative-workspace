@@ -220,6 +220,21 @@ most, oldest dropped) and played with the timeline
 (`components/studio/speechAudio.ts`); videos take a mix of them.
 Share links carry the mouth and the sound's id, not the sound.
 
+**Direction beats.** `lib/studio/beats.ts` reads a script, one beat
+per line (`;` also splits; a note follows `—`, `--` or `//`):
+a hold ("pause 2 s"), a turn on the spot ("face the camera", "turn
+left/right", "turn away"), or anything the motion search reads with
+confidence (score ≥ 1.85: a typo in a move's name passes, half a line
+doesn't). `planBeats` lays them end to end from the figure as it is:
+moves through `planMotion` from where the last beat left it, blending
+in over `BLEND` (0.4 s) when the first pose differs; poses and turns
+over `POSE_TIME` (0.8 s); holds as a repeated key. The `directBeats`
+action writes the keys through the same `withFigureKeys` as a typed
+move (the figure's keys over the span are replaced) and keeps each beat
+in `scene.beats` (figure, t, length, text, note) as a timeline marker;
+beats directed again over the same span replace the old markers.
+Links carry the markers (`bt`).
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with
