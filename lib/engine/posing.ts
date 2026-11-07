@@ -462,9 +462,10 @@ export function solveReach(
   return x;
 }
 
-/** Gaussian elimination with partial pivoting, for the tiny (≤ 3×3)
- * systems above. The damping keeps them well conditioned. */
-function solveLinear(A: number[][], b: number[]): number[] {
+/** Gaussian elimination with partial pivoting, for tiny systems (the
+ * drag solver's ≤ 3×3, the photo fit's ≤ 7×7). Damping keeps them well
+ * conditioned. */
+export function solveLinear(A: number[][], b: number[]): number[] {
   const n = b.length;
   const m = A.map((row, i) => [...row, b[i]]);
   for (let c = 0; c < n; c++) {

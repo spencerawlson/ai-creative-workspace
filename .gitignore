@@ -8,3 +8,6 @@ next-env.d.ts
 coverage/
 playwright-report/
 test-results/
+
+# Copied from node_modules by scripts/copy-mediapipe.mjs
+public/mediapipe/wasm/

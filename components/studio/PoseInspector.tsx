@@ -16,6 +16,8 @@ import {
   type JointId,
 } from "@/lib/studio/pose";
 import { MotionSearch } from "./MotionSearch";
+import { PhotoPoseButton } from "./PhotoPose";
+import type { ViewportHandle } from "./StudioViewport";
 import type { Studio } from "./useStudio";
 import type { CharacterLibrary } from "./useCharacters";
 import { figureLabel } from "@/lib/studio/figures";
@@ -43,6 +45,7 @@ export function PoseInspector({
   onPlayFrom,
   characters,
   onView,
+  viewport,
 }: {
   studio: Studio;
   figure: Figure;
@@ -52,6 +55,7 @@ export function PoseInspector({
   onPlayFrom?: (t: number) => void;
   characters?: CharacterLibrary;
   onView?: (v: CameraView) => void;
+  viewport?: React.RefObject<ViewportHandle | null>;
 }) {
   const { scene, dispatch, seal } = studio;
   const target = { figure: figure.id };
@@ -129,7 +133,22 @@ export function PoseInspector({
         <p className="text-2xs leading-relaxed text-ink-300">
           {preset?.note ?? "Custom pose. Pick a preset to start again."}
         </p>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
+          {viewport && (
+            <PhotoPoseButton
+              figureName={
+                scene.figures.length > 1
+                  ? figureLabel(scene, figure.id)
+                  : "the figure"
+              }
+              solve={(world, image) =>
+                viewport.current?.poseFromPhoto(world, image, figure.id) ?? null
+              }
+              onApply={(patches) =>
+                dispatch({ type: "updateJoints", patches, ...target })
+              }
+            />
+          )}
           <Button
             size="sm"
             icon={FlipHorizontal2}

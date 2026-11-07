@@ -404,7 +404,8 @@ test.describe("Lighting Studio — critical journeys", () => {
     await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
       "data-status",
       "ready",
-      { timeout: 90_000 },
+      // Slow here: no GPU, so the 3D view and the model share the CPU.
+      { timeout: 180_000 },
     );
     const turn = page.getByTestId("figure-rotation");
     await turn.fill("-30");
@@ -1049,5 +1050,63 @@ test.describe("layout", () => {
       "true",
     );
     await expect(page.getByTestId("light-azimuth")).toBeVisible();
+  });
+  test("pose from a photo: found on the device, applied in one undoable step", async ({
+    page,
+  }) => {
+    test.slow(); // the pose finder loads (about 20 MB) and runs on the CPU
+    const origins = new Set<string>();
+    page.on("request", (r) => origins.add(new URL(r.url()).origin));
+    await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    // The "photo": a render of the mannequin with both arms up.
+    await page.getByTestId("pose-preset-arms-up").click();
+    const png = await page.evaluate(async () => {
+      const engine = (
+        window as unknown as {
+          __studioEngine: {
+            exportImage(o: object): Promise<Blob>;
+            setCameraPlacement(p: object): void;
+          };
+        }
+      ).__studioEngine;
+      engine.setCameraPlacement({
+        position: [0, 1.1, 4.2],
+        target: [0, 1.1, 0],
+      });
+      const blob = await engine.exportImage({
+        width: 768,
+        height: 1152,
+        format: "image/png",
+      });
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+    await page.getByTestId("pose-preset-neutral").click();
+    expect(await poseValue(page, "shoulderL", "raise")).toBe(0);
+
+    await page.getByTestId("pose-photo-input").setInputFiles({
+      name: "arms-up.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(png),
+    });
+    const dialog = page.getByTestId("photo-pose-dialog");
+    await expect(dialog.getByTestId("photo-pose-summary")).toContainText(
+      "left arm",
+      { timeout: 90_000 },
+    );
+    await dialog.getByTestId("photo-pose-apply").click();
+    await expect(dialog).not.toBeVisible();
+    // Both arms come up (the preset is 140°), in one step back.
+    await expect
+      .poll(() => poseValue(page, "shoulderL", "raise"))
+      .toBeGreaterThan(100);
+    expect(await poseValue(page, "shoulderR", "raise")).toBeGreaterThan(100);
+    await page.getByTestId("undo").click();
+    await expect.poll(() => poseValue(page, "shoulderL", "raise")).toBe(0);
+    // Nothing left the site: the model and runtime are its own.
+    expect(
+      [...origins].filter((o) => o !== new URL(page.url()).origin),
+    ).toEqual([]);
   });
 });
