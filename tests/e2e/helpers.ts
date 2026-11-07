@@ -5,7 +5,7 @@ export const isMobile = (info: TestInfo) => info.project.name === "mobile";
 /** Open the studio and wait until WebGL is running and the model loaded. */
 export async function openStudio(
   page: Page,
-  path = "/",
+  path = "/studio",
   /** Runs right after navigation, before waiting for WebGL — for
    * assertions on transient startup notices. */
   beforeReady?: () => Promise<void>,

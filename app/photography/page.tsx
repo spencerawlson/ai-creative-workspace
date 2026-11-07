@@ -47,7 +47,10 @@ export default function Photography() {
   return (
     <main className="flex min-h-dvh flex-col bg-zinc-950 text-zinc-100">
       <header className="shrink-0 px-4 pb-3 pt-4 sm:px-6">
-        <Link href="/" className="text-sm font-medium text-zinc-300 underline">
+        <Link
+          href="/studio"
+          className="text-sm font-medium text-zinc-300 underline"
+        >
           ← I-K-O 3D
         </Link>
         <h1 className="mt-2 text-xl font-semibold leading-tight sm:text-2xl">

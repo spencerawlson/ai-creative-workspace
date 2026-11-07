@@ -204,7 +204,7 @@ test.describe("Lighting Studio — critical journeys", () => {
         ),
       )
       .toContain("Moody test");
-    await openStudio(page, "/"); // no ?s= → restore from autosave
+    await openStudio(page, "/studio"); // no ?s= → restore from autosave
     await expect(page.getByTestId("project-name")).toHaveValue("Moody test");
     await showPanel(page, "presets");
     await expect(page.getByTestId("preset-low-key")).toHaveAttribute(
@@ -1031,7 +1031,7 @@ test.describe("layout", () => {
     test.skip(isMobile(info), "desktop and tablet layout");
     // The server HTML (what shows before the scripts run) already has
     // the docked panels, never the phone sheet.
-    const html = await (await page.request.get("/")).text();
+    const html = await (await page.request.get("/studio")).text();
     expect(html).toContain('aria-label="Tools"');
     expect(html).not.toContain('data-testid="phone-sheet"');
     await openStudio(page);

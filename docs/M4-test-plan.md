@@ -24,7 +24,7 @@ account, so no one has deployed it for you. Recommended route:
    `spencerawlson/ai-creative-workspace` (private).
 3. Framework should detect as Next.js. Leave build settings as-is
    (`npm run build`, output is the standard Next.js build).
-4. Deploy, then open the Vercel URL on your iPhone.
+4. Deploy, then open the Vercel URL on your iPhone and tap Open the studio (or go straight to `<url>/studio`).
 5. This is the only route that tests share links properly, because
    a second phone needs the same public URL.
 
@@ -32,7 +32,7 @@ account, so no one has deployed it for you. Recommended route:
 
 1. On a computer on the same Wi-Fi, run the production build
    (`npm run build && npm run start`) — not `npm run dev`.
-2. On the iPhone, open `http://<that computer's LAN IP>:3000`.
+2. On the iPhone, open `http://<that computer's LAN IP>:3000/studio`.
 3. This works for orbit, presets, and smoothness, but a second phone
    on a different network cannot open your links, so it cannot
    prove the share-link criterion. Use Vercel for that step.

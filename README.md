@@ -80,6 +80,7 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   handle or swipe down to fold them to a slim bar and give the 3D view
   the screen. Turned on its side, a phone keeps this layout with the
   sheet folded, and nothing sits under the notch or the home bar.
+- `/`: the landing page. `/studio`: the studio itself.
 - `/photography`: the Camera Basics lesson on the same engine.
 
 There are no accounts or backend. The one machine-learning feature,

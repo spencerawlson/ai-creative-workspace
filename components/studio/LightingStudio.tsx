@@ -889,9 +889,12 @@ function Toolbar({
             I-K-O 3D
           </h1>
           <nav
-            aria-label="Studios"
-            className="mt-0.5 text-2xs leading-none text-ink-400"
+            aria-label="Site"
+            className="mt-0.5 flex gap-2 text-2xs leading-none text-ink-400"
           >
+            <Link href="/" className="hover:text-ink-200 hover:underline">
+              Home →
+            </Link>
             <Link
               href="/photography"
               className="hover:text-ink-200 hover:underline"
