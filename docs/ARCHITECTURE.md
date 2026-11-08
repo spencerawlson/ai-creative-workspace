@@ -233,7 +233,17 @@ action writes the keys through the same `withFigureKeys` as a typed
 move (the figure's keys over the span are replaced) and keeps each beat
 in `scene.beats` (figure, t, length, text, note) as a timeline marker;
 beats directed again over the same span replace the old markers.
-Links carry the markers (`bt`).
+Links carry the markers (`bt`). A beat may carry a sound
+(`speech`: read by `readVoice` in `components/studio/speechAudio.ts`,
+the same path as Pose › Face › Lip sync): it becomes a lip-sync track
+from the beat's start marked `beat: true`, which directing again over
+that span replaces; a "say" beat is a hold as long as its sound. The
+`moveBeat` action (a marker drag, one undo step) names a beat by its
+place among its figure's beats and moves it and everything after it
+on that figure (keys with their eases and tangents, beats, beat
+sounds), never before the beat ahead ends; moved away from the beat
+ahead, a copy of the key where that one ended holds the figure until
+the new start.
 
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level

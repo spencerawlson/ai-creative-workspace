@@ -2,8 +2,10 @@
  * this device's store (lib/studio/sounds.ts), played with the timeline,
  * and mixed for videos. A track whose sound isn't here stays silent. */
 
-import type { SceneDoc } from "@/lib/studio/schema";
-import { loadSound } from "@/lib/studio/sounds";
+import { lipSync } from "@/lib/studio/lipSync";
+import type { SceneDoc, Speech } from "@/lib/studio/schema";
+import { addSoundFile, loadSound, soundName } from "@/lib/studio/sounds";
+import { encodeMouth } from "@/lib/studio/speech";
 import { decodeAudioFile } from "./recordVideo";
 
 /** Decoded sounds by id; null: not on this device (or unreadable). */
@@ -31,6 +33,48 @@ export function soundBuffer(id: string): Promise<AudioBuffer | null> {
     loading.set(id, p);
   }
   return p;
+}
+
+/** Below this share of the sound with a voice heard, there's no speech
+ * to follow. */
+const MIN_VOICED = 0.03;
+
+/** A voice recording read for lip sync (lib/studio/lipSync.ts) and kept
+ * on the device to play. Throws, with a reason, when it can't be read,
+ * has no voice, or is longer than `room` seconds. `kept` explains why
+ * the sound wasn't kept (the mouth still moves). */
+export async function readVoice(
+  file: File,
+  room: number,
+): Promise<{
+  speech: Pick<Speech, "name" | "sound" | "mouth">;
+  seconds: number;
+  kept?: string;
+}> {
+  const buffer = await decodeAudioFile(file);
+  if (buffer.duration > room + 0.05)
+    throw new Error(
+      `That sound is ${Math.round(buffer.duration * 10) / 10} s; there's room for ${Math.round(room * 10) / 10} s. Start earlier or trim the sound.`,
+    );
+  // Let a "Reading…" state paint before the analysis runs.
+  await new Promise((r) => setTimeout(r, 0));
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) =>
+    buffer.getChannelData(i),
+  );
+  const result = lipSync(channels, buffer.sampleRate);
+  if (result.voiced < MIN_VOICED)
+    throw new Error("No voice was heard in that sound.");
+  const kept = await addSoundFile(file);
+  if ("id" in kept) rememberSound(kept.id, buffer);
+  return {
+    speech: {
+      name: soundName(file.name),
+      ...("id" in kept ? { sound: kept.id } : {}),
+      mouth: encodeMouth(result.frames),
+    },
+    seconds: result.duration,
+    ...("error" in kept ? { kept: kept.error } : {}),
+  };
 }
 
 /** Start decoding every track's sound, so playback has them. */

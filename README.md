@@ -87,8 +87,12 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   move or pose from the library, "face the camera", "turn left",
   "pause 1 s"), with an optional note after "—", shows how each line
   was read and how long it lasts, and plays them one after another from
-  the playhead, each starting where the last ended (one undo step). The
-  beats stay on the timeline as markers with their notes.
+  the playhead, each starting where the last ended (one undo step). Any
+  beat can carry a voice recording the figure says (lip sync from the
+  beat's start), and "say hello" holds the figure while it speaks. The
+  beats stay on the timeline as markers with their notes; drag one (or
+  focus it and use the arrow keys) to retime it and everything after
+  it, and the figure holds still in the gap.
 - Pose from a photo: Pose › From photo finds the body in a picture on
   your device (MediaPipe, loaded once, about 20 MB; the photo is not
   uploaded), shows what it found over the photo, and poses the figure

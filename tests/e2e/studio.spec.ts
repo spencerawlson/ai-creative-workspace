@@ -1168,6 +1168,76 @@ test.describe("Direction beats", () => {
     await expect(page.getByTestId("timeline-beat-0")).toHaveCount(0);
     expect(errors).toEqual([]);
   });
+
+  test("a beat says a sound, and dragging a marker retimes what follows", async ({
+    page,
+  }) => {
+    const errors = await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await showInspector(page);
+    const go = page.getByTestId("beats-direct");
+    await page
+      .getByTestId("beats-script")
+      .fill("face the camera\nsay hello — friendly\nwave");
+    // A say line needs its sound before anything can be directed.
+    await expect(page.getByTestId("beats-preview")).toContainText(
+      "pick its sound",
+    );
+    await expect(go).toBeDisabled();
+    await page.getByTestId("beats-sound-add-1").click();
+    await page.getByTestId("beats-sound-input").setInputFiles({
+      name: "hello.wav",
+      mimeType: "audio/wav",
+      buffer: wav([
+        [0.3, null],
+        [1, [730, 1090, 2440, 3400]],
+        [0.2, null],
+      ]),
+    });
+    await expect(page.getByTestId("beats-sound-1")).toContainText(
+      "says hello (1.5 s)",
+    );
+    await go.click();
+    const play = await timelineControl(page, "timeline-play");
+    await expect(play).toHaveAttribute("aria-label", "Pause");
+    await play.click();
+    await expect(
+      await timelineControl(page, "timeline-speech-0"),
+    ).toBeVisible();
+
+    // Drag the say beat's marker 2 s later: it and the wave move.
+    const at = async (i: number) =>
+      Number(
+        /at ([\d.]+) s/.exec(
+          (await page.getByTestId(`timeline-beat-${i}`).getAttribute("title"))!,
+        )![1],
+      );
+    const [say, wave] = [await at(1), await at(2)];
+    const marker = await timelineControl(page, "timeline-beat-1");
+    const box = (await marker.boundingBox())!;
+    const track = (await page.getByTestId("timeline-scrub").boundingBox())!;
+    const perSecond =
+      (track.width - 16) /
+      Number(await page.getByTestId("timeline-scrub").getAttribute("max"));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + 2 * perSecond,
+      box.y + box.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect.poll(() => at(1)).toBeGreaterThan(say + 1.5);
+    const shift = (await at(1)) - say;
+    expect(await at(2)).toBeCloseTo(wave + shift, 1);
+    expect(await at(0)).toBe(0);
+
+    // The drag was one undo step.
+    await page.getByTestId("undo").click();
+    await expect.poll(() => at(1)).toBeCloseTo(say, 1);
+    expect(errors).toEqual([]);
+  });
 });
 
 /** A 16-bit mono WAV: each part is [seconds, formants of a vowel or

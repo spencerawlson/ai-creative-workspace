@@ -36,7 +36,7 @@ export function decodeMouth(mouth: string): Uint8Array {
 }
 
 /** Seconds of mouth in a track. */
-export function speechLength(sp: Speech): number {
+export function speechLength(sp: Pick<Speech, "mouth">): number {
   return decodeMouth(sp.mouth).length / VISEMES.length / SPEECH_FPS;
 }
 

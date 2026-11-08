@@ -3,7 +3,10 @@
  * 1 s", "sit down"), played one after another by one figure.
  *
  * Each line is read as a move or pose from the motion library (the same
- * search as typing a move), a hold, or a turn on the spot. The planner
+ * search as typing a move), a hold, a turn on the spot, or a line to
+ * say ("say hello"). Any beat can carry a sound: the figure's mouth
+ * follows it from the beat's start (lip sync), and a "say" beat holds
+ * the figure as long as the sound lasts. The planner
  * lays them out in time and space, each starting where the one before
  * ended, with a short blend between them; the result is ordinary
  * keyframes, and each beat is kept as a timeline marker with its note. */
@@ -12,13 +15,15 @@ import { roundTime } from "./animation";
 import { findMotion, planMotion, type MotionOptions } from "./motions";
 import { describeOptions, searchMotions } from "./motionSearch";
 import { keepFace, type PoseJoints } from "./pose";
-import { LIMITS, type Figure } from "./schema";
+import { LIMITS, type Figure, type Speech } from "./schema";
+import { speechLength } from "./speech";
 
 /** What a beat does. */
 export type BeatDo =
   | ({ kind: "motion"; motion: string } & MotionOptions)
   | { kind: "hold"; seconds: number }
-  | { kind: "turn"; to: TurnTarget };
+  | { kind: "turn"; to: TurnTarget }
+  | { kind: "say" };
 
 export const TURN_TARGETS = ["camera", "left", "right", "away"] as const;
 export type TurnTarget = (typeof TURN_TARGETS)[number];
@@ -28,6 +33,8 @@ export interface BeatSpec {
   text: string;
   note?: string;
   do: BeatDo;
+  /** Lip sync from the beat's start. */
+  speech?: Pick<Speech, "name" | "sound" | "mouth">;
 }
 
 /** A line read: the beat, or why it wasn't understood. */
@@ -58,6 +65,8 @@ export function splitBeats(script: string): string[] {
 const HOLD = /^(?:pause|hold|wait|freeze|stay|stop|beat|still)\b/i;
 const TURN =
   /^(?:turn|face|spin)\s+(?:to(?:wards?)?\s+|round\s+to\s+)?(?:the\s+|its\s+)?(camera|front|us|audience|left|right|away|back)\b/i;
+const SAY =
+  /^(?:say|says|speak|speaks|talk|talks|tell|tells|sing|sings|reply|replies|ask|asks|answer|answers|shout|shouts|whisper|whispers)\b/i;
 const SECONDS = /(\d+(?:[.,]\d+)?)\s*(?:s|sec|secs|second|seconds)\b/i;
 
 /** Read one line. */
@@ -81,6 +90,8 @@ export function parseBeat(line: string): ParsedBeat {
     );
     return withNote({ do: { kind: "hold", seconds } }, `Hold ${seconds} s`);
   }
+  if (SAY.test(text))
+    return withNote({ do: { kind: "say" } }, "Say (as long as its sound)");
   const turn = TURN.exec(text);
   if (turn) {
     const w = turn[1].toLowerCase();
@@ -171,7 +182,10 @@ export function planBeats(
     const start = t;
     const d = b.do;
     if (d.kind === "hold") add(t + d.seconds, state);
-    else if (d.kind === "turn") {
+    else if (d.kind === "say") {
+      if (!b.speech) return { error: `"${b.text}" needs a sound to say` };
+      add(t + Math.max(0.2, speechLength(b.speech)), state);
+    } else if (d.kind === "turn") {
       const rotation =
         d.to === "camera"
           ? 0
