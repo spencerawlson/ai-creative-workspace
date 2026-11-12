@@ -12,9 +12,10 @@ const mb = (bytes: number) =>
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/** Which character a figure shows: the mannequin, or one imported onto
- * this device (GLB or VRM, with a human skeleton). Importing puts the
- * new character on this figure. */
+/** Which character a figure shows: the mannequin, one of the app's
+ * built-in cast (when it has one), or one imported onto this device
+ * (GLB or VRM, with a human skeleton). Importing puts the new character
+ * on this figure. */
 export function CharacterPicker({
   studio,
   figure,
@@ -27,8 +28,11 @@ export function CharacterPicker({
   const { dispatch } = studio;
   const input = useRef<HTMLInputElement>(null);
   const current = figure.character ?? null;
+  const member = characters.cast.find((c) => c.id === current);
   const missing =
-    current !== null && !characters.list.some((c) => c.id === current);
+    current !== null &&
+    !member &&
+    !characters.list.some((c) => c.id === current);
   const problem = current ? characters.problems[current] : undefined;
   const choose = (id: string | null, name?: string) =>
     dispatch({
@@ -71,6 +75,27 @@ export function CharacterPicker({
         <li className="flex">
           {option(null, "Mannequin", null, "character-none")}
         </li>
+        {characters.cast.length > 0 && (
+          <li
+            className="px-1 pt-1 text-2xs font-medium uppercase tracking-wide text-ink-400"
+            aria-hidden
+          >
+            Cast
+          </li>
+        )}
+        {characters.cast.map((c) => (
+          <li key={c.id} className="flex">
+            {option(c.id, c.name, "built in", `character-${c.id}`)}
+          </li>
+        ))}
+        {characters.list.length > 0 && characters.cast.length > 0 && (
+          <li
+            className="px-1 pt-1 text-2xs font-medium uppercase tracking-wide text-ink-400"
+            aria-hidden
+          >
+            On this device
+          </li>
+        )}
         {characters.list.map((c) => (
           <li key={c.id} className="flex items-center gap-1">
             {option(c.id, c.name, mb(c.size), `character-${c.id}`)}
@@ -122,9 +147,11 @@ export function CharacterPicker({
       >
         {characters.error ??
           problem ??
-          (missing
-            ? "This figure's character isn't on this device, so the mannequin stands in."
-            : "Needs a human skeleton (VRoid, Mixamo, Blender, Unreal). Files stay on this device; share links show the mannequin. Only use characters you have the right to, and no real person's likeness without their consent.")}
+          (member
+            ? `${member.name}: made with ${member.credit.tool} from the description “${member.credit.prompt}”. Built in, so share links show it on every device.`
+            : missing
+              ? "This figure's character isn't on this device, so the mannequin stands in."
+              : "Needs a human skeleton (VRoid, Mixamo, Blender, Unreal). Files stay on this device; share links show the mannequin. Only use characters you have the right to, and no real person's likeness without their consent.")}
       </p>
     </div>
   );

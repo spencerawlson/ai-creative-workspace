@@ -11,3 +11,6 @@ test-results/
 
 # Copied from node_modules by scripts/copy-mediapipe.mjs
 public/mediapipe/wasm/
+
+# Meshy downloads for the cast (large; the slimmed copies are in public/cast)
+assets/cast/source/

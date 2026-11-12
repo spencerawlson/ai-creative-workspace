@@ -245,6 +245,24 @@ sounds), never before the beat ahead ends; moved away from the beat
 ahead, a copy of the key where that one ended holds the figure until
 the new start.
 
+**Built-in cast.** `scripts/meshy-cast.mjs` (run on a developer's
+machine; the app never calls Meshy and holds no key) makes each
+character in `assets/cast/cast.spec.json` with Meshy's API
+(`scripts/meshy/client.mjs`: Bearer key from `MESHY_API_KEY`, tasks
+polled with `Retry-After`): a text-to-3D preview in A-pose (60k
+triangles), a PBR refine at 2K, then rigging with the Mixamo skeleton
+and fingers. Every task id is written to `assets/cast/state.json` as
+soon as it exists, so a run resumes without paying twice; a FAILED
+(refunded) step is made afresh next time; a changed prompt starts that
+character over. The rigged GLB is downloaded within Meshy's 3-day
+retention, checked for a skinned humanoid skeleton, and slimmed
+(`scripts/meshy/optimize-cast.mjs`: dedup, prune, 1024 px WebP
+textures, quantize, meshopt) into `public/cast/`, with `cast.json`
+listing what the app offers. The app reads that list
+(`lib/studio/cast.ts`, entries validated one by one) and puts cast
+members (`cast-…` character ids) beside imported ones; being served by
+the app, they survive share links on any device.
+
 **Figures.** A scene holds 1–4 `figures` (model, x/z on the floor, y
 up/down, rotation, pose). Scenes saved with the older single top-level
 `model` + `pose` upgrade on parse; a lone centred figure is shared with

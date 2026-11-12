@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "cast": [
+    {
+      "id": "business",
+      "name": "Business woman",
+      "prompt": "Full-body realistic woman in her thirties, navy business suit, white blouse, low heels, hair tied back, neutral expression, standing straight, arms slightly away from the body, plain studio background",
+      "heightMeters": 1.68
+    },
+    {
+      "id": "elder",
+      "name": "Older man",
+      "prompt": "Full-body realistic man in his seventies, grey cardigan over a checked shirt, brown trousers, leather shoes, short white hair, neutral expression, standing straight, arms slightly away from the body, plain studio background",
+      "heightMeters": 1.74
+    },
+    {
+      "id": "dancer",
+      "name": "Dancer",
+      "prompt": "Full-body realistic young dancer, fitted black top, loose red trousers, bare feet, hair in a bun, neutral expression, standing straight, arms slightly away from the body, plain studio background",
+      "heightMeters": 1.65
+    }
+  ]
+}

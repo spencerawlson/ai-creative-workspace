@@ -150,8 +150,12 @@ export const ModelSchema = z.enum(MODELS);
 export type MannequinModel = z.infer<typeof ModelSchema>;
 
 export const FigureIdSchema = z.string().regex(/^fig-\d{1,3}$/);
-/** An imported character, kept on this device (lib/studio/characters.ts). */
-export const CharacterIdSchema = z.string().regex(/^ch-[a-z0-9]{6,24}$/);
+/** A character: imported onto this device (`ch-…`, lib/studio/
+ * characters.ts), or one of the app's built-in cast (`cast-…`, lib/
+ * studio/cast.ts), which every device has. */
+export const CharacterIdSchema = z
+  .string()
+  .regex(/^(?:ch-[a-z0-9]{6,24}|cast-[a-z0-9][a-z0-9-]{1,23})$/);
 
 /** One mannequin in the scene: which model, where it stands, which way
  * it faces, and its pose. */
