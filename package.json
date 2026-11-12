@@ -50,6 +50,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "models": "node scripts/optimize-models.mjs",
+    "cast": "node scripts/meshy-cast.mjs",
     "test:e2e": "playwright test"
   },
   "version": "0.1.0",

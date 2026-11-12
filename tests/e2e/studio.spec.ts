@@ -1028,6 +1028,78 @@ test.describe("Lighting Studio — critical journeys", () => {
     expect(errors).toEqual([]);
   });
 
+  test("the built-in cast: picked from the list, and kept by share links on any device", async ({
+    page,
+    browser,
+  }) => {
+    // A cast of one, the test character standing in for a Meshy model,
+    // served from the app's own address as public/cast/ would be.
+    const serveCast = async (
+      context: import("@playwright/test").BrowserContext,
+    ) => {
+      await context.route("**/cast/cast.json", (r) =>
+        r.fulfill({
+          json: {
+            version: 1,
+            cast: [
+              {
+                id: "cast-tester",
+                name: "Tester",
+                file: "tester.glb",
+                size: 122184,
+                credit: { tool: "Meshy", prompt: "a test figure" },
+              },
+            ],
+          },
+        }),
+      );
+      await context.route("**/cast/tester.glb", (r) =>
+        r.fulfill({ path: "tests/fixtures/test-character.glb" }),
+      );
+    };
+    await serveCast(page.context());
+    const errors = await openStudio(page);
+    const shows = (p: import("@playwright/test").Page) =>
+      p.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: { figureShows(): string | null };
+          }
+        ).__studioEngine.figureShows(),
+      );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    const tester = page.getByTestId("character-cast-tester");
+    await expect(tester).toContainText("built in");
+    await tester.click();
+    await expect(tester).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => shows(page), { timeout: 30_000 }).toBe("character");
+    await expect(page.getByTestId("character-status")).toContainText(
+      "made with Meshy",
+    );
+
+    // Another device: the link brings the cast member, not the mannequin.
+    await expect
+      .poll(() => {
+        const param = new URL(page.url()).searchParams.get("s") ?? "";
+        return Buffer.from(param, "base64url")
+          .toString()
+          .includes("cast-tester");
+      })
+      .toBe(true);
+    const other = await browser.newContext();
+    await serveCast(other);
+    const page2 = await other.newPage();
+    const url = new URL(page.url());
+    await openStudio(page2, url.pathname + url.search);
+    await expect
+      .poll(() => shows(page2), { timeout: 30_000 })
+      .toBe("character");
+    await other.close();
+    expect(errors).toEqual([]);
+  });
+
   test("lip sync: a voice moves the character's mouth, read on the device", async ({
     page,
   }) => {

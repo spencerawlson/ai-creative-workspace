@@ -71,6 +71,10 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   start on High, phones on Fast). The Camera panel's lens look adds
   depth of field (an f-stop, focused on the figure's head), bloom,
   vignette and film grain, saved with the scene and its links.
+- A built-in cast (Figure › Character › Cast): ready-made characters
+  that come with the app, made once with Meshy by `npm run cast` and
+  served from the app itself, so share links show them on every device.
+  None yet: see [docs/meshy-cast.md](docs/meshy-cast.md).
 - Faces: on a character with face shapes (VRM, VRoid, ARKit
   blendshapes, visemes) or eye bones, Pose › Face sets where the eyes
   look, expressions (happy, angry, sad, relaxed, surprised), blinks and
@@ -128,6 +132,7 @@ npm run dev            # http://localhost:3000
 | `npm run typecheck` | TypeScript                                                |
 | `npm run format`    | Prettier                                                  |
 | `npm run models`    | Rig + rebuild `public/models/*.glb` from `assets/source/` |
+| `npm run cast`      | Make the built-in cast with Meshy (docs/meshy-cast.md)    |
 
 Run `npx playwright install chromium` once before the E2E tests.
 
@@ -137,4 +142,5 @@ Run `npx playwright install chromium` once before the E2E tests.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): layers, scene model, designs for accounts/AI/multi-studio
 - [docs/RELEASE-REPORT.md](docs/RELEASE-REPORT.md): what changed, test results, risks
 - [docs/M4-test-plan.md](docs/M4-test-plan.md): real-iPhone test plan (still to run)
+- [docs/meshy-cast.md](docs/meshy-cast.md): making the built-in cast with Meshy
 - [SCOPE.md](SCOPE.md), [docs/category-roadmap.md](docs/category-roadmap.md): product scope

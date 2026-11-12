@@ -1,17 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addCharacterFile,
   loadCharacters,
   removeCharacter,
   type CharacterEntry,
 } from "@/lib/studio/characters";
+import { castFileUrl, loadCast, type CastEntry } from "@/lib/studio/cast";
 
 export interface CharacterLibrary {
   /** On this device, oldest first. Empty until loaded. */
   list: CharacterEntry[];
-  /** A file URL per character, for the 3D view. */
+  /** The app's built-in cast (lib/studio/cast.ts). Empty until loaded,
+   * or when there is none. */
+  cast: CastEntry[];
+  /** A file URL per character (the cast's too), for the 3D view. */
   urls: Record<string, string>;
   /** Characters the 3D view couldn't use, and why. */
   problems: Record<string, string>;
@@ -31,6 +35,8 @@ export interface CharacterLibrary {
  * object URLs that live as long as the page (or the character). */
 export function useCharacters(): CharacterLibrary {
   const [list, setList] = useState<CharacterEntry[]>([]);
+  const [cast, setCast] = useState<CastEntry[]>([]);
+  const [castUrls, setCastUrls] = useState<Record<string, string>>({});
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [faces, setFaces] = useState<Record<string, string[]>>({});
@@ -40,6 +46,11 @@ export function useCharacters(): CharacterLibrary {
 
   useEffect(() => {
     let cancelled = false;
+    void loadCast().then((c) => {
+      if (cancelled) return;
+      setCast(c);
+      setCastUrls(Object.fromEntries(c.map((e) => [e.id, castFileUrl(e)])));
+    });
     loadCharacters()
       .then((all) => {
         if (cancelled) return;
@@ -99,9 +110,12 @@ export function useCharacters(): CharacterLibrary {
     setFaces((f) => ({ ...f, [id]: controls }));
   }, []);
 
+  const all = useMemo(() => ({ ...castUrls, ...urls }), [castUrls, urls]);
+
   return {
     list,
-    urls,
+    cast,
+    urls: all,
     problems,
     faces,
     error,
