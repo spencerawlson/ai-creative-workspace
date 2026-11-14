@@ -75,6 +75,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   that come with the app, made once with Meshy by `npm run cast` and
   served from the app itself, so share links show them on every device.
   None yet: see [docs/meshy-cast.md](docs/meshy-cast.md).
+- Statues: stand a figure on a round or square plinth (Figure ›
+  Statue), give it a statue material (marble, bronze, plaster, clay,
+  sandstone, dark stone, gold) and export it for 3D printing (Export ›
+  3D file › STL): posed as shown, Z up, in millimetres, at the height
+  you choose. Plinths also come along in GLB files and share links.
 - An MCP server (`npm run mcp`): an AI (Claude, or a local model in an
   MCP client) reads and directs a scene with the studio's own actions,
   writes performances as beats, and hands back a link that opens the

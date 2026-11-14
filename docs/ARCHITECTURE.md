@@ -245,6 +245,20 @@ sounds), never before the beat ahead ends; moved away from the beat
 ahead, a copy of the key where that one ended holds the figure until
 the new start.
 
+**Statues.** A figure's optional `plinth` ("round" | "square", set by
+`setPlinth`; `pl` in links) puts a base PLINTH_SIZE across and high
+under it (`lib/engine/plinth.ts`: foot, body and cap). The base sits in
+the figure's root group, so it turns with the figure and goes into GLB
+exports, while syncFigures lifts the root by the plinth's height and
+holds the base on the floor. `y` (jumps, sitting) still counts from the
+plinth's top. The base uses the studio material, which has statue
+presets. `lib/engine/statueExport.ts` bakes a statue for printing. It
+reads every vertex of the figures' own meshes ("model") and plinths
+with `getVertexPosition` (face shapes, then skinning), applies world
+transforms, and writes binary STL: Z up, centred, standing on z = 0,
+scaled to the requested height in millimetres. Posing helpers are left
+out.
+
 **Built-in cast.** `scripts/meshy-cast.mjs` (run on a developer's
 machine; the app never calls Meshy and holds no key) makes each
 character in `assets/cast/cast.spec.json` with Meshy's API

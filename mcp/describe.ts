@@ -32,7 +32,7 @@ export function describeScene(scene: SceneDoc): string {
       ? `character ${f.character} (stands in as the ${f.model} mannequin where it isn't available)`
       : `${f.model} mannequin`;
     out.push(
-      `- ${f.id}: ${who} at x ${r2(f.x)}, z ${r2(f.z)}, y ${r2(f.y)} m, facing ${r1(f.rotation)}° (0 = the camera)`,
+      `- ${f.id}: ${who}${f.plinth ? ` on a ${f.plinth} plinth (a statue)` : ""} at x ${r2(f.x)}, z ${r2(f.z)}, y ${r2(f.y)} m, facing ${r1(f.rotation)}° (0 = the camera)`,
       `  ${describePose(f)}`,
     );
     // Where its animation leaves it: a move travels, so the next beat,

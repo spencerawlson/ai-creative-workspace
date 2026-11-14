@@ -81,11 +81,15 @@ import {
 } from "./humanoid";
 import {
   LIMITS,
+  PLINTH_SIZE,
   type CameraPlacement,
   type MannequinModel,
+  type Plinth,
   type SceneDoc,
   type StudioLight,
 } from "@/lib/studio/schema";
+import { plinthGeometry } from "./plinth";
+import { bakeStatue, toStl, type StlResult } from "./statueExport";
 
 export type CameraView = "face" | "full" | "studio";
 /** Light id, "model", "camera", "backdrop", "pose", or `pose:<joint>`
@@ -247,6 +251,8 @@ interface FigureInstance {
   rig: ModelRig | null;
   /** The pose last applied (by identity), to skip unchanged figures. */
   joints: unknown;
+  /** The statue base it stands on, if any: in `root`, held on the floor. */
+  plinth: THREE.Mesh | null;
   /** A character's face, with this clone's shape meshes and eye bones. */
   face: {
     rig: FaceRig;
@@ -358,6 +364,11 @@ export class StudioEngine {
     THREE.BufferGeometry
   >;
   private readonly pickGeometry = new THREE.SphereGeometry(1, 8, 6);
+  /** Statue bases, shared by every figure on one (see plinthGeometry). */
+  private readonly plinthGeometries: Record<Plinth, THREE.BufferGeometry> = {
+    round: plinthGeometry("round"),
+    square: plinthGeometry("square"),
+  };
   private readonly pickMaterial = new THREE.MeshBasicMaterial();
   private envMap: THREE.Texture | null = null;
 
@@ -1184,8 +1195,13 @@ export class StudioEngine {
         if (this.view === "face" && inst === this.active) this.aimAtFace();
       }
       if (!inst) continue;
-      inst.root.position.set(f.x, f.y, f.z);
+      this.syncPlinth(inst, f.plinth ?? null);
+      // On a plinth the figure stands on its top; `y` (jumps, sitting)
+      // still counts from there, and the plinth stays on the floor.
+      const lift = inst.plinth ? PLINTH_SIZE.height : 0;
+      inst.root.position.set(f.x, f.y + lift, f.z);
       inst.root.rotation.y = THREE.MathUtils.degToRad(f.rotation);
+      inst.plinth?.position.set(0, -(f.y + lift), 0);
       if (inst.rig && inst.joints !== f.pose.joints) {
         applyPose(
           inst.rig.bones,
@@ -1213,6 +1229,25 @@ export class StudioEngine {
         : { model: waiting ? "loading" : "ready" },
     );
     this.invalidate();
+  }
+
+  /** Give a figure its statue base, change its shape, or take it away. */
+  private syncPlinth(inst: FigureInstance, kind: Plinth | null): void {
+    const geometry = kind ? this.plinthGeometries[kind] : null;
+    if (inst.plinth?.geometry === geometry) return;
+    if (inst.plinth) {
+      inst.root.remove(inst.plinth);
+      inst.plinth = null;
+    }
+    if (!geometry) return;
+    const mesh = new THREE.Mesh(geometry, this.material);
+    mesh.name = "plinth";
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    // Not a body part: taps go through it to the figure or the floor.
+    mesh.raycast = () => {};
+    inst.root.add(mesh);
+    inst.plinth = mesh;
   }
 
   private setStatus(status: EngineStatus): void {
@@ -1294,6 +1329,7 @@ export class StudioEngine {
       headHeight: template.headHeight,
       rig,
       joints: null,
+      plinth: null,
       face,
     };
     this.instances.set(id, inst);
@@ -2368,6 +2404,22 @@ export class StudioEngine {
     );
   }
 
+  /** The figures as a statue for 3D printing (lib/engine/statueExport.ts):
+   * posed as shown now, with their plinths, `heightMm` tall. One figure
+   * by id, or all of them as one piece. */
+  exportStl(opts: { heightMm: number; figure?: string }): StlResult {
+    const doc = this.doc;
+    if (!doc) throw new Error("The 3D view is not ready yet.");
+    const ids = opts.figure ? [opts.figure] : doc.figures.map((f) => f.id);
+    const roots = ids.flatMap((id) => {
+      const inst = this.instances.get(id);
+      return inst ? [inst.root] : [];
+    });
+    if (roots.length < ids.length)
+      throw new Error("The figures are still loading. Try again in a moment.");
+    return toStl(bakeStatue(roots), opts.heightMm);
+  }
+
   /** Render one frame at an arbitrary size and return it as a Blob.
    * Handles and the selection ring are hidden; the viewport is restored
    * before the promise resolves. */
@@ -2544,6 +2596,7 @@ export class StudioEngine {
     this.models.clear();
     for (const g of Object.values(this.handleGeometries)) g.dispose();
     this.pickGeometry.dispose();
+    for (const g of Object.values(this.plinthGeometries)) g.dispose();
     this.pickMaterial.dispose();
     this.selectionRing.geometry.dispose();
     this.selectionRing.material.dispose();

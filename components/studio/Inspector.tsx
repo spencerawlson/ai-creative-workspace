@@ -414,6 +414,28 @@ function ModelInspector({
           With this panel open, drag a figure in the viewport to move it across
           the floor.
         </Tip>
+        <SectionTitle>Statue</SectionTitle>
+        <Segmented
+          label="Plinth"
+          value={figure.plinth ?? "none"}
+          testIdPrefix="plinth"
+          options={[
+            { value: "none", label: "None" },
+            { value: "round", label: "Round" },
+            { value: "square", label: "Square" },
+          ]}
+          onChange={(v) =>
+            dispatch({
+              type: "setPlinth",
+              figure: figure.id,
+              plinth: v === "none" ? null : v,
+            })
+          }
+        />
+        <Tip className="mt-1">
+          Stand it on a plinth and pick a material below (marble, bronze,
+          plaster…), then Export › 3D file › STL to print it.
+        </Tip>
         <SectionTitle>
           {many ? "Material (all figures)" : "Material"}
         </SectionTitle>

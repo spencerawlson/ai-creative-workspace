@@ -11,6 +11,7 @@
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
  *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...],
  *     ch?: [characterId | null, ...],  (one per fg row)
+ *     pl?: [plinth index in PLINTHS, or -1 for none, ...],  (one per fg row)
  *     sp?: [[figure index, start, name, mouth, soundId?], ...],
  *          (lip sync; compressed links only)
  *     bt?: [[figure index, t, length, text, note?], ...] }
@@ -45,6 +46,7 @@ import { isAnimated } from "./speech";
 import {
   EASES,
   LIGHT_KINDS,
+  PLINTHS,
   SceneSchema,
   type Figure,
   type SceneDoc,
@@ -217,13 +219,15 @@ const poseRow = (f: Figure) =>
 function encodeFigures(figures: Figure[]) {
   const [only] = figures;
   const characters = figures.some((f) => f.character);
+  const plinths = figures.some((f) => f.plinth);
   if (
     figures.length === 1 &&
     !only.x &&
     !only.y &&
     !only.z &&
     !only.rotation &&
-    !characters
+    !characters &&
+    !plinths
   ) {
     const po = poseRow(only);
     return { m: only.model, ...(po.length ? { po } : {}) };
@@ -238,6 +242,9 @@ function encodeFigures(figures: Figure[]) {
       ...poseRow(f),
     ]),
     ...(characters ? { ch: figures.map((f) => f.character ?? null) } : {}),
+    ...(plinths
+      ? { pl: figures.map((f) => (f.plinth ? PLINTHS.indexOf(f.plinth) : -1)) }
+      : {}),
   };
 }
 
@@ -251,6 +258,7 @@ function decodeFigures(
   });
   if ("fg" in p) {
     const ch = "ch" in p ? arr(p.ch) : [];
+    const pl = "pl" in p ? arr(p.pl) : [];
     return {
       figures: arr(p.fg).map((row, i) => {
         const r = arr(row);
@@ -265,6 +273,10 @@ function decodeFigures(
           ...(lifted ? { y: r[4] } : {}),
           ...(r.length > at ? { pose: pose(r[at], r[at + 1]) } : {}),
           ...(typeof ch[i] === "string" ? { character: ch[i] } : {}),
+          // An index into PLINTHS; -1 (or a later kind) is none.
+          ...(typeof pl[i] === "number" && PLINTHS[pl[i] as number]
+            ? { plinth: PLINTHS[pl[i] as number] }
+            : {}),
         };
       }),
     };

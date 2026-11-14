@@ -11,6 +11,7 @@ import {
 } from "./recordVideo";
 import { downloadBlob, slug, type Studio } from "./useStudio";
 import { isAnimated } from "@/lib/studio/speech";
+import { figureLabel } from "@/lib/studio/figures";
 import { mixSpeech } from "./speechAudio";
 import {
   Button,
@@ -554,16 +555,47 @@ export function Export3DDialog({
   viewport: React.RefObject<ViewportHandle | null>;
 }) {
   const animated = isAnimated(studio.scene);
+  const [format, setFormat] = useState<"glb" | "stl">("glb");
   const [animation, setAnimation] = useState(true);
   const [stage, setStage] = useState(false);
+  const [heightMm, setHeightMm] = useState(150);
+  const [which, setWhich] = useState("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seconds = studio.scene.animation.duration;
+  const figures = studio.scene.figures;
   const areaLights = studio.scene.lights.filter(
     (l) => l.kind === "area",
   ).length;
+  // A figure picked earlier may since have been removed.
+  const figure = figures.some((f) => f.id === which) ? which : "all";
+
+  function runStl() {
+    setError(null);
+    try {
+      const r = viewport.current!.exportStl({
+        heightMm,
+        figure: figure === "all" ? undefined : figure,
+      });
+      const name =
+        figure === "all"
+          ? slug(studio.name)
+          : `${slug(studio.name)}-${figureLabel(studio.scene, figure)
+              .toLowerCase()
+              .replace(/\s+/g, "-")}`;
+      downloadBlob(r.blob, `${name}.stl`);
+      const [w, d, h] = r.sizeMm.map((v) => Math.round(v));
+      studio.notify(
+        `Exported a statue for 3D printing: ${w} × ${d} × ${h} mm, ${r.triangles.toLocaleString("en")} triangles (${(r.blob.size / 1e6).toFixed(1)} MB).`,
+      );
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed.");
+    }
+  }
 
   async function run() {
+    if (format === "stl") return runStl();
     setBusy(true);
     setError(null);
     try {
@@ -606,38 +638,94 @@ export function Export3DDialog({
             disabled={busy}
             data-testid="export-3d-confirm"
           >
-            {busy ? "Exporting…" : "Export GLB"}
+            {busy
+              ? "Exporting…"
+              : format === "stl"
+                ? "Export STL"
+                : "Export GLB"}
           </Button>
         </>
       }
     >
-      <p className="text-sm text-ink-200">
-        The figures as posed, with their skeletons and faces, in one glTF file
-        (.glb) that opens in Blender, Unity, Unreal, Maya and most 3D tools.
-      </p>
-      <Toggle
-        label="Include the animation"
-        checked={animated && animation}
-        onChange={setAnimation}
-        disabled={!animated}
-        testId="export-3d-animation"
-        hint={
-          animated
-            ? `${seconds} s at 30 frames a second: every bone, where the figures move, their faces.`
-            : "This scene has no keyframes, so the file holds the pose as it is now."
-        }
+      <Segmented
+        label="Format"
+        value={format}
+        testIdPrefix="export-3d-format"
+        options={[
+          { value: "glb", label: "GLB · 3D tools" },
+          { value: "stl", label: "STL · 3D printing" },
+        ]}
+        onChange={setFormat}
       />
-      <Toggle
-        label="Include the camera and lights"
-        checked={stage}
-        onChange={setStage}
-        testId="export-3d-stage"
-        hint={
-          areaLights
-            ? `glTF has no area lights, so ${areaLights === 1 ? "the softbox is" : `the ${areaLights} softboxes are`} left out; the other lights come along.`
-            : "The camera as it is now (and as animated), and the lights."
-        }
-      />
+      {format === "stl" ? (
+        <>
+          <p className="mt-1 text-sm text-ink-200">
+            The figures as a statue, posed as you see them now and standing on
+            their plinths, as one STL file for a 3D printer&rsquo;s slicer
+            (Cura, PrusaSlicer, Bambu Studio…), in millimetres.
+          </p>
+          {figures.length > 1 && (
+            <Segmented
+              label="Figures"
+              value={figure}
+              testIdPrefix="export-stl-figure"
+              options={[
+                { value: "all", label: "All" },
+                ...figures.map((f) => ({
+                  value: f.id,
+                  label: figureLabel(studio.scene, f.id),
+                })),
+              ]}
+              onChange={setWhich}
+            />
+          )}
+          <Slider
+            label="Height"
+            value={heightMm}
+            min={30}
+            max={500}
+            step={5}
+            unit=" mm"
+            testId="export-stl-height"
+            hint="From the bottom of the plinth (or the feet) to the top"
+            onChange={setHeightMm}
+          />
+          <p className="mt-1 text-2xs text-ink-400">
+            Thin parts such as fingers may need supports, or a larger print.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-ink-200">
+            The figures as posed, with their skeletons and faces, in one glTF
+            file (.glb) that opens in Blender, Unity, Unreal, Maya and most 3D
+            tools.
+          </p>
+          <Toggle
+            label="Include the animation"
+            checked={animated && animation}
+            onChange={setAnimation}
+            disabled={!animated}
+            testId="export-3d-animation"
+            hint={
+              animated
+                ? `${seconds} s at 30 frames a second: every bone, where the figures move, their faces.`
+                : "This scene has no keyframes, so the file holds the pose as it is now."
+            }
+          />
+          <Toggle
+            label="Include the camera and lights"
+            checked={stage}
+            onChange={setStage}
+            testId="export-3d-stage"
+            hint={
+              areaLights
+                ? `glTF has no area lights, so ${areaLights === 1 ? "the softbox is" : `the ${areaLights} softboxes are`} left out; the other lights come along.`
+                : "The camera as it is now (and as animated), and the lights."
+            }
+          />
+        </>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">
           {error}
