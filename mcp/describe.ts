@@ -35,6 +35,18 @@ export function describeScene(scene: SceneDoc): string {
       `- ${f.id}: ${who} at x ${r2(f.x)}, z ${r2(f.z)}, y ${r2(f.y)} m, facing ${r1(f.rotation)}° (0 = the camera)`,
       `  ${describePose(f)}`,
     );
+    // Where its animation leaves it: a move travels, so the next beat,
+    // or another figure, has to allow for it.
+    const last = scene.animation.keys.findLast((k) => k.figures[f.id]);
+    const end = last?.figures[f.id];
+    if (
+      last &&
+      end &&
+      last !== scene.animation.keys.find((k) => k.figures[f.id])
+    )
+      out.push(
+        `  animated: ends at x ${r2(end.x)}, z ${r2(end.z)}, y ${r2(end.y)} m, facing ${r1(end.rotation)}° (at ${secs(last.t)})`,
+      );
   }
 
   out.push(

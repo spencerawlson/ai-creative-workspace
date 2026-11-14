@@ -109,6 +109,15 @@ describe("the MCP server's tools", () => {
     const r = await call(s, "act", { actions: [JSON.parse(json!)] });
     expect(r.isError).toBeUndefined();
     expect(s.scene.animation.keys.length).toBeGreaterThan(1);
+    // How far a move goes, so figures can be placed to allow for it.
+    const walk = (
+      await call(s, "find_motion", { text: "walk 2 times", limit: 1 })
+    ).text;
+    expect(walk).toMatch(/Lasts [\d.]+ s and travels 2\.6 m forward/);
+    expect(
+      (await call(s, "find_motion", { text: "walk on the spot", limit: 1 }))
+        .text,
+    ).toMatch(/on the spot\./);
     expect((await call(s, "find_motion", { text: "qzxv" })).text).toMatch(
       /No move matches/,
     );
@@ -130,6 +139,8 @@ describe("the MCP server's tools", () => {
     ]);
     expect(s.scene.beats[0].t).toBe(0.5);
     expect(s.scene.beats[1].note).toBe("warm");
+    // The summary says where the walk leaves the figure.
+    expect(r.text).toMatch(/animated: ends at x [\d.-]+, z -?[1-9]/);
 
     const before = s.scene;
     const said = await call(s, "direct", {

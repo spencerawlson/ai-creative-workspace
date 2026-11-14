@@ -7,8 +7,12 @@ import { PRESETS } from "@/lib/lighting";
 import { MAX_BEATS, parseBeat, splitBeats } from "@/lib/studio/beats";
 import { roundTime } from "@/lib/studio/animation";
 import type { CastEntry } from "@/lib/studio/cast";
-import { MOTIONS } from "@/lib/studio/motions";
-import { describeOptions, searchMotions } from "@/lib/studio/motionSearch";
+import { MOTIONS, planMotion } from "@/lib/studio/motions";
+import {
+  describeOptions,
+  searchMotions,
+  type MotionMatch,
+} from "@/lib/studio/motionSearch";
 import { JOINTS, POSE_PRESETS } from "@/lib/studio/pose";
 import { BACKDROP_PRESETS, MATERIAL_PRESETS } from "@/lib/studio/presets";
 import { FigureIdSchema, LIMITS } from "@/lib/studio/schema";
@@ -67,6 +71,18 @@ function afterAct(
     ? `Done: ${r.done.join("; ")}.`
     : "Nothing changed: the scene was already like that.";
   return { text: `${done}\n\n${describeScene(session.scene)}` };
+}
+
+/** How long a found move lasts and how far it takes the figure, so a
+ * director can place figures so they don't walk into each other. */
+function reach(m: MotionMatch): string {
+  if (m.motion.kind !== "move") return " Held as a pose.";
+  const plan = planMotion(m.motion, { x: 0, z: 0, rotation: 0 }, m.options);
+  const secs = `Lasts ${Math.round(plan.length * 10) / 10} s`;
+  if (!m.motion.travel || m.options.inPlace) return ` ${secs}, on the spot.`;
+  const metres = Math.round(m.motion.travel * plan.repeat * 10) / 10;
+  const way = m.options.backwards ? "backwards" : "forward, the way it faces";
+  return ` ${secs} and travels ${metres} m ${way}.`;
 }
 
 const firstSentence = (s: string) => s.split(/(?<=\.)\s/)[0];
@@ -202,7 +218,7 @@ export const TOOLS: Tool[] = [
               motion: m.motion.id,
               ...m.options,
             };
-            return `- ${m.motion.name} (${m.motion.kind}${how ? `, ${how}` : ""}), match ${m.score.toFixed(2)}: ${m.motion.note}\n  ${JSON.stringify(action)}`;
+            return `- ${m.motion.name} (${m.motion.kind}${how ? `, ${how}` : ""}), match ${m.score.toFixed(2)}: ${m.motion.note}${reach(m)}\n  ${JSON.stringify(action)}`;
           })
           .join("\n"),
       };

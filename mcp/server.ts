@@ -22,7 +22,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const INSTRUCTIONS = `You are directing a scene in I-K-O 3D, a 3D studio for lighting, posing and animating figures.
 Start with "scene" to see what's there. "catalog" lists ids (lighting presets, poses, moves, joints, materials, backdrops, characters). "find_motion" turns words into a move. "direct" writes a figure's performance as beats, one per line; "act" applies any studio action. Every change is an undo step ("undo", "history").
-Distances are metres on a floor from -3 to 3; rotation 0 faces the camera; joint angles are degrees from the A-pose.
+Distances are metres on a floor from -3 to 3: x runs left to right as the camera sees it, z towards the camera. Rotation 0 faces the camera, 90 faces +x (right), -90 faces -x, 180 faces away. The default view frames about x -1 to 1. A move that travels takes the figure with it (find_motion says how far; the scene says where each figure ends): leave room. Joint angles are degrees from the A-pose.
 When the scene is ready, "share_link" gives a link that opens it in the studio: give it to the person.`;
 
 /** Where share links point: IKO_STUDIO_URL, or the dev server. */
