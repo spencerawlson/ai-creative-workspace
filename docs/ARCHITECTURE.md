@@ -386,6 +386,18 @@ The rule: **the model proposes, the app disposes.**
 Failure handling: timeouts and provider errors return a typed error,
 which the UI shows. The scene is never touched on failure.
 
+**Built: the MCP server** (`mcp/`, [mcp-server.md](mcp-server.md)).
+It follows the same rule, run locally. An MCP client (Claude, or a
+local model) calls tools whose `act` input is generated from
+`SceneActionSchema`, minus `loadScene`, `addSpeech` and the tangent
+actions. `mcp/session.ts` validates and dry-runs a whole batch with
+`applyAction` before committing any of it to a `history.ts` history,
+each action as its own undo step. `direct` reads beats with
+`parseBeat`, as the studio does. `share_link` and `open_link` use the
+studio's link format. The server holds one scene per process and has
+no network access and no keys. The studio's own hosted assistant
+(above) is still a design.
+
 ## 4. Multi-studio (Designed — partly in place)
 
 Already reusable: `StudioEngine` (Photography uses it today),

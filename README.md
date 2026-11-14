@@ -75,6 +75,10 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   that come with the app, made once with Meshy by `npm run cast` and
   served from the app itself, so share links show them on every device.
   None yet: see [docs/meshy-cast.md](docs/meshy-cast.md).
+- An MCP server (`npm run mcp`): an AI (Claude, or a local model in an
+  MCP client) reads and directs a scene with the studio's own actions,
+  writes performances as beats, and hands back a link that opens the
+  scene in the studio. See [docs/mcp-server.md](docs/mcp-server.md).
 - Faces: on a character with face shapes (VRM, VRoid, ARKit
   blendshapes, visemes) or eye bones, Pose › Face sets where the eyes
   look, expressions (happy, angry, sad, relaxed, surprised), blinks and
@@ -133,6 +137,7 @@ npm run dev            # http://localhost:3000
 | `npm run format`    | Prettier                                                  |
 | `npm run models`    | Rig + rebuild `public/models/*.glb` from `assets/source/` |
 | `npm run cast`      | Make the built-in cast with Meshy (docs/meshy-cast.md)    |
+| `npm run mcp`       | The MCP server, over stdio (docs/mcp-server.md)           |
 
 Run `npx playwright install chromium` once before the E2E tests.
 
@@ -143,4 +148,5 @@ Run `npx playwright install chromium` once before the E2E tests.
 - [docs/RELEASE-REPORT.md](docs/RELEASE-REPORT.md): what changed, test results, risks
 - [docs/M4-test-plan.md](docs/M4-test-plan.md): real-iPhone test plan (still to run)
 - [docs/meshy-cast.md](docs/meshy-cast.md): making the built-in cast with Meshy
+- [docs/mcp-server.md](docs/mcp-server.md): the MCP server, connecting a client, what comes next
 - [SCOPE.md](SCOPE.md), [docs/category-roadmap.md](docs/category-roadmap.md): product scope
