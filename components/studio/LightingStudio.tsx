@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -42,6 +41,12 @@ import {
   VideoExportDialog,
 } from "./Dialogs";
 import { Inspector } from "./Inspector";
+import {
+  BrandLink,
+  RailButton,
+  Sidebar,
+  WorkspaceMenu,
+} from "@/components/WorkspaceNav";
 import type { JointId } from "@/lib/studio/pose";
 import { isPoseSelection } from "./PoseInspector";
 import { HistoryPanel, PresetsPanel, ScenePanel } from "./Panels";
@@ -632,43 +637,49 @@ export function LightingStudio() {
         )}
       >
         {isDesktop && (
-          <nav
-            aria-label="Tools"
-            className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-ink-800 bg-ink-900 py-2"
+          <Sidebar
+            current="studio"
+            footer={
+              <>
+                <IconButton
+                  icon={Keyboard}
+                  label="Keyboard shortcuts"
+                  shortcut="?"
+                  onClick={() => setShortcutsOpen(true)}
+                />
+                <IconButton
+                  icon={panelOpen ? PanelLeftClose : PanelLeftOpen}
+                  label={panelOpen ? "Collapse panel" : "Expand panel"}
+                  shortcut="["
+                  onClick={() => setPanelOpen(!panelOpen)}
+                  data-testid="toggle-panel"
+                />
+              </>
+            }
           >
-            {TOOLS.map((t) => (
-              <IconButton
-                key={t.id}
-                icon={t.icon}
-                label={t.label}
-                active={panelOpen && tool === t.id}
-                aria-pressed={panelOpen && tool === t.id}
-                data-testid={`tool-${t.id}`}
-                onClick={() => {
-                  if (panelOpen && tool === t.id) setPanelOpen(false);
-                  else {
-                    setTool(t.id);
-                    setPanelOpen(true);
-                  }
-                }}
-              />
-            ))}
-            <div className="mt-auto flex flex-col items-center gap-1">
-              <IconButton
-                icon={Keyboard}
-                label="Keyboard shortcuts"
-                shortcut="?"
-                onClick={() => setShortcutsOpen(true)}
-              />
-              <IconButton
-                icon={panelOpen ? PanelLeftClose : PanelLeftOpen}
-                label={panelOpen ? "Collapse panel" : "Expand panel"}
-                shortcut="["
-                onClick={() => setPanelOpen(!panelOpen)}
-                data-testid="toggle-panel"
-              />
-            </div>
-          </nav>
+            <nav
+              aria-label="Tools"
+              className="flex flex-col items-center gap-1"
+            >
+              {TOOLS.map((t) => (
+                <RailButton
+                  key={t.id}
+                  icon={t.icon}
+                  label={t.label}
+                  title={t.label}
+                  active={panelOpen && tool === t.id}
+                  testId={`tool-${t.id}`}
+                  onClick={() => {
+                    if (panelOpen && tool === t.id) setPanelOpen(false);
+                    else {
+                      setTool(t.id);
+                      setPanelOpen(true);
+                    }
+                  }}
+                />
+              ))}
+            </nav>
+          </Sidebar>
         )}
         {isDesktop && panelOpen && (
           <aside
@@ -676,7 +687,7 @@ export function LightingStudio() {
             className={cx(
               "w-60 shrink-0 overflow-y-auto border-r border-ink-800 bg-ink-900 lg:w-64",
               !isWide &&
-                "absolute bottom-0 left-12 top-0 z-30 shadow-2xl shadow-black/60",
+                "absolute bottom-0 left-16 top-0 z-30 shadow-2xl shadow-black/60",
             )}
           >
             {panels[tool]}
@@ -948,37 +959,11 @@ function Toolbar({
   const { undo, redo, canUndo, canRedo, dispatch } = studio;
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
-      <div className="flex min-w-0 items-center gap-2">
-        {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static logo */}
-        <img
-          src="/brand/iko-logo-128.png"
-          alt=""
-          width={28}
-          height={28}
-          className="h-7 w-7 shrink-0"
-        />
-        <div className="hidden min-w-0 sm:block">
-          <h1 className="text-sm font-semibold leading-none text-ink-100">
-            I-K-O 3D
-          </h1>
-          <nav
-            aria-label="Site"
-            className="mt-0.5 flex gap-2 text-2xs leading-none text-ink-400"
-          >
-            <Link href="/" className="hover:text-ink-200 hover:underline">
-              Home →
-            </Link>
-            <Link
-              href="/photography"
-              className="hover:text-ink-200 hover:underline"
-            >
-              Photography →
-            </Link>
-            <Link href="/sculpt" className="hover:text-ink-200 hover:underline">
-              Sculpt →
-            </Link>
-          </nav>
-        </div>
+      <h1 className="sr-only">I-K-O 3D Studio</h1>
+      <div className="flex shrink-0 items-center gap-2">
+        <BrandLink />
+        {/* With no sidebar (phones), the workspaces are a menu here. */}
+        {compact && <WorkspaceMenu current="studio" />}
       </div>
       <div className="mx-1 hidden h-6 w-px bg-ink-750 sm:block" />
       <div className="flex min-w-0 flex-1 items-center gap-2">
