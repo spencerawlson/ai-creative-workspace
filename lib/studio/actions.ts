@@ -17,6 +17,7 @@ import {
   LightPatchSchema,
   MaterialSchema,
   ModelSchema,
+  PlinthSchema,
   SceneSchema,
   AnimationSchema,
   CameraPlacementSchema,
@@ -166,6 +167,14 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       character: CharacterIdSchema.nullable(),
       /** The character's name, for history labels only. */
       name: z.string().max(80).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      // A statue's base under this figure; null takes it away.
+      type: z.literal("setPlinth"),
+      figure: figureRef,
+      plinth: PlinthSchema.nullable(),
     })
     .strict(),
   z
@@ -495,6 +504,12 @@ export function applyAction(
         return action.character
           ? { ...rest, character: action.character }
           : rest;
+      });
+    case "setPlinth":
+      return withFigure(scene, action.figure, ok, (f) => {
+        if ((f.plinth ?? null) === action.plinth) return f;
+        const { plinth: _old, ...rest } = f;
+        return action.plinth ? { ...rest, plinth: action.plinth } : rest;
       });
     case "addFigure": {
       if (scene.figures.length >= LIMITS.maxFigures)
@@ -1263,6 +1278,15 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
       return action.character
         ? `Character: ${action.name ?? "imported"}`
         : "Back to the mannequin";
+    case "setPlinth": {
+      const who =
+        scene.figures.length > 1
+          ? `${figureLabel(scene, action.figure ?? scene.figures[0].id)}: `
+          : "";
+      return action.plinth
+        ? `${who}${action.plinth === "round" ? "Round" : "Square"} plinth`
+        : `${who}No plinth`;
+    }
     case "addFigure":
       return "Add figure";
     case "duplicateFigure":

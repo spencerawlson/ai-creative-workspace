@@ -150,6 +150,13 @@ export const ModelSchema = z.enum(MODELS);
 export type MannequinModel = z.infer<typeof ModelSchema>;
 
 export const FigureIdSchema = z.string().regex(/^fig-\d{1,3}$/);
+
+/** A statue's base: the figure stands on it, and it's exported with it
+ * (3D print, glTF). The same size for every figure, in metres. */
+export const PLINTHS = ["round", "square"] as const;
+export const PlinthSchema = z.enum(PLINTHS);
+export type Plinth = z.infer<typeof PlinthSchema>;
+export const PLINTH_SIZE = { width: 0.8, height: 0.2 } as const;
 /** A character: imported onto this device (`ch-…`, lib/studio/
  * characters.ts), or one of the app's built-in cast (`cast-…`, lib/
  * studio/cast.ts), which every device has. */
@@ -171,6 +178,9 @@ export const FigureSchema = z.object({
    * isn't available (another device, a share link) the mannequin in
    * `model` stands in, in the same pose. */
   character: CharacterIdSchema.optional(),
+  /** Stands on a plinth, as a statue: it's lifted by the plinth's
+   * height (`y` stays measured from standing). */
+  plinth: PlinthSchema.optional(),
   /** Optional on input: scenes saved before posing existed load in
    * the scan's A-pose. */
   pose: PoseSchema.default(defaultPose),

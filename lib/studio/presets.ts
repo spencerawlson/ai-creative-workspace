@@ -128,6 +128,35 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
     roughness: 0.08,
     metalness: 1,
   },
+  // Statue materials (with plaster, clay and bronze above).
+  {
+    id: "marble",
+    name: "Polished marble",
+    color: "#ece8e1",
+    roughness: 0.22,
+    metalness: 0,
+  },
+  {
+    id: "sandstone",
+    name: "Sandstone",
+    color: "#c9b08a",
+    roughness: 0.9,
+    metalness: 0,
+  },
+  {
+    id: "dark-stone",
+    name: "Dark stone",
+    color: "#3b3a3d",
+    roughness: 0.45,
+    metalness: 0,
+  },
+  {
+    id: "gold",
+    name: "Gold",
+    color: "#e2b65a",
+    roughness: 0.22,
+    metalness: 1,
+  },
 ];
 
 export interface BackdropPreset extends Omit<BackdropSettings, "preset"> {

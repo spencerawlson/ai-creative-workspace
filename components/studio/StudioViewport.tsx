@@ -28,6 +28,7 @@ import type {
   PhotoPoseResult,
 } from "@/lib/engine/photoPose";
 import type { GlbOptions, GlbResult } from "@/lib/engine/gltfExport";
+import type { StlResult } from "@/lib/engine/statueExport";
 import type { JointId } from "@/lib/studio/pose";
 import { nudgeLight } from "@/lib/studio/actions";
 import type { CameraPlacement, SceneDoc } from "@/lib/studio/schema";
@@ -37,6 +38,9 @@ export interface ViewportHandle {
   exportImage(opts: ExportOptions): Promise<Blob>;
   /** The figures as a glTF binary (lib/engine/gltfExport.ts). */
   exportGltf(opts: GlbOptions): Promise<GlbResult>;
+  /** The figures as a statue for 3D printing (lib/engine/statueExport.ts):
+   * as shown now, `heightMm` tall; one figure, or all. Throws if not ready. */
+  exportStl(opts: { heightMm: number; figure?: string }): StlResult;
   runBenchmark(durationMs?: number): Promise<BenchmarkResult>;
   getStats(): EngineStats | null;
   viewportSize(): { width: number; height: number };
@@ -260,6 +264,11 @@ export function StudioViewport({
         return e
           ? e.exportGltf(opts)
           : Promise.reject(new Error("The 3D view is not ready yet."));
+      },
+      exportStl: (opts) => {
+        const e = engineRef.current;
+        if (!e) throw new Error("The 3D view is not ready yet.");
+        return e.exportStl(opts);
       },
       runBenchmark: (ms) => {
         const e = engineRef.current;

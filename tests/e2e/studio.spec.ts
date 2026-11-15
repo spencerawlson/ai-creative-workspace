@@ -1353,6 +1353,105 @@ function wav(parts: Array<[number, number[] | null]>): Buffer {
   return out;
 }
 
+test.describe("Statues", () => {
+  /** Export the statue as STL; returns the triangles and the height. */
+  async function exportStl(page: import("@playwright/test").Page) {
+    await page.getByTestId("export-open").click();
+    await page.getByTestId("export-3d-open").click();
+    const dialog = page.getByTestId("export-3d-dialog");
+    await dialog.getByTestId("export-3d-format-stl").click();
+    await dialog.getByTestId("export-stl-height").fill("150");
+    const download = page.waitForEvent("download", { timeout: 60_000 });
+    await dialog.getByTestId("export-3d-confirm").click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/\.stl$/);
+    const fs = await import("node:fs");
+    const bytes = await fs.promises.readFile(await file.path());
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const count = v.getUint32(80, true);
+    expect(bytes.byteLength).toBe(84 + count * 50);
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let t = 0; t < count; t++)
+      for (let k = 1; k <= 3; k++) {
+        const z = v.getFloat32(84 + t * 50 + k * 12 + 8, true);
+        minZ = Math.min(minZ, z);
+        maxZ = Math.max(maxZ, z);
+      }
+    await expect(page.getByTestId("notice")).toContainText(
+      "Exported a statue for 3D printing",
+    );
+    return { count, minZ, maxZ };
+  }
+
+  test("a figure on a marble plinth: kept by links, printed as STL, in the GLB", async ({
+    page,
+  }) => {
+    test.slow(); // reads every vertex of the mannequin, twice
+    await openStudio(page);
+    const bare = await exportStl(page);
+    // The posed mannequin, on the bed, 150 mm tall.
+    expect(bare.count).toBeGreaterThan(50_000);
+    expect(bare.minZ).toBeCloseTo(0, 3);
+    expect(bare.maxZ).toBeCloseTo(150, 2);
+
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await page.getByTestId("plinth-round").click();
+    await page.getByTestId("material-marble").click();
+    await expect(page.getByTestId("plinth-round")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // The plinth comes along: the same height, more triangles.
+    const statue = await exportStl(page);
+    expect(statue.count).toBeGreaterThan(bare.count + 500);
+    expect(statue.maxZ).toBeCloseTo(150, 2);
+
+    // A reload (the address is the share link) keeps both.
+    await expect.poll(() => sParam(page)).toBeTruthy();
+    await openStudio(
+      page,
+      new URL(page.url()).pathname + new URL(page.url()).search,
+    );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await expect(page.getByTestId("plinth-round")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByTestId("material-marble")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // The glTF file has the plinth with the figure.
+    await page.getByTestId("export-open").click();
+    await page.getByTestId("export-3d-open").click();
+    const dialog = page.getByTestId("export-3d-dialog");
+    const download = page.waitForEvent("download", { timeout: 60_000 });
+    await dialog.getByTestId("export-3d-confirm").click();
+    const fs = await import("node:fs");
+    const bytes = new Uint8Array(
+      await fs.promises.readFile(await (await download).path()),
+    );
+    const { NodeIO } = await import("@gltf-transform/core");
+    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+    const doc = await new NodeIO()
+      .registerExtensions(ALL_EXTENSIONS)
+      .readBinary(bytes);
+    expect(
+      doc
+        .getRoot()
+        .listNodes()
+        .map((n) => n.getName()),
+    ).toContain("plinth");
+  });
+});
+
 test.describe("layout", () => {
   test("no horizontal scroll and the viewport keeps a usable size", async ({
     page,
