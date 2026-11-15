@@ -931,6 +931,9 @@ function Toolbar({
             >
               Photography →
             </Link>
+            <Link href="/sculpt" className="hover:text-ink-200 hover:underline">
+              Sculpt →
+            </Link>
           </nav>
         </div>
       </div>

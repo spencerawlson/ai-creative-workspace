@@ -259,6 +259,33 @@ transforms, and writes binary STL: Z up, centred, standing on z = 0,
 scaled to the requested height in millimetres. Posing helpers are left
 out.
 
+**Sculpt (`/sculpt`).** A page of its own: `components/sculpt/
+SculptStudio.tsx` around `lib/sculpt/SculptEngine.ts`, which doesn't
+share the studio's scene document. The sculpting logic in `lib/sculpt`
+is pure and tested in Node.
+
+- `mesh.ts` welds the clay and keeps each vertex's neighbours and faces
+  as flat arrays. Normals are recomputed only where a brush moved.
+- `brushes.ts` moves the vertices within the brush radius by a smooth
+  falloff, measured on the surface plane under the whole brush.
+- **Symmetry.** Each dab is mirrored across x = 0, and every vertex goes
+  to the nearer of the two dabs. Vertices on the middle line keep their
+  x, so the clay stays an exact mirror image (a test checks this to
+  float precision).
+- `history.ts` keeps one undo step per stroke: before and after
+  positions of the vertices it moved, within a memory budget.
+- `store.ts` keeps sculptures in IndexedDB. The list is stored apart
+  from the meshes, and saves happen 1.2 s after a change, or at once
+  when leaving.
+- **The 3D view** draws straight from the clay's arrays. Ray hits use
+  three-mesh-bvh, refitted each frame. The tree gets its own copy of the
+  index, because MeshBVH reorders the index it's given, which would
+  break the clay's face lists.
+- **Pointer.** A drag that starts on the clay sculpts; a drag off the
+  clay, a right drag, two fingers, or "Turn view" orbits.
+- **Export.** STL goes through `toStl`, as for statues; GLB is a static
+  mesh.
+
 **Built-in cast.** `scripts/meshy-cast.mjs` (run on a developer's
 machine; the app never calls Meshy and holds no key) makes each
 character in `assets/cast/cast.spec.json` with Meshy's API
