@@ -77,7 +77,13 @@ export default async function LandingPage({
             className="h-7 w-7 shrink-0"
           />
           <span className="text-sm font-semibold">I-K-O 3D</span>
-          <nav aria-label="Sections" className="ml-auto text-sm">
+          <nav aria-label="Sections" className="ml-auto flex gap-4 text-sm">
+            <Link
+              href="/sculpt"
+              className="text-ink-300 hover:text-ink-100 hover:underline"
+            >
+              Sculpt →
+            </Link>
             <Link
               href="/photography"
               className="text-ink-300 hover:text-ink-100 hover:underline"
@@ -119,6 +125,13 @@ export default async function LandingPage({
                 className="inline-flex min-h-11 items-center rounded-full border border-ink-700 px-6 py-3 text-sm font-medium text-ink-100 hover:border-ink-600"
               >
                 Learn the camera
+              </Link>
+              <Link
+                href="/sculpt"
+                data-testid="cta-sculpt"
+                className="inline-flex min-h-11 items-center rounded-full border border-ink-700 px-6 py-3 text-sm font-medium text-ink-100 hover:border-ink-600"
+              >
+                Sculpt clay
               </Link>
             </div>
           </div>
@@ -223,6 +236,10 @@ export default async function LandingPage({
               className="hover:text-ink-100 hover:underline"
             >
               Photography — Camera Basics
+            </Link>
+            {" · "}
+            <Link href="/sculpt" className="hover:text-ink-100 hover:underline">
+              Sculpt
             </Link>
           </p>
         </footer>

@@ -29,7 +29,12 @@ import {
 } from "lucide-react";
 import { PRESETS } from "@/lib/lighting";
 import type { CameraView, Selection } from "@/lib/engine/StudioEngine";
-import { parseProject, serializeProject } from "@/lib/studio/persistence";
+import {
+  parseProject,
+  saveAutosave,
+  serializeProject,
+} from "@/lib/studio/persistence";
+import { figureLabel } from "@/lib/studio/figures";
 import {
   Export3DDialog,
   ExportDialog,
@@ -489,8 +494,46 @@ export function LightingStudio() {
         setExport3DFormat("stl");
         setExport3DOpen(true);
       }}
+      onSculpt={(id) => void sculptFigure(id)}
     />
   );
+
+  /** The figure as posed, as clay: kept on the device, then opened on
+   * the Sculpt page (the studio's own scene is saved already). */
+  async function sculptFigure(id: string) {
+    let corners: Float32Array;
+    try {
+      corners = viewport.current!.bakeFigure(id);
+    } catch (e) {
+      studio.notify(
+        e instanceof Error ? e.message : "The figure couldn't be read.",
+        "error",
+      );
+      return;
+    }
+    studio.notify("Turning the figure into clay…");
+    const { keepFigureSculpture, sculptUrl } =
+      await import("@/lib/sculpt/fromFigure");
+    const many = studio.scene.figures.length > 1;
+    const r = await keepFigureSculpture(
+      corners,
+      many
+        ? `${studio.name} · ${figureLabel(studio.scene, id)}`
+        : `${studio.name} · figure`,
+    );
+    if ("error" in r) {
+      studio.notify(r.error, "error");
+      return;
+    }
+    // The studio autosaves shortly after each change: save now, so the
+    // last one isn't lost by leaving.
+    saveAutosave({
+      savedAt: Date.now(),
+      name: studio.name,
+      scene: studio.scene,
+    });
+    window.location.assign(sculptUrl(r.id));
+  }
   const panels: Record<Tool, React.ReactNode> = {
     scene: (
       <ScenePanel

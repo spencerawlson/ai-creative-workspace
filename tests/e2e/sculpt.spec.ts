@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openStudio, showInspector, showPanel } from "./helpers";
 
 /** Open the Sculpt page on a device with no sculptures kept yet. */
 async function openSculpt(page: Page) {
@@ -116,6 +117,37 @@ test.describe("Sculpt", () => {
     expect(errors).toEqual([]);
   });
 
+  test("a posed figure from the studio becomes clay on the Sculpt page", async ({
+    page,
+  }) => {
+    test.slow(); // half a million triangles, drawn without a GPU
+    await openSculpt(page); // a device with no sculptures yet
+    await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-pose").click();
+    await page.getByTestId("pose-preset-hand-on-hip").click();
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await page.getByTestId("plinth-round").click();
+    await page.getByTestId("statue-sculpt").click();
+    await page.waitForURL(/\/sculpt$/, { timeout: 60_000 });
+    await expect(page.getByTestId("sculpt-view")).toHaveAttribute(
+      "data-status",
+      "ready",
+      { timeout: 120_000 },
+    );
+    await expect(page.getByTestId("sculpt-name")).toHaveValue(/· figure$/);
+    // The whole figure and its plinth, welded: hundreds of thousands of
+    // triangles, already kept on the device.
+    const status = await page.getByTestId("sculpt-status").textContent();
+    const triangles = Number(status!.replace(/[^0-9]/g, ""));
+    expect(triangles).toBeGreaterThan(300_000);
+    await page.getByTestId("brush-inflate").click();
+    await stroke(page, -60);
+    await expect.poll(() => steps(page), { timeout: 60_000 }).toBe("1");
+  });
+
   test("the Sculpt page has no automatically detectable WCAG A/AA violations", async ({
     page,
   }) => {
@@ -128,5 +160,52 @@ test.describe("Sculpt", () => {
         (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
       ),
     ).toEqual([]);
+  });
+});
+
+test.describe("Sculpt with a pen", () => {
+  /** A drag across the middle of the view, as `pointerType` events. */
+  async function drag(page: Page, pointerType: "pen" | "touch", id: number) {
+    await page.getByTestId("sculpt-canvas").evaluate(
+      (el, { pointerType, id }) => {
+        const r = el.getBoundingClientRect();
+        const at = (dx: number) => ({
+          pointerId: id,
+          pointerType,
+          isPrimary: true,
+          button: 0,
+          buttons: 1,
+          pressure: 0.6,
+          clientX: r.left + r.width / 2 + dx,
+          clientY: r.top + r.height / 2,
+          bubbles: true,
+          cancelable: true,
+        });
+        el.dispatchEvent(new PointerEvent("pointerdown", at(-40)));
+        for (let dx = -36; dx <= 40; dx += 4)
+          el.dispatchEvent(new PointerEvent("pointermove", at(dx)));
+        el.dispatchEvent(
+          new PointerEvent("pointerup", { ...at(40), buttons: 0 }),
+        );
+      },
+      { pointerType, id },
+    );
+  }
+
+  test("the pen sculpts; after it, fingers only turn the view", async ({
+    page,
+  }) => {
+    await openSculpt(page);
+    // Before any pen: a finger on the clay sculpts (phones).
+    await drag(page, "touch", 11);
+    await expect.poll(() => steps(page)).toBe("1");
+    await drag(page, "pen", 12);
+    await expect.poll(() => steps(page)).toBe("2");
+    // Now fingers navigate: no new step.
+    await drag(page, "touch", 13);
+    await page.waitForTimeout(300);
+    expect(await steps(page)).toBe("2");
+    await drag(page, "pen", 14);
+    await expect.poll(() => steps(page)).toBe("3");
   });
 });

@@ -41,6 +41,9 @@ export interface ViewportHandle {
   /** The figures as a statue for 3D printing (lib/engine/statueExport.ts):
    * as shown now, `heightMm` tall; one figure, or all. Throws if not ready. */
   exportStl(opts: { heightMm: number; figure?: string }): StlResult;
+  /** One figure as shown, as triangles in its own space (for Sculpt).
+   * Throws if not ready. */
+  bakeFigure(id: string): Float32Array;
   runBenchmark(durationMs?: number): Promise<BenchmarkResult>;
   getStats(): EngineStats | null;
   viewportSize(): { width: number; height: number };
@@ -264,6 +267,11 @@ export function StudioViewport({
         return e
           ? e.exportGltf(opts)
           : Promise.reject(new Error("The 3D view is not ready yet."));
+      },
+      bakeFigure: (id) => {
+        const e = engineRef.current;
+        if (!e) throw new Error("The 3D view is not ready yet.");
+        return e.bakeFigure(id);
       },
       exportStl: (opts) => {
         const e = engineRef.current;

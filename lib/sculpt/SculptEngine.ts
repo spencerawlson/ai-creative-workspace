@@ -53,6 +53,8 @@ export interface SculptCallbacks {
 
 /** Dabs along a stroke, as a fraction of the brush radius. */
 const SPACING = 0.3;
+/** Least time between hit-tree refits during a stroke. */
+const REFIT_MS = 120;
 
 /** The clay as drawn: its own position and normal arrays (brushes move
  * them; the GPU copy follows), with a hit-test tree. The index is a
@@ -99,6 +101,8 @@ export class SculptEngine {
   };
   private stroke: {
     pointerId: number;
+    /** Made with a pen (palms and fingers are ignored meanwhile). */
+    pen: boolean;
     stroke: Stroke;
     last: THREE.Vector3;
     lastScreen: { x: number; y: number };
@@ -108,8 +112,11 @@ export class SculptEngine {
     start: THREE.Vector3;
   } | null = null;
   private touches = new Set<number>();
+  /** A pen has touched the screen: from then on fingers only navigate. */
+  private penSeen = false;
   private dirty = false;
   private needsRefit = false;
+  private lastRefit = 0;
   private frame = 0;
   private disposed = false;
 
@@ -356,7 +363,19 @@ export class SculptEngine {
   }
 
   private onDown = (e: PointerEvent): void => {
-    if (e.pointerType === "touch") this.touches.add(e.pointerId);
+    if (e.pointerType === "pen") this.penSeen = true;
+    if (e.pointerType === "touch") {
+      // A palm or finger while the pen sculpts: ignored, so it can't
+      // turn the view mid-stroke.
+      if (this.stroke?.pen) {
+        e.stopImmediatePropagation();
+        return;
+      }
+      this.touches.add(e.pointerId);
+      // Once a pen has been used, fingers only turn and zoom the view
+      // (iPad and Pencil: the pen sculpts, fingers move around).
+      if (this.penSeen) return;
+    }
     // A second finger: the view, not a stroke (end the one in progress).
     if (this.touches.size > 1) {
       if (this.stroke) this.endStroke();
@@ -368,13 +387,18 @@ export class SculptEngine {
     if (!hit) return; // off the clay: OrbitControls turns the view
     e.stopImmediatePropagation();
     e.preventDefault();
-    this.renderer.domElement.setPointerCapture(e.pointerId);
+    try {
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+    } catch {
+      // A pointer the browser no longer tracks: the stroke still works.
+    }
     const radius = this.tool.sizePx * this.worldPerPixel(hit.point);
     const stroke = new Stroke();
     const dab = this.dabFrom(hit, e);
     const view = this.camera.getWorldDirection(new THREE.Vector3());
     this.stroke = {
       pointerId: e.pointerId,
+      pen: e.pointerType === "pen",
       stroke,
       last: hit.point.clone(),
       lastScreen: { x: e.clientX, y: e.clientY },
@@ -531,10 +555,23 @@ export class SculptEngine {
     this.dirty = true;
     this.frame = requestAnimationFrame(() => {
       this.dirty = false;
-      if (this.needsRefit && this.bvh) {
+      // The hit-test tree follows the clay: a full refit costs ~45 ms on
+      // a 480k-triangle figure, so mid-stroke it's done a few times a
+      // second (dabs move the surface only a little), and always when
+      // the stroke ends.
+      const now = performance.now();
+      if (
+        this.needsRefit &&
+        this.bvh &&
+        (!this.stroke || now - this.lastRefit > REFIT_MS)
+      ) {
         this.bvh.refit();
         this.object?.geometry.computeBoundingSphere();
         this.needsRefit = false;
+        this.lastRefit = now;
+      } else if (this.needsRefit) {
+        // Not this frame: come back for it.
+        requestAnimationFrame(() => this.invalidate());
       }
       this.renderer.render(this.scene, this.camera);
     });

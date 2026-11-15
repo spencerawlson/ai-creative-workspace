@@ -10,6 +10,7 @@
  * is its own mirror image: it moves only along the line, so the halves
  * never part. Pure maths on SculptMesh: tested in Node. */
 
+import { VertexGrid } from "./grid";
 import { updateNormals, type SculptMesh } from "./mesh";
 
 export const BRUSHES = [
@@ -68,6 +69,23 @@ export interface StrokeRecord {
 export class Stroke {
   private slot = new Map<number, number>();
   private before: number[] = [];
+  private grid: VertexGrid | null = null;
+  private gridUses = 0;
+
+  /** A spatial hash for this stroke's brush size, rebuilt every
+   * GRID_USES gathers so vertices never stray far from where it put
+   * them (each query also looks GRID_MARGIN further out). */
+  gridFor(mesh: SculptMesh, radius: number): VertexGrid {
+    if (
+      !this.grid ||
+      this.grid.cell !== radius ||
+      ++this.gridUses > GRID_USES
+    ) {
+      this.grid = new VertexGrid(mesh.positions, radius);
+      this.gridUses = 0;
+    }
+    return this.grid;
+  }
 
   /** Keep `v`'s position from before the stroke first moved it. */
   remember(mesh: SculptMesh, v: number): void {
@@ -133,25 +151,36 @@ interface Gathered {
   weights: number[];
 }
 
-/** Vertices within `radius` of `c`, with their falloff weights. */
+/** Gathers between rebuilds of a stroke's grid. */
+const GRID_USES = 40;
+/** How much further out than the brush a grid query looks, as a
+ * fraction of the radius: what a vertex may move between rebuilds. */
+const GRID_MARGIN = 0.5;
+
+/** Vertices within `radius` of `c`, with their falloff weights; near
+ * ones found through `grid` when given, else by checking them all. */
 function gather(
   mesh: SculptMesh,
   c: readonly number[],
   radius: number,
+  grid?: VertexGrid,
 ): Gathered {
   const p = mesh.positions;
   const r2 = radius * radius;
   const indices: number[] = [];
   const weights: number[] = [];
-  for (let v = 0, i = 0; i < p.length; v++, i += 3) {
+  const test = (v: number) => {
+    const i = v * 3;
     const dx = p[i] - c[0];
     const dy = p[i + 1] - c[1];
     const dz = p[i + 2] - c[2];
     const d2 = dx * dx + dy * dy + dz * dz;
-    if (d2 >= r2) continue;
+    if (d2 >= r2) return;
     indices.push(v);
     weights.push(falloff(Math.sqrt(d2) / radius));
-  }
+  };
+  if (grid) grid.near(c, radius * (1 + GRID_MARGIN), test);
+  else for (let v = 0; v < p.length / 3; v++) test(v);
   return { indices, weights };
 }
 
@@ -166,15 +195,16 @@ function mirroredGathers(
   mesh: SculptMesh,
   point: readonly number[],
   s: BrushSettings,
-): [Gathered, Gathered, number[]] {
-  const first = gather(mesh, point, s.radius);
-  if (!s.symmetry) return [first, { indices: [], weights: [] }, []];
+  grid?: VertexGrid,
+): [Gathered, Gathered, number[], Gathered] {
+  const first = gather(mesh, point, s.radius, grid);
+  if (!s.symmetry) return [first, { indices: [], weights: [] }, [], first];
   const middle = first.indices.filter(
     (v) => Math.abs(mesh.positions[v * 3]) <= MIDDLE,
   );
   if (Math.abs(point[0]) <= MIDDLE)
-    return [first, { indices: [], weights: [] }, middle];
-  const second = gather(mesh, [-point[0], point[1], point[2]], s.radius);
+    return [first, { indices: [], weights: [] }, middle, first];
+  const second = gather(mesh, [-point[0], point[1], point[2]], s.radius, grid);
   const w1 = new Map(first.indices.map((v, i) => [v, first.weights[i]]));
   const w2 = new Map(second.indices.map((v, i) => [v, second.weights[i]]));
   const keep = (g: Gathered, other: Map<number, number>, ties: boolean) => {
@@ -189,7 +219,7 @@ function mirroredGathers(
     });
     return out;
   };
-  return [keep(first, w2, true), keep(second, w1, false), middle];
+  return [keep(first, w2, true), keep(second, w1, false), middle, first];
 }
 
 /** The weighted average position and normal under the brush: the plane
@@ -237,7 +267,12 @@ export function applyDab(
   s: BrushSettings,
   stroke: Stroke,
 ): Uint32Array {
-  const [g1, g2, middle] = mirroredGathers(mesh, dab.point, s);
+  const [g1, g2, middle, whole] = mirroredGathers(
+    mesh,
+    dab.point,
+    s,
+    stroke.gridFor(mesh, s.radius),
+  );
   // A vertex on the middle line is its own mirror image: it moves only
   // along the line (the two dabs' sideways pushes cancel).
   const keepX = middle.map((v) => mesh.positions[v * 3]);
@@ -270,7 +305,7 @@ export function applyDab(
   // The surface plane under the whole brush, and its mirror image for
   // the other side: each side working out its own from its share of the
   // vertices would give planes that aren't quite mirror images.
-  const plane = areaPlane(mesh, gather(mesh, dab.point, s.radius), dab.normal);
+  const plane = areaPlane(mesh, whole, dab.normal);
   const mirrorPlane: Plane = {
     c: [-plane.c[0], plane.c[1], plane.c[2]],
     n: [-plane.n[0], plane.n[1], plane.n[2]],
@@ -420,7 +455,12 @@ export function startGrab(
   s: BrushSettings,
   stroke: Stroke,
 ): Grab {
-  const [first, second, middle] = mirroredGathers(mesh, dab.point, s);
+  const [first, second, middle] = mirroredGathers(
+    mesh,
+    dab.point,
+    s,
+    stroke.gridFor(mesh, s.radius),
+  );
   const onLine = new Set(middle);
   const indices = [...first.indices, ...second.indices];
   const k = s.strength * (dab.pressure ?? 1);

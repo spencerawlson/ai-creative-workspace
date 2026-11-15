@@ -2420,6 +2420,27 @@ export class StudioEngine {
     return toStl(bakeStatue(roots), opts.heightMm);
   }
 
+  /** One figure as shown now (posed, with its plinth) as triangles in
+   * its own space: its middle on x = 0, facing +z (the front), its
+   * lowest point at y = 0. For sculpting it, where symmetry mirrors
+   * across x = 0. */
+  bakeFigure(id: string): Float32Array {
+    const inst = this.instances.get(id);
+    if (!inst)
+      throw new Error("The figure is still loading. Try again in a moment.");
+    const { positions } = bakeStatue([inst.root]);
+    const toLocal = inst.root.matrixWorld.clone().invert();
+    const v = new THREE.Vector3();
+    let minY = Infinity;
+    for (let i = 0; i < positions.length; i += 3) {
+      v.fromArray(positions, i).applyMatrix4(toLocal);
+      v.toArray(positions, i);
+      minY = Math.min(minY, v.y);
+    }
+    for (let i = 1; i < positions.length; i += 3) positions[i] -= minY;
+    return positions;
+  }
+
   /** Render one frame at an arbitrary size and return it as a Blob.
    * Handles and the selection ring are hidden; the viewport is restored
    * before the promise resolves. */
