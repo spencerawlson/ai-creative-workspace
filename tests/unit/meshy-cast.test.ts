@@ -12,7 +12,7 @@ import {
   manifest,
   readSpec,
 } from "@/scripts/meshy/cast.mjs";
-import { optimizeCast } from "@/scripts/meshy/optimize-cast.mjs";
+import { optimizeCast, problem } from "@/scripts/meshy/optimize-cast.mjs";
 
 const KEY = "msy_test_secret_key_123";
 
@@ -277,6 +277,9 @@ describe("the Meshy cast pipeline", () => {
           name: "Dancer",
           file: "dancer.glb",
           size: 4_200_000,
+          // The spec's height isn't the default, so the list carries it
+          // and the app stands her at 1.65 m.
+          heightMeters: 1.65,
           credit: { tool: "Meshy", prompt: "a dancer", made: "2026-11-18" },
         },
       ],
@@ -341,5 +344,51 @@ describe("slimming a cast member for the app", () => {
     doc.createScene().addChild(doc.createNode().setMesh(mesh));
     const bytes = await new NodeIO().writeBinary(doc);
     await expect(optimizeCast(bytes)).rejects.toThrow(/no skeleton/);
+  });
+
+  it("accepts the local rig's own bone names, not just Mixamo's", () => {
+    // What scripts/rig-mannequin.mjs writes (lib/engine/posing.ts):
+    // pelvis, spine, neck, shoulder/elbow/wrist, hip/knee, ankle.
+    const local = {
+      skins: 1,
+      joints: [
+        "pelvis",
+        "spine",
+        "neck",
+        "shoulderL",
+        "elbowL",
+        "wristL",
+        "shoulderR",
+        "elbowR",
+        "wristR",
+        "hipL",
+        "kneeL",
+        "ankleL",
+        "hipR",
+        "kneeR",
+        "ankleR",
+      ],
+    };
+    expect(problem(local)).toBeNull();
+    // Mixamo's names still pass, as before.
+    const mixamo = {
+      skins: 1,
+      joints: [
+        "mixamorig:Hips",
+        "mixamorig:Spine",
+        "mixamorig:Head",
+        "mixamorig:LeftArm",
+        "mixamorig:LeftForeArm",
+        "mixamorig:LeftUpLeg",
+        "mixamorig:LeftLeg",
+      ],
+    };
+    expect(problem(mixamo)).toBeNull();
+    // A skeleton missing the legs still fails.
+    const noLegs = {
+      skins: 1,
+      joints: ["pelvis", "spine", "neck", "shoulderL", "elbowL"],
+    };
+    expect(problem(noLegs)).toMatch(/upleg, leg/);
   });
 });

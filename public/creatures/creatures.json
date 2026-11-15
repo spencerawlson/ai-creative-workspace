@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "creatures": [
+    {
+      "id": "creature-lion",
+      "name": "Lion",
+      "file": "lion.glb",
+      "size": 383376,
+      "heightMeters": 1.1,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body lion standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-elephant",
+      "name": "Elephant",
+      "file": "elephant.glb",
+      "size": 382020,
+      "heightMeters": 2.5,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body elephant standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-hippo",
+      "name": "Hippo",
+      "file": "hippo.glb",
+      "size": 378816,
+      "heightMeters": 1.4,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body hippo standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-rhino",
+      "name": "Rhino",
+      "file": "rhino.glb",
+      "size": 379196,
+      "heightMeters": 1.6,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body rhino standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-tiger",
+      "name": "Tiger",
+      "file": "tiger.glb",
+      "size": 375324,
+      "heightMeters": 1,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body tiger standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-gorilla",
+      "name": "Gorilla",
+      "file": "gorilla.glb",
+      "size": 378772,
+      "heightMeters": 1.6,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body gorilla standing upright, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-monkey",
+      "name": "Monkey",
+      "file": "monkey.glb",
+      "size": 377064,
+      "heightMeters": 0.8,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body monkey standing upright, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-rat",
+      "name": "Rat",
+      "file": "rat.glb",
+      "size": 376104,
+      "heightMeters": 0.25,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body rat standing upright, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-bird",
+      "name": "Bird",
+      "file": "bird.glb",
+      "size": 340148,
+      "heightMeters": 0.35,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body bird standing, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-cat",
+      "name": "Cat",
+      "file": "cat.glb",
+      "size": 369144,
+      "heightMeters": 0.4,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body cat standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-dog-standing",
+      "name": "Dog (standing)",
+      "file": "dog-standing.glb",
+      "size": 370784,
+      "heightMeters": 0.6,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body dog standing in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    },
+    {
+      "id": "creature-dog-side",
+      "name": "Dog (side view)",
+      "file": "dog-side.glb",
+      "size": 371872,
+      "heightMeters": 0.6,
+      "credit": {
+        "tool": "Meshy",
+        "prompt": "Full-body dog in side view, plain grey untextured surface, plain studio background",
+        "made": "2026-11-15"
+      }
+    }
+  ]
+}

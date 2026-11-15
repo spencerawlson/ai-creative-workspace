@@ -16,6 +16,10 @@ export const CastEntrySchema = z.object({
   /** The GLB, next to the list. */
   file: z.string().regex(/^[a-z0-9][a-z0-9-]{1,23}\.glb$/),
   size: z.number().int().positive(),
+  /** How tall it stands in the scene, in metres. A human figure is
+   * 1.88 m; a member shorter than that (a child) stands at its own
+   * height instead. Absent: the figure's height. */
+  heightMeters: z.number().min(0.5).max(2.5).optional(),
   /** How it was made, shown with it. */
   credit: z.object({
     tool: z.string().max(40),

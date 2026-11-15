@@ -24,6 +24,7 @@ import {
   ChannelSchema,
   EaseSchema,
   CharacterIdSchema,
+  CreatureIdSchema,
   FigureIdSchema,
   FigureSchema,
   type Figure,
@@ -166,6 +167,16 @@ export const SceneActionSchema = z.discriminatedUnion("type", [
       /** null: back to the mannequin. */
       character: CharacterIdSchema.nullable(),
       /** The character's name, for history labels only. */
+      name: z.string().max(80).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("setCreature"),
+      figure: figureRef,
+      /** null: back to the mannequin. */
+      creature: CreatureIdSchema.nullable(),
+      /** The creature's name, for history labels only. */
       name: z.string().max(80).optional(),
     })
     .strict(),
@@ -500,10 +511,16 @@ export function applyAction(
     case "setCharacter":
       return withFigure(scene, action.figure, ok, (f) => {
         if ((f.character ?? null) === action.character) return f;
-        const { character: _old, ...rest } = f;
+        const { character: _old, creature: _creature, ...rest } = f;
         return action.character
           ? { ...rest, character: action.character }
           : rest;
+      });
+    case "setCreature":
+      return withFigure(scene, action.figure, ok, (f) => {
+        if ((f.creature ?? null) === action.creature) return f;
+        const { creature: _old, character: _character, ...rest } = f;
+        return action.creature ? { ...rest, creature: action.creature } : rest;
       });
     case "setPlinth":
       return withFigure(scene, action.figure, ok, (f) => {
@@ -1277,6 +1294,10 @@ function describeOnly(scene: SceneDoc, action: SceneAction): string {
     case "setCharacter":
       return action.character
         ? `Character: ${action.name ?? "imported"}`
+        : "Back to the mannequin";
+    case "setCreature":
+      return action.creature
+        ? `Creature: ${action.name ?? "animal"}`
         : "Back to the mannequin";
     case "setPlinth": {
       const who =

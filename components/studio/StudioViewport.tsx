@@ -86,6 +86,9 @@ export function StudioViewport({
   onFigureMoveEnd,
   onCameraEnd,
   characters,
+  characterHeights,
+  creatures,
+  creatureHeights,
   onCharacterProblem,
   onCharacterFace,
   className,
@@ -118,6 +121,12 @@ export function StudioViewport({
   onCameraEnd?: () => void;
   /** Imported characters' file URLs, by id. */
   characters?: Record<string, string>;
+  /** How tall a cast member stands, in metres, by character id. */
+  characterHeights?: Record<string, number>;
+  /** Built-in creatures' file URLs, by id. */
+  creatures?: Record<string, string>;
+  /** How tall each creature stands, in metres, by creature id. */
+  creatureHeights?: Record<string, number>;
   onCharacterProblem?: (character: string, message: string) => void;
   /** A character loaded: its face controls ("expression.happy", ...). */
   onCharacterFace?: (character: string, controls: string[]) => void;
@@ -147,6 +156,9 @@ export function StudioViewport({
     onFigureMoveEnd,
     onCameraEnd,
     characters,
+    characterHeights,
+    creatures,
+    creatureHeights,
     onCharacterProblem,
     onCharacterFace,
   });
@@ -168,6 +180,9 @@ export function StudioViewport({
     onFigureMoveEnd,
     onCameraEnd,
     characters,
+    characterHeights,
+    creatures,
+    creatureHeights,
     onCharacterProblem,
     onCharacterFace,
   };
@@ -211,7 +226,8 @@ export function StudioViewport({
         engine.setQuality(p.quality);
         engine.setSelection(p.selection);
         engine.setActiveFigure(p.activeFigure);
-        engine.setCharacters(p.characters ?? {});
+        engine.setCharacters(p.characters ?? {}, p.characterHeights ?? {});
+        engine.setCreatures(p.creatures ?? {}, p.creatureHeights ?? {});
         engine.update(p.scene, p.overrides);
         if (p.viewNonce > 0 || p.view !== "full") engine.setView(p.view);
       })
@@ -234,8 +250,12 @@ export function StudioViewport({
   }, [selection]);
 
   useEffect(() => {
-    engineRef.current?.setCharacters(characters ?? {});
-  }, [characters]);
+    engineRef.current?.setCharacters(characters ?? {}, characterHeights ?? {});
+  }, [characters, characterHeights]);
+
+  useEffect(() => {
+    engineRef.current?.setCreatures(creatures ?? {}, creatureHeights ?? {});
+  }, [creatures, creatureHeights]);
 
   useEffect(() => {
     engineRef.current?.setShowHandles(showHandles);

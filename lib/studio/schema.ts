@@ -168,6 +168,14 @@ export const CharacterIdSchema = z
   .string()
   .regex(/^(?:ch-[a-z0-9]{6,24}|cast-[a-z0-9][a-z0-9-]{1,23})$/);
 
+/** A creature: one of the app's built-in animals (`creature-…`, lib/
+ * studio/creatures.ts), which every device has. A creature has no human
+ * skeleton, so it stands in the scene as a static figure — it can't be
+ * posed, and it replaces the mannequin/character, never both. */
+export const CreatureIdSchema = z
+  .string()
+  .regex(/^creature-[a-z0-9][a-z0-9-]{1,23}$/);
+
 /** One mannequin in the scene: which model, where it stands, which way
  * it faces, and its pose. */
 export const FigureSchema = z.object({
@@ -182,6 +190,10 @@ export const FigureSchema = z.object({
    * isn't available (another device, a share link) the mannequin in
    * `model` stands in, in the same pose. */
   character: CharacterIdSchema.optional(),
+  /** A built-in creature to show instead of the mannequin. It has no
+   * skeleton, so it stands still (the figure's pose is ignored) and
+   * replaces the character, never both. */
+  creature: CreatureIdSchema.optional(),
   /** Stands on a plinth, as a statue: it's lifted by the plinth's
    * height (`y` stays measured from standing). */
   plinth: PlinthSchema.optional(),

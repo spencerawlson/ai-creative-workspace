@@ -64,6 +64,7 @@ import {
   type Studio,
 } from "./useStudio";
 import { useCharacters } from "./useCharacters";
+import { useCreatures } from "./useCreatures";
 import { useRenderQuality } from "./useRenderQuality";
 
 type Tool = "scene" | "presets" | "history";
@@ -111,6 +112,7 @@ export function LightingStudio() {
   const studio = useStudio();
   const { scene, dispatch, seal, undo, redo } = studio;
   const characters = useCharacters();
+  const creatures = useCreatures();
   // md+: docked panels. lg+: room for both side panels; below that the
   // tool panel floats over the viewport and starts collapsed.
   // Short viewports (landscape phones, ~412px tall) use the phone sheet
@@ -495,6 +497,7 @@ export function LightingStudio() {
       time={time}
       onPlayFrom={playFrom}
       characters={characters}
+      creatures={creatures}
       onPrint={() => {
         setExport3DFormat("stl");
         setExport3DOpen(true);
@@ -734,6 +737,9 @@ export function LightingStudio() {
               onFigureMoveEnd={seal}
               onCameraEnd={onCameraEnd}
               characters={characters.urls}
+              characterHeights={characters.castHeights}
+              creatures={creatures.urls}
+              creatureHeights={creatures.heights}
               onCharacterProblem={characters.reportProblem}
               onCharacterFace={characters.reportFace}
             />

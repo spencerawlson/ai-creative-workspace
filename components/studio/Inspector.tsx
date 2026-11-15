@@ -29,6 +29,7 @@ import type { Studio } from "./useStudio";
 import { CharacterPicker } from "./CharacterPicker";
 import { MotionSearch } from "./MotionSearch";
 import type { CharacterLibrary } from "./useCharacters";
+import type { CreatureLibrary } from "./useCreatures";
 import { PoseInspector, isPoseSelection } from "./PoseInspector";
 import type { ViewportHandle } from "./StudioViewport";
 import {
@@ -60,6 +61,8 @@ type Props = {
   onPlayFrom?: (t: number) => void;
   /** Imported characters on this device. */
   characters?: CharacterLibrary;
+  /** Built-in creatures on this device. */
+  creatures?: CreatureLibrary;
   /** This device's render quality. */
   quality?: RenderQuality;
   onQuality?: (q: RenderQuality) => void;
@@ -291,6 +294,7 @@ function ModelInspector({
   time,
   onPlayFrom,
   characters,
+  creatures,
   onPrint,
   onSculpt,
 }: Props) {
@@ -310,9 +314,11 @@ function ModelInspector({
         title={
           many
             ? figureLabel(scene, figure.id)
-            : figure.character
-              ? "Character"
-              : "Mannequin"
+            : figure.creature
+              ? "Creature"
+              : figure.character
+                ? "Character"
+                : "Mannequin"
         }
       >
         <IconButton
@@ -351,12 +357,13 @@ function ModelInspector({
             dispatch({ type: "setModel", model, figure: figure.id })
           }
         />
-        {characters && (
+        {characters && creatures && (
           <div className="mt-3">
             <CharacterPicker
               studio={studio}
               figure={figure}
               characters={characters}
+              creatures={creatures}
             />
           </div>
         )}

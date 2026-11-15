@@ -17,6 +17,10 @@ export interface CharacterLibrary {
   cast: CastEntry[];
   /** A file URL per character (the cast's too), for the 3D view. */
   urls: Record<string, string>;
+  /** How tall a cast member stands, in metres, by character id (a
+   * child stands at its own height; members at the figure's height
+   * are absent). */
+  castHeights: Record<string, number>;
   /** Characters the 3D view couldn't use, and why. */
   problems: Record<string, string>;
   /** Each loaded character's face controls ("expression.happy", ...);
@@ -111,11 +115,21 @@ export function useCharacters(): CharacterLibrary {
   }, []);
 
   const all = useMemo(() => ({ ...castUrls, ...urls }), [castUrls, urls]);
+  const castHeights = useMemo(
+    () =>
+      Object.fromEntries(
+        cast
+          .filter((e) => e.heightMeters !== undefined)
+          .map((e) => [e.id, e.heightMeters as number]),
+      ),
+    [cast],
+  );
 
   return {
     list,
     cast,
     urls: all,
+    castHeights,
     problems,
     faces,
     error,

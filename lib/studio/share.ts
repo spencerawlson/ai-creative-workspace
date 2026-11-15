@@ -11,6 +11,7 @@
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
  *     fg?: [[model, x, z, rotation, y?, posePreset?, [joint angles]?], ...],
  *     ch?: [characterId | null, ...],  (one per fg row)
+ *     cr?: [creatureId | null, ...],   (one per fg row)
  *     pl?: [plinth index in PLINTHS, or -1 for none, ...],  (one per fg row)
  *     sp?: [[figure index, start, name, mouth, soundId?], ...],
  *          (lip sync; compressed links only)
@@ -27,7 +28,9 @@
  *
  * `ch` names each figure's imported character. The files stay on the
  * device that imported them, so elsewhere the mannequin stands in; on
- * that device a reload (which reopens the address) keeps them.
+ * that device a reload (which reopens the address) keeps them. `cr`
+ * names each figure's creature the same way; creatures are built in,
+ * so they show everywhere.
  *
  * `sp` carries each lip-sync track's mouth (lib/studio/speech.ts) but
  * not its sound, which stays on the device that read it, like a
@@ -227,6 +230,7 @@ const poseRow = (f: Figure) =>
 function encodeFigures(figures: Figure[]) {
   const [only] = figures;
   const characters = figures.some((f) => f.character);
+  const creatures = figures.some((f) => f.creature);
   const plinths = figures.some((f) => f.plinth);
   if (
     figures.length === 1 &&
@@ -235,6 +239,7 @@ function encodeFigures(figures: Figure[]) {
     !only.z &&
     !only.rotation &&
     !characters &&
+    !creatures &&
     !plinths
   ) {
     const po = poseRow(only);
@@ -250,6 +255,7 @@ function encodeFigures(figures: Figure[]) {
       ...poseRow(f),
     ]),
     ...(characters ? { ch: figures.map((f) => f.character ?? null) } : {}),
+    ...(creatures ? { cr: figures.map((f) => f.creature ?? null) } : {}),
     ...(plinths
       ? { pl: figures.map((f) => (f.plinth ? PLINTHS.indexOf(f.plinth) : -1)) }
       : {}),
@@ -266,6 +272,7 @@ function decodeFigures(
   });
   if ("fg" in p) {
     const ch = "ch" in p ? arr(p.ch) : [];
+    const cr = "cr" in p ? arr(p.cr) : [];
     const pl = "pl" in p ? arr(p.pl) : [];
     return {
       figures: arr(p.fg).map((row, i) => {
@@ -281,6 +288,7 @@ function decodeFigures(
           ...(lifted ? { y: r[4] } : {}),
           ...(r.length > at ? { pose: pose(r[at], r[at + 1]) } : {}),
           ...(typeof ch[i] === "string" ? { character: ch[i] } : {}),
+          ...(typeof cr[i] === "string" ? { creature: cr[i] } : {}),
           // An index into PLINTHS; -1 (or a later kind) is none.
           ...(typeof pl[i] === "number" && PLINTHS[pl[i] as number]
             ? { plinth: PLINTHS[pl[i] as number] }

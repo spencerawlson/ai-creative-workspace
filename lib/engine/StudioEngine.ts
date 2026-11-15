@@ -385,6 +385,16 @@ export class StudioEngine {
   /** Imported characters: file URL by character id, and back. */
   private characterUrls = new Map<string, string>();
   private characterIds = new Map<string, string>();
+  /** How tall a character stands, in metres, by file URL. A member
+   * shorter than the figure's height (a child) stands at its own
+   * height; anything absent stands at the figure's height. */
+  private characterHeights = new Map<string, number>();
+  /** Built-in creatures: file URL by creature id, and back, plus how
+   * tall each stands (lib/studio/creatures.ts). A creature has no
+   * skeleton, so it loads through prepareModel, not prepareCharacter. */
+  private creatureUrls = new Map<string, string>();
+  private creatureIds = new Map<string, string>();
+  private creatureHeights = new Map<string, number>();
   /** Character files that loaded but can't be posed. */
   private unusable = new Set<string>();
   private instances = new Map<string, FigureInstance>();
@@ -1115,9 +1125,15 @@ export class StudioEngine {
       (gltf) => {
         this.loading.delete(url);
         const character = this.characterIds.get(url);
+        const creature = this.creatureIds.get(url);
         const model = character
-          ? this.prepareCharacter(gltf)
-          : this.prepareModel(gltf.scene);
+          ? this.prepareCharacter(gltf, this.characterHeights.get(url))
+          : this.prepareModel(
+              gltf.scene,
+              creature
+                ? (this.creatureHeights.get(url) ?? FIGURE_HEIGHT)
+                : undefined,
+            );
         if (typeof model === "string") {
           disposeObject(gltf.scene, this.material);
           if (this.disposed) return;
@@ -1157,12 +1173,21 @@ export class StudioEngine {
 
   /** Imported characters' files (object URLs), by character id. A
    * figure whose character isn't here, or can't be used, shows its
-   * mannequin. */
-  setCharacters(urls: Record<string, string>): void {
+   * mannequin. `heights` names how tall a character stands, in metres,
+   * by character id (a child stands at its own height). */
+  setCharacters(
+    urls: Record<string, string>,
+    heights: Record<string, number> = {},
+  ): void {
     const before = [...this.characterIds.keys()];
     this.characterUrls = new Map(Object.entries(urls));
     this.characterIds = new Map(
       [...this.characterUrls].map(([id, url]) => [url, id]),
+    );
+    this.characterHeights = new Map(
+      [...this.characterUrls]
+        .filter(([id]) => heights[id] !== undefined)
+        .map(([id, url]) => [url, heights[id]]),
     );
     this.syncFigures();
     // Free characters no longer on the device (their figures have just
@@ -1180,12 +1205,48 @@ export class StudioEngine {
     }
   }
 
-  /** The file a figure shows: its character's when that can be used. */
+  /** The file a figure shows: its creature's when it has one, else its
+   * character's when that can be used, else its mannequin. */
   private figureUrl(f: SceneDoc["figures"][number]): string {
+    const creature = f.creature ? this.creatureUrls.get(f.creature) : undefined;
+    if (creature && !this.failed.has(creature)) return creature;
     const url = f.character ? this.characterUrls.get(f.character) : undefined;
     return url && !this.failed.has(url) && !this.unusable.has(url)
       ? url
       : MODEL_URLS[f.model];
+  }
+
+  /** Built-in creatures' files (served URLs), by creature id, and how
+   * tall each stands. A figure whose creature isn't here shows its
+   * mannequin. */
+  setCreatures(
+    urls: Record<string, string>,
+    heights: Record<string, number>,
+  ): void {
+    const before = [...this.creatureIds.keys()];
+    this.creatureUrls = new Map(Object.entries(urls));
+    this.creatureIds = new Map(
+      [...this.creatureUrls].map(([id, url]) => [url, id]),
+    );
+    this.creatureHeights = new Map(
+      [...this.creatureUrls].map(([id, url]) => [
+        url,
+        heights[id] ?? FIGURE_HEIGHT,
+      ]),
+    );
+    this.syncFigures();
+    // Free creatures no longer listed (their figures have just gone
+    // back to the mannequin).
+    for (const url of before) {
+      if (this.creatureIds.has(url)) continue;
+      const model = this.models.get(url);
+      const used = [...this.instances.values()].some((i) => i.url === url);
+      if (model && !used) {
+        disposeModel(model, this.material);
+        this.models.delete(url);
+      }
+      this.failed.delete(url);
+    }
   }
 
   retryModel(): void {
@@ -1450,8 +1511,9 @@ export class StudioEngine {
 
   /** An imported character: its own skeleton (from the VRM bone map or
    * by bone names), turned to face +Z, with its own materials. Returns
-   * why it can't be used instead, when it can't. */
-  private prepareCharacter(gltf: GLTF): CachedModel | string {
+   * why it can't be used instead, when it can't. `height` is how tall
+   * it stands, in metres; absent, it stands at the figure's height. */
+  private prepareCharacter(gltf: GLTF, height?: number): CachedModel | string {
     const holder = new THREE.Group();
     holder.add(gltf.scene);
     holder.updateMatrixWorld(true);
@@ -1478,7 +1540,7 @@ export class StudioEngine {
       holder.updateMatrixWorld(true);
     }
     const face = this.prepareFace(holder, gltf, nodes, bones.neck!);
-    const model = this.prepareModel(holder, bones);
+    const model = this.prepareModel(holder, bones, height);
     if (!model)
       return "This character's skeleton is put together in a way the studio can't pose yet.";
     model.face = face;
@@ -1515,25 +1577,31 @@ export class StudioEngine {
     );
   }
 
-  private prepareModel(root: THREE.Object3D): CachedModel;
+  /** A model with no skeleton to pose (a mannequin, or a creature),
+   * scaled so its height is `height` metres (a figure is 1.88 m; a
+   * creature stands at its own heightMeters). */
+  private prepareModel(root: THREE.Object3D, height?: number): CachedModel;
   private prepareModel(
     root: THREE.Object3D,
     character: Partial<Record<BoneName, THREE.Bone>>,
+    height?: number,
   ): CachedModel | null;
   private prepareModel(
     root: THREE.Object3D,
-    character?: Partial<Record<BoneName, THREE.Bone>>,
+    character?: Partial<Record<BoneName, THREE.Bone>> | number,
+    height?: number,
   ): CachedModel | null {
+    const bones = typeof character === "object" ? character : undefined;
+    const h =
+      typeof character === "number" ? character : (height ?? FIGURE_HEIGHT);
     root.updateMatrixWorld(true);
-    const rig = character
-      ? this.characterRig(root, character)
-      : this.prepareRig(root);
-    if (character && !rig) return null;
+    const rig = bones ? this.characterRig(root, bones) : this.prepareRig(root);
+    if (bones && !rig) return null;
     // Bounds in the bind pose (the skinned box applies the bones).
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const s = FIGURE_HEIGHT / size.y;
+    const s = h / size.y;
     root.scale.setScalar(s);
     root.position.set(-center.x * s, -box.min.y * s, -center.z * s);
     root.traverse((obj) => {
@@ -1541,7 +1609,7 @@ export class StudioEngine {
       if (!mesh.isMesh) return;
       // The studio material replaces whatever the mannequin GLB shipped
       // with; characters keep their own (skin, clothes, face).
-      if (!character) {
+      if (!bones) {
         const old = mesh.material;
         for (const m of Array.isArray(old) ? old : [old])
           if (m !== this.material) m.dispose();
@@ -1992,11 +2060,13 @@ export class StudioEngine {
   }
 
   /** For automated tests: what a figure (default: the active one) is
-   * showing, an imported character or its mannequin. */
-  figureShows(figure?: string): "character" | "mannequin" | null {
+   * showing, a character, a creature, or its mannequin. */
+  figureShows(figure?: string): "character" | "creature" | "mannequin" | null {
     const inst = figure ? this.instances.get(figure) : this.active;
     if (!inst) return null;
-    return this.characterIds.has(inst.url) ? "character" : "mannequin";
+    if (this.characterIds.has(inst.url)) return "character";
+    if (this.creatureIds.has(inst.url)) return "creature";
+    return "mannequin";
   }
 
   /** A figure's pose (default: the active one) fitted to a photo's body
