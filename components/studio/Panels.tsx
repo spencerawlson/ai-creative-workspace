@@ -94,7 +94,8 @@ function Row({
         />
         <span
           className={cx(
-            "truncate text-sm",
+            // The name keeps its room (up to 60%); a long detail gives way.
+            "max-w-[60%] shrink-0 truncate text-sm",
             dim ? "text-ink-500" : selected ? "text-ink-100" : "text-ink-200",
           )}
         >
@@ -102,8 +103,9 @@ function Row({
         </span>
         {detail && (
           <span
+            title={detail}
             className={cx(
-              "ml-auto shrink-0 pl-2 text-2xs tabular-nums",
+              "ml-auto min-w-0 truncate pl-2 text-2xs tabular-nums",
               // ink-400 fails AA on the amber selection tint.
               selected ? "text-ink-200" : "text-ink-400",
             )}

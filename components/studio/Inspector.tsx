@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Gauge, Printer, Trash2 } from "lucide-react";
+import { Copy, Gauge, Hammer, Printer, Trash2 } from "lucide-react";
 import { figureLabel } from "@/lib/studio/figures";
 import { useSelectNewFigure } from "./useSelectNewFigure";
 import { CUSTOM_NOTE, PRESETS } from "@/lib/lighting";
@@ -64,6 +64,8 @@ type Props = {
   onQuality?: (q: RenderQuality) => void;
   /** Open the 3D export set for printing (STL). */
   onPrint?: () => void;
+  /** Turn this figure, as posed, into clay on the Sculpt page. */
+  onSculpt?: (figure: string) => void;
 };
 
 export function Inspector(props: Props) {
@@ -289,6 +291,7 @@ function ModelInspector({
   onPlayFrom,
   characters,
   onPrint,
+  onSculpt,
 }: Props) {
   const { scene, dispatch, seal } = studio;
   const m = scene.material;
@@ -387,6 +390,17 @@ function ModelInspector({
             data-testid="statue-print"
           >
             Export for 3D printing (STL)
+          </Button>
+        )}
+        {onSculpt && (
+          <Button
+            size="sm"
+            icon={Hammer}
+            className="mt-1.5 w-full"
+            onClick={() => onSculpt(figure.id)}
+            data-testid="statue-sculpt"
+          >
+            Sculpt this figure
           </Button>
         )}
         <div className="mt-3">

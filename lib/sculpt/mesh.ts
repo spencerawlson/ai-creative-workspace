@@ -32,20 +32,52 @@ export function weld(
   precision = 1e-5,
 ): { positions: Float32Array; index: Uint32Array } {
   const corners = index ? index.length : positions.length / 3;
-  const ids = new Map<string, number>();
-  const out: number[] = [];
-  const remap = new Uint32Array(positions.length / 3);
-  const q = (v: number) => Math.round(v / precision);
-  for (let v = 0; v < positions.length / 3; v++) {
+  const n = positions.length / 3;
+  // An open-addressing hash of the rounded coordinates (much faster than
+  // text keys: a mannequin has 1.4 million corners).
+  let size = 1;
+  while (size < n * 2) size <<= 1;
+  const mask = size - 1;
+  const table = new Int32Array(size).fill(-1);
+  const keys = new Int32Array(n * 3); // rounded x, y, z of each kept vertex
+  const out = new Float32Array(n * 3);
+  let kept = 0;
+  const remap = new Uint32Array(n);
+  for (let v = 0; v < n; v++) {
     const x = positions[v * 3];
     const y = positions[v * 3 + 1];
     const z = positions[v * 3 + 2];
-    const key = `${q(x)},${q(y)},${q(z)}`;
-    let id = ids.get(key);
-    if (id === undefined) {
-      id = out.length / 3;
-      ids.set(key, id);
-      out.push(x, y, z);
+    const qx = Math.round(x / precision);
+    const qy = Math.round(y / precision);
+    const qz = Math.round(z / precision);
+    let h =
+      (Math.imul(qx, 73856093) ^
+        Math.imul(qy, 19349663) ^
+        Math.imul(qz, 83492791)) &
+      mask;
+    let id = -1;
+    for (;;) {
+      const t = table[h];
+      if (t < 0) break;
+      if (
+        keys[t * 3] === qx &&
+        keys[t * 3 + 1] === qy &&
+        keys[t * 3 + 2] === qz
+      ) {
+        id = t;
+        break;
+      }
+      h = (h + 1) & mask;
+    }
+    if (id < 0) {
+      id = kept++;
+      table[h] = id;
+      keys[id * 3] = qx;
+      keys[id * 3 + 1] = qy;
+      keys[id * 3 + 2] = qz;
+      out[id * 3] = x;
+      out[id * 3 + 1] = y;
+      out[id * 3 + 2] = z;
     }
     remap[v] = id;
   }
@@ -57,7 +89,7 @@ export function weld(
     // Welding can collapse a sliver to a line: drop it.
     if (a !== b && b !== d && a !== d) tris.push(a, b, d);
   }
-  return { positions: new Float32Array(out), index: Uint32Array.from(tris) };
+  return { positions: out.slice(0, kept * 3), index: Uint32Array.from(tris) };
 }
 
 /** Build the clay from welded positions and triangles. */

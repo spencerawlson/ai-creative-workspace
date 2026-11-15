@@ -42,6 +42,7 @@ import {
 } from "@/lib/sculpt/store";
 import type { SculptEngine, SculptTool } from "@/lib/sculpt/SculptEngine";
 import { toStl } from "@/lib/engine/statueExport";
+import { openParam } from "@/lib/sculpt/fromFigure";
 import { MATERIAL_PRESETS } from "@/lib/studio/presets";
 import { downloadBlob, slug } from "@/components/studio/useStudio";
 import {
@@ -238,7 +239,16 @@ export function SculptStudio() {
       const list = await listSculpts();
       if (disposed) return;
       setSaved(list);
-      if (list[0]) await open(list[0].id);
+      // Asked for one (from the studio's "Sculpt this figure"), else the
+      // latest, else a new sphere.
+      const asked = openParam(window.location.search);
+      if (asked) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("open");
+        window.history.replaceState(null, "", url.toString());
+      }
+      const first = list.find((s) => s.id === asked) ?? list[0];
+      if (first) await open(first.id);
       else startNew("sphere");
       setStatus({ kind: "ready" });
     });

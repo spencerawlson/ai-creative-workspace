@@ -418,3 +418,107 @@ describe("the clay in the 3D view", () => {
     geometry.dispose();
   });
 });
+
+describe("speed-ups that must not change results", () => {
+  it("the vertex grid finds exactly the vertices a full scan finds, after moves within its margin", async () => {
+    const { VertexGrid } = await import("@/lib/sculpt/grid");
+    const m = makeShape("sphere");
+    const r = 0.07;
+    const grid = new VertexGrid(m.positions, r);
+    // Move every vertex a little (under half the radius) after building.
+    let seed = 7;
+    const rand = () =>
+      ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.06;
+    for (let i = 0; i < m.positions.length; i++) m.positions[i] += rand();
+    for (const c of [
+      [0, 1, 0],
+      [0.3, 0.6, 0.3],
+      [-0.49, 0.5, 0],
+      [0.01, 0.02, 0.05],
+    ]) {
+      const brute = new Set<number>();
+      for (let v = 0; v < vertexCount(m); v++) {
+        const d = Math.hypot(
+          ...[0, 1, 2].map((k) => m.positions[v * 3 + k] - c[k]),
+        );
+        if (d < r) brute.add(v);
+      }
+      const found = new Set<number>();
+      grid.near(c, r * 1.5, (v) => {
+        const d = Math.hypot(
+          ...[0, 1, 2].map((k) => m.positions[v * 3 + k] - c[k]),
+        );
+        if (d < r) {
+          expect(found.has(v)).toBe(false); // each once
+          found.add(v);
+        }
+      });
+      expect(found).toEqual(brute);
+    }
+  });
+
+  it("welding by hash merges exactly the corners at the same place", () => {
+    // Corners of a strip of triangles, each with its own copies, plus a
+    // corner just apart (not merged) and one within the precision.
+    const corners = [
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      2,
+      0,
+      0,
+      1,
+      1,
+      0,
+      2,
+      0,
+      0,
+      2,
+      1,
+      0,
+      1.00002,
+      1,
+      0, // 2e-5 apart: a separate corner
+      2,
+      1,
+      0,
+      3,
+      1,
+      0,
+      2.000004,
+      0,
+      0, // 4e-6 apart: the same corner
+    ];
+    const w = weld(corners);
+    expect(w.positions.length / 3).toBe(8);
+    expect(w.index.length / 3).toBe(5);
+    // The same welds as one by one, by exact rounded coordinates.
+    const keys = new Set<string>();
+    for (let i = 0; i < corners.length; i += 3)
+      keys.add(
+        corners
+          .slice(i, i + 3)
+          .map((v) => Math.round(v / 1e-5))
+          .join(),
+      );
+    expect(w.positions.length / 3).toBe(keys.size);
+  });
+});
