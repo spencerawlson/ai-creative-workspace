@@ -16,15 +16,20 @@ import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 import {
   Stroke,
   applyDab,
+  applyLayerOp,
+  applyMask,
+  applyPaint,
   moveGrab,
   startGrab,
   type BrushId,
   type BrushSettings,
   type Dab,
   type Grab,
+  type LayerOp,
 } from "./brushes";
 import { SculptHistory } from "./history";
-import { faceCount, type SculptMesh } from "./mesh";
+import { faceCount, hasAny, type Channel, type SculptMesh } from "./mesh";
+import { bakeColors, hexToSrgb } from "./paint";
 
 export interface SculptTool {
   brush: BrushId;
@@ -36,6 +41,8 @@ export interface SculptTool {
   /** Turn the view with every drag, even on the clay (phones, where
    * the clay fills the screen). */
   turnView?: boolean;
+  /** The paint brush's colour, "#rrggbb". */
+  color?: string;
 }
 
 export interface ClayLook {
@@ -68,10 +75,45 @@ export function clayGeometry(clay: SculptMesh): {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(clay.positions, 3));
   g.setAttribute("normal", new THREE.BufferAttribute(clay.normals, 3));
+  // Paint (sRGB colour + coverage) and the mask, drawn by the shader
+  // added in withPaintAndMask.
+  g.setAttribute("color", new THREE.BufferAttribute(clay.paint, 4));
+  g.setAttribute("mask", new THREE.BufferAttribute(clay.mask, 1));
   g.setIndex(new THREE.BufferAttribute(clay.index.slice(), 1));
   const bvh = new MeshBVH(g);
   g.boundsTree = bvh;
   return { geometry: g, bvh };
+}
+
+/** The clay's material, drawing its paint and mask: paint laid over
+ * the material's colour by its coverage (converted from sRGB), masked
+ * areas shown darker. */
+function withPaintAndMask(m: THREE.MeshStandardMaterial) {
+  m.vertexColors = true;
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nattribute float mask;\nvarying float vMask;",
+      )
+      .replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvMask = mask;",
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vMask;")
+      .replace(
+        "#include <color_fragment>",
+        [
+          "#if defined( USE_COLOR_ALPHA )",
+          "  diffuseColor.rgb = mix( diffuseColor.rgb, sRGBTransferEOTF( vec4( vColor.rgb, 1.0 ) ).rgb, vColor.a );",
+          "#endif",
+          "diffuseColor.rgb *= 1.0 - 0.6 * vMask;",
+        ].join("\n"),
+      );
+  };
+  m.customProgramCacheKey = () => "sculpt-paint-mask";
+  return m;
 }
 
 export class SculptEngine {
@@ -79,10 +121,9 @@ export class SculptEngine {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
   private readonly controls: OrbitControls;
-  private readonly material = new THREE.MeshStandardMaterial({
-    color: "#b0705a",
-    roughness: 0.85,
-  });
+  private readonly material = withPaintAndMask(
+    new THREE.MeshStandardMaterial({ color: "#b0705a", roughness: 0.85 }),
+  );
   private readonly cursor: THREE.Mesh;
   private readonly floor: THREE.Mesh;
   private readonly envMap: THREE.Texture;
@@ -269,12 +310,23 @@ export class SculptEngine {
 
   undo(): void {
     if (!this.clay || this.stroke) return;
-    if (this.history.undo(this.clay)) this.changed(true);
+    if (this.history.undo(this.clay)) this.changed(true, "all");
   }
 
   redo(): void {
     if (!this.clay || this.stroke) return;
-    if (this.history.redo(this.clay)) this.changed(true);
+    if (this.history.redo(this.clay)) this.changed(true, "all");
+  }
+
+  /** Clear the paint, clear the mask or invert it: one undo step. */
+  layerOp(op: LayerOp): boolean {
+    if (!this.clay || this.stroke) return false;
+    const rec = applyLayerOp(this.clay, op);
+    if (!rec) return false;
+    this.history.push(rec);
+    this.changed(true, rec.channel);
+    this.callbacks.onStroke?.();
+    return true;
   }
 
   get triangles(): number {
@@ -291,10 +343,21 @@ export class SculptEngine {
     );
     g.setAttribute("normal", this.object.geometry.attributes.normal.clone());
     g.setIndex(this.object.geometry.index!.clone());
+    // Paint, baked over the material's colour into plain vertex colours
+    // (what every glTF viewer shows); the material itself then white.
+    const painted = this.clay && hasAny(this.clay.paint, 4, 3);
+    if (painted) {
+      const c = this.material.color;
+      g.setAttribute(
+        "color",
+        new THREE.BufferAttribute(bakeColors(this.clay!, [c.r, c.g, c.b]), 3),
+      );
+    }
     const out = new THREE.Mesh(
       g,
       new THREE.MeshStandardMaterial({
-        color: this.material.color,
+        color: painted ? 0xffffff : this.material.color,
+        vertexColors: !!painted,
         roughness: this.material.roughness,
         metalness: this.material.metalness,
       }),
@@ -393,7 +456,10 @@ export class SculptEngine {
       // A pointer the browser no longer tracks: the stroke still works.
     }
     const radius = this.tool.sizePx * this.worldPerPixel(hit.point);
-    const stroke = new Stroke();
+    const b = this.tool.brush;
+    const stroke = new Stroke(
+      b === "paint" ? "paint" : b === "mask" ? "mask" : "position",
+    );
     const dab = this.dabFrom(hit, e);
     const view = this.camera.getWorldDirection(new THREE.Vector3());
     this.stroke = {
@@ -490,15 +556,26 @@ export class SculptEngine {
   }
 
   private dab(dab: Dab, radius: number): void {
-    if (!this.clay || this.tool.brush === "grab") return;
-    applyDab(
-      this.clay,
-      this.tool.brush,
-      dab,
-      this.settings(radius),
-      this.stroke!.stroke,
-    );
-    this.changed(false);
+    const brush = this.tool.brush;
+    if (!this.clay || brush === "grab") return;
+    const stroke = this.stroke!.stroke;
+    const s = this.settings(radius);
+    if (brush === "paint") {
+      applyPaint(
+        this.clay,
+        dab,
+        s,
+        hexToSrgb(this.tool.color ?? "#c0392b"),
+        stroke,
+      );
+      this.changed(false, "paint");
+    } else if (brush === "mask") {
+      applyMask(this.clay, dab, s, stroke);
+      this.changed(false, "mask");
+    } else {
+      applyDab(this.clay, brush, dab, s, stroke);
+      this.changed(false, "position");
+    }
   }
 
   private endStroke(): void {
@@ -519,13 +596,21 @@ export class SculptEngine {
   }
 
   /** The clay moved: refresh the GPU copy and the hit tree next frame. */
-  private changed(stepDone: boolean): void {
-    this.needsRefit = true;
+  /** Something changed: refresh the GPU copy of what did (and, for the
+   * shape, the hit tree next frame). */
+  private changed(stepDone: boolean, what: Channel | "all" = "position"): void {
     const g = this.object?.geometry;
-    if (g) {
-      g.attributes.position.needsUpdate = true;
-      g.attributes.normal.needsUpdate = true;
+    if (what === "position" || what === "all") {
+      this.needsRefit = true;
+      if (g) {
+        g.attributes.position.needsUpdate = true;
+        g.attributes.normal.needsUpdate = true;
+      }
     }
+    if (g && (what === "paint" || what === "all"))
+      g.attributes.color.needsUpdate = true;
+    if (g && (what === "mask" || what === "all"))
+      g.attributes.mask.needsUpdate = true;
     if (stepDone) this.emitChange();
     this.invalidate();
   }

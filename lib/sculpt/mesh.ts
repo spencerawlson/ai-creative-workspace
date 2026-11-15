@@ -19,6 +19,31 @@ export interface SculptMesh {
   /** Vertex v's faces, the same way. */
   faceStart: Uint32Array;
   faces: Uint32Array;
+  /** Paint over the material: r, g, b (sRGB, 0..1) and how much of it
+   * covers the material (0..1), per vertex. */
+  paint: Float32Array;
+  /** Protection from sculpting brushes, per vertex: 0 free, 1 masked. */
+  mask: Float32Array;
+}
+
+/** The values each layer keeps per vertex. */
+export const CHANNELS = { position: 3, paint: 4, mask: 1 } as const;
+export type Channel = keyof typeof CHANNELS;
+
+/** A layer's array: positions, paint or mask. */
+export function channelArray(mesh: SculptMesh, ch: Channel): Float32Array {
+  return ch === "position"
+    ? mesh.positions
+    : ch === "paint"
+      ? mesh.paint
+      : mesh.mask;
+}
+
+/** Whether a layer has anything in it (paint or mask worth keeping). */
+export function hasAny(values: Float32Array, stride = 1, offset = 0): boolean {
+  for (let i = offset; i < values.length; i += stride)
+    if (values[i] > 0) return true;
+  return false;
 }
 
 export const vertexCount = (m: SculptMesh) => m.positions.length / 3;
@@ -96,6 +121,7 @@ export function weld(
 export function buildMesh(
   positions: Float32Array,
   index: Uint32Array,
+  layers: { paint?: Float32Array; mask?: Float32Array } = {},
 ): SculptMesh {
   const n = positions.length / 3;
   const faceCounts = new Uint32Array(n + 1);
@@ -137,6 +163,9 @@ export function buildMesh(
     neighbors,
     faceStart,
     faces,
+    paint:
+      layers.paint?.length === n * 4 ? layers.paint : new Float32Array(n * 4),
+    mask: layers.mask?.length === n ? layers.mask : new Float32Array(n),
   };
   updateNormals(mesh);
   return mesh;

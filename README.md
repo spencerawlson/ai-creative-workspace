@@ -83,8 +83,11 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
 - Sculpt (`/sculpt`): shape digital clay with brushes (draw, clay,
   inflate, smooth, flatten, pinch, grab), size, strength, pen pressure,
   subtract and left–right symmetry, starting from a sphere or a rounded
-  block. Undo per stroke. Sculptures are saved on the device as you work
-  and export as STL (3D printing, at the height you choose) or GLB.
+  block, or from a posed figure in the studio. Paint colour onto the
+  surface, and mask areas to protect them from the sculpting brushes.
+  Undo per stroke. Sculptures (with their paint, mask and material) are
+  saved on the device as you work and export as STL (3D printing, at the
+  height you choose) or GLB (with the paint as vertex colours).
 - An MCP server (`npm run mcp`): an AI (Claude, or a local model in an
   MCP client) reads and directs a scene with the studio's own actions,
   writes performances as beats, and hands back a link that opens the

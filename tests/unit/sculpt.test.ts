@@ -522,3 +522,157 @@ describe("speed-ups that must not change results", () => {
     expect(w.positions.length / 3).toBe(keys.size);
   });
 });
+
+describe("paint and mask", () => {
+  const top = (m: SculptMesh) => nearest(m, 0, 1, 0);
+  const red: [number, number, number] = [1, 0, 0];
+
+  it("paints where the brush is, mirrored, erases, and undoes exactly without moving the shape", async () => {
+    const { applyPaint } = await import("@/lib/sculpt/brushes");
+    const m = makeShape("sphere");
+    const positions = m.positions.slice();
+    const stroke = new Stroke("paint");
+    const dab = sphereDab([0.3, 0.5, 0.8]);
+    for (let i = 0; i < 3; i++)
+      applyPaint(
+        m,
+        dab,
+        settings({ symmetry: true, strength: 1 }),
+        red,
+        stroke,
+      );
+    const v = nearest(m, ...(dab.point as [number, number, number]));
+    expect(m.paint[v * 4 + 3]).toBeGreaterThan(0.9);
+    expect(m.paint[v * 4]).toBeCloseTo(1, 4);
+    expect(m.paint[v * 4 + 1]).toBeCloseTo(0, 4);
+    // Mirrored, and not painted far away.
+    const [x, y, z] = at(m, v);
+    expect(m.paint[nearest(m, -x, y, z) * 4 + 3]).toBeGreaterThan(0.9);
+    expect(m.paint[top(m) * 4 + 3]).toBe(0);
+    expect(m.positions).toEqual(positions);
+
+    const rec = stroke.finish(m)!;
+    expect(rec.channel).toBe("paint");
+    const h = new SculptHistory();
+    h.push(rec);
+    const painted = m.paint.slice();
+    h.undo(m);
+    expect(m.paint.every((c) => c === 0)).toBe(true);
+    h.redo(m);
+    expect(m.paint).toEqual(painted);
+
+    // Subtract erases.
+    applyPaint(
+      m,
+      dab,
+      settings({ strength: 1, invert: true }),
+      red,
+      new Stroke("paint"),
+    );
+    expect(m.paint[v * 4 + 3]).toBeLessThan(0.5);
+  });
+
+  it("paint over paint blends towards the new colour", async () => {
+    const { applyPaint } = await import("@/lib/sculpt/brushes");
+    const m = makeShape("sphere");
+    const dab = sphereDab([0, 1, 0]);
+    const v = top(m);
+    applyPaint(m, dab, settings({ strength: 1 }), red, new Stroke("paint"));
+    applyPaint(
+      m,
+      dab,
+      settings({ strength: 0.5 }),
+      [0, 0, 1],
+      new Stroke("paint"),
+    );
+    expect(m.paint[v * 4 + 2]).toBeGreaterThan(0.3);
+    expect(m.paint[v * 4]).toBeGreaterThan(0.3);
+    expect(m.paint[v * 4 + 3]).toBeCloseTo(1, 4);
+  });
+
+  it("masked areas don't move under any sculpting brush, grab included", async () => {
+    const { applyMask } = await import("@/lib/sculpt/brushes");
+    const m = makeShape("sphere");
+    const dab = sphereDab([0, 1, 0]);
+    const s = settings({ strength: 1 });
+    for (let i = 0; i < 6; i++) applyMask(m, dab, s, new Stroke("mask"));
+    const v = top(m);
+    expect(m.mask[v]).toBeGreaterThan(0.99);
+    const before = at(m, v);
+    for (const brush of [
+      "draw",
+      "clay",
+      "inflate",
+      "smooth",
+      "flatten",
+      "pinch",
+    ] as const)
+      applyDab(m, brush, dab, s, new Stroke());
+    const g = startGrab(m, dab, s, new Stroke());
+    moveGrab(m, g, [0.1, 0.2, 0]);
+    const after = at(m, v);
+    for (let k = 0; k < 3; k++) expect(after[k]).toBeCloseTo(before[k], 3);
+
+    // Unmasked clay still moves.
+    const free = makeShape("sphere");
+    applyDab(free, "draw", dab, s, new Stroke());
+    expect(at(free, top(free))[1]).toBeGreaterThan(1);
+  });
+
+  it("clears and inverts whole layers as undo steps", async () => {
+    const { applyLayerOp, applyMask, applyPaint } =
+      await import("@/lib/sculpt/brushes");
+    const m = makeShape("block");
+    expect(applyLayerOp(m, "clearMask")).toBeNull(); // nothing to clear
+    const inv = applyLayerOp(m, "invertMask")!;
+    expect(m.mask.every((x) => x === 1)).toBe(true);
+    const h = new SculptHistory();
+    h.push(inv);
+    h.undo(m);
+    expect(m.mask.every((x) => x === 0)).toBe(true);
+    applyMask(
+      m,
+      { point: [0, 0.8, 0], normal: [0, 1, 0] },
+      settings(),
+      new Stroke("mask"),
+    );
+    applyLayerOp(m, "clearMask");
+    expect(m.mask.every((x) => x === 0)).toBe(true);
+    applyPaint(
+      m,
+      { point: [0, 0.8, 0], normal: [0, 1, 0] },
+      settings(),
+      red,
+      new Stroke("paint"),
+    );
+    const clear = applyLayerOp(m, "clearPaint")!;
+    expect(clear.channel).toBe("paint");
+    expect(m.paint.filter((_, i) => i % 4 === 3).every((a) => a === 0)).toBe(
+      true,
+    );
+  });
+
+  it("bakes paint over the material for export, and saves layers as bytes", async () => {
+    const { bakeColors, hexToSrgb, packLayer, srgbToLinear, unpackLayer } =
+      await import("@/lib/sculpt/paint");
+    expect(hexToSrgb("#ff8000")).toEqual([1, 128 / 255, 0]);
+    expect(hexToSrgb("nope")).toEqual([0.5, 0.5, 0.5]);
+    const m = makeShape("block");
+    m.paint.set([1, 0.5, 0, 1], 0); // vertex 0 fully painted orange
+    m.paint.set([0, 0, 1, 0.5], 4); // vertex 1 half blue
+    const base: [number, number, number] = [0.2, 0.4, 0.6];
+    const c = bakeColors(m, base);
+    expect(c[0]).toBeCloseTo(1, 6);
+    expect(c[1]).toBeCloseTo(srgbToLinear(0.5), 6);
+    expect(c[3]).toBeCloseTo(0.1, 6); // half the base red
+    expect(c[5]).toBeCloseTo(0.3 + 0.5, 6);
+    expect([...c.slice(6, 9)].map((x) => +x.toFixed(6))).toEqual(base);
+
+    expect(packLayer(new Float32Array(8), 4, 3)).toBeNull();
+    const bytes = packLayer(m.paint, 4, 3)!;
+    const back = unpackLayer(bytes)!;
+    for (let i = 0; i < 8; i++)
+      expect(Math.abs(back[i] - m.paint[i])).toBeLessThanOrEqual(1 / 255);
+    expect(unpackLayer(undefined)).toBeUndefined();
+  });
+});
