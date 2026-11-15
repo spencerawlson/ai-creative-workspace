@@ -1118,6 +1118,79 @@ test.describe("Lighting Studio — critical journeys", () => {
     expect(errors).toEqual([]);
   });
 
+  test("a built-in creature: picked from the list, and kept by share links on any device", async ({
+    page,
+    browser,
+  }) => {
+    // A creature list of one, the lion, served from the app's own
+    // address as public/creatures/ would be. The lion GLB is the real
+    // served file: an unrigged model, so it must load as a static
+    // figure (no skeleton, no posing), not be rejected as a character.
+    const serveCreatures = async (
+      context: import("@playwright/test").BrowserContext,
+    ) => {
+      await context.route("**/creatures/creatures.json", (r) =>
+        r.fulfill({
+          json: {
+            version: 1,
+            creatures: [
+              {
+                id: "creature-lion",
+                name: "Lion",
+                file: "lion.glb",
+                size: 383376,
+                heightMeters: 1.1,
+                credit: { tool: "Meshy", prompt: "a lion" },
+              },
+            ],
+          },
+        }),
+      );
+      await context.route("**/creatures/lion.glb", (r) =>
+        r.fulfill({ path: "public/creatures/lion.glb" }),
+      );
+    };
+    await serveCreatures(page.context());
+    const errors = await openStudio(page);
+    const shows = (p: import("@playwright/test").Page) =>
+      p.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: { figureShows(): string | null };
+          }
+        ).__studioEngine.figureShows(),
+      );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    const lion = page.getByTestId("creature-creature-lion");
+    await expect(lion).toContainText("static");
+    await lion.click();
+    await expect(lion).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => shows(page), { timeout: 30_000 }).toBe("creature");
+    await expect(page.getByTestId("character-status")).toContainText(
+      "it stands still",
+    );
+
+    // Another device: the link brings the lion, not the mannequin.
+    await expect
+      .poll(() => {
+        const param = new URL(page.url()).searchParams.get("s") ?? "";
+        return Buffer.from(param, "base64url")
+          .toString()
+          .includes("creature-lion");
+      })
+      .toBe(true);
+    const other = await browser.newContext();
+    await serveCreatures(other);
+    const page2 = await other.newPage();
+    const url = new URL(page.url());
+    await openStudio(page2, url.pathname + url.search);
+    await expect.poll(() => shows(page2), { timeout: 30_000 }).toBe("creature");
+    await other.close();
+    expect(errors).toEqual([]);
+  });
+
   test("lip sync: a voice moves the character's mouth, read on the device", async ({
     page,
   }) => {

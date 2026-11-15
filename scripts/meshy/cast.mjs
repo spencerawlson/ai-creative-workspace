@@ -194,6 +194,8 @@ export function manifest(cast, state, sizes) {
         name: m.name,
         file: `${m.id}.glb`,
         size: sizes[m.id],
+        // Only a member that isn't the figure's height needs its own.
+        ...(m.heightMeters !== 1.7 ? { heightMeters: m.heightMeters } : {}),
         credit: {
           tool: "Meshy",
           prompt: m.prompt,

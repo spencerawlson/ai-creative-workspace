@@ -18,6 +18,34 @@
       "name": "Dancer",
       "prompt": "Full-body realistic young dancer, fitted black top, loose red trousers, bare feet, hair in a bun, neutral expression, standing straight, arms slightly away from the body, plain studio background",
       "heightMeters": 1.65
+    },
+    {
+      "id": "real-man",
+      "name": "Realistic man",
+      "prompt": "Full-body realistic adult man, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background"
+    },
+    {
+      "id": "real-woman",
+      "name": "Realistic woman",
+      "prompt": "Full-body realistic adult woman, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background"
+    },
+    {
+      "id": "toon-man",
+      "name": "Cartoon man",
+      "prompt": "Full-body stylized cartoon adult man, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
+      "fingers": false
+    },
+    {
+      "id": "toon-woman",
+      "name": "Cartoon woman",
+      "prompt": "Full-body stylized cartoon adult woman, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
+      "fingers": false
+    },
+    {
+      "id": "infant",
+      "name": "Baby girl",
+      "prompt": "Full-body realistic female infant, 9 to 12 months old, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
+      "heightMeters": 0.9
     }
   ]
 }

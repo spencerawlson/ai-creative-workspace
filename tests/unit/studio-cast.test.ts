@@ -50,4 +50,22 @@ describe("the built-in cast", () => {
       }).ok,
     ).toBe(false);
   });
+
+  it("a cast member can stand shorter than the figure's height", () => {
+    const infant = { ...dancer, id: "cast-infant", heightMeters: 0.9 };
+    expect(readCastList({ version: 1, cast: [infant] })).toEqual([infant]);
+    // Out of range is left out, like any other bad entry.
+    expect(
+      readCastList({
+        version: 1,
+        cast: [{ ...infant, heightMeters: 0.2 }],
+      }),
+    ).toEqual([]);
+    expect(
+      readCastList({
+        version: 1,
+        cast: [{ ...infant, heightMeters: 3 }],
+      }),
+    ).toEqual([]);
+  });
 });

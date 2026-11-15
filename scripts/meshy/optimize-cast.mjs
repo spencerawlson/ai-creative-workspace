@@ -15,9 +15,21 @@ import {
 import { MeshoptEncoder } from "meshoptimizer";
 import sharp from "sharp";
 
-/** Bones a character needs for the app to pose it (any common naming:
- * Mixamo's "mixamorig:Hips", plain "Hips", VRM's "J_Bip_C_Hips"...). */
-const NEEDED = ["hips", "spine", "head", "arm", "forearm", "upleg", "leg"];
+/** Bones a character needs for the app to pose it. Each group lists the
+ * names any rig may use for it: Mixamo's ("mixamorig:Hips", "LeftArm",
+ * "LeftForeArm", "LeftUpLeg", "LeftLeg", "Head") or the app's own
+ * (pelvis, shoulder, elbow, hip, knee, neck — lib/engine/posing.ts),
+ * which is what the local rig (scripts/rig-mannequin.mjs) writes. A
+ * trailing L/R side suffix is ignored. */
+const NEEDED = [
+  ["hips", "pelvis"],
+  ["spine"],
+  ["head", "neck"],
+  ["arm", "shoulder"],
+  ["forearm", "elbow"],
+  ["upleg", "hip"],
+  ["leg", "knee"],
+];
 
 async function io() {
   await MeshoptEncoder.ready;
@@ -50,7 +62,12 @@ export function inspect(doc) {
 export function problem(info) {
   if (info.skins === 0) return "it has no skeleton (skin)";
   const names = info.joints.map((n) => n.toLowerCase().replace(/[^a-z]/g, ""));
-  const missing = NEEDED.filter((b) => !names.some((n) => n.endsWith(b)));
+  const missing = NEEDED.filter(
+    ([label, ...alts]) =>
+      ![label, ...alts].some((b) =>
+        names.some((n) => new RegExp(`${b}[lr]?$`).test(n)),
+      ),
+  ).map(([label]) => label);
   return missing.length
     ? `its skeleton has no ${missing.join(", ")} bone${missing.length > 1 ? "s" : ""}`
     : null;

@@ -181,21 +181,21 @@ export function rigMesh(pos, index) {
   // outermost run. Collect per side for the upper-arm line fit.
   const sideOf = (side) => (side === "L" ? 1 : -1); // +X is the figure's left
   // Follow each arm down from the armpit while it stays a separate
-  // outermost run; below the fingertips the outermost run would be a leg,
-  // which shows up as a sudden jump towards the centre.
+  // outermost run. A slice counts only when both outer-run centres sit
+  // well clear of the midline; where the arm touches the torso (the
+  // merge zone just below the armpit) the centres collapse inward and
+  // the slice is skipped, and tracking resumes where the arms separate
+  // again. There is deliberately no jump check here: a slice far below
+  // the hands is a leg, and the fingertip search is tubed (below), so a
+  // leg fragment can't become the fingertip.
   const armRunEdge = new Map(); // slice -> {L: innerEdgeX, R: innerEdgeX}
-  let prev = null;
   for (let s = armpitS; s >= 0; s--) {
     const r = runsOf(s);
     if (r.length < 3) continue; // arm touching the torso near the armpit
     const [lo, hi] = [r[0], r[r.length - 1]];
-    const c = { L: (hi[0] + hi[1]) / 2, R: (lo[0] + lo[1]) / 2 };
-    if (
-      prev &&
-      (Math.abs(c.L - prev.L) > 0.03 * H || Math.abs(c.R - prev.R) > 0.03 * H)
-    )
-      break;
-    prev = c;
+    const cL = (hi[0] + hi[1]) / 2;
+    const cR = (lo[0] + lo[1]) / 2;
+    if (Math.abs(cL) < 0.085 * H || Math.abs(cR) < 0.085 * H) continue;
     armRunEdge.set(s, { L: hi[0], R: lo[1] });
   }
   const isArmVertex = (i, side) => {
@@ -219,38 +219,108 @@ export function rigMesh(pos, index) {
         acc[2] += pos[i * 3 + 2];
         k++;
       }
+      if (k === 0)
+        throw new Error(
+          `No ${side} arm vertices between y=${y0.toFixed(3)} and y=${y1.toFixed(3)}`,
+        );
       return mul(acc, 1 / k);
     };
     // Upper-arm centreline through two cross-sections below the armpit.
-    const a = armBand(armpitY - 0.04 * H, armpitY - 0.02 * H);
-    const b = armBand(armpitY - 0.12 * H, armpitY - 0.1 * H);
+    // On the Meshy models the arms touch the torso just below the
+    // armpit, so the bands there hold no arm vertices; slide both bands
+    // down together until each holds arm vertices.
+    const bandHas = (y0, y1) => {
+      for (let i = 0; i < n; i++) {
+        const y = pos[i * 3 + 1];
+        if (y < y0 || y > y1 || !isArmVertex(i, side)) continue;
+        return true;
+      }
+      return false;
+    };
+    let bandShift = 0;
+    while (
+      bandShift <= 0.2 * H &&
+      (!bandHas(
+        armpitY - 0.04 * H - bandShift,
+        armpitY - 0.02 * H - bandShift,
+      ) ||
+        !bandHas(armpitY - 0.12 * H - bandShift, armpitY - 0.1 * H - bandShift))
+    )
+      bandShift += 0.02 * H;
+    if (bandShift > 0.2 * H)
+      throw new Error(`No ${side} arm vertices below the armpit (not A-pose?)`);
+    const a = armBand(
+      armpitY - 0.04 * H - bandShift,
+      armpitY - 0.02 * H - bandShift,
+    );
+    const b = armBand(
+      armpitY - 0.12 * H - bandShift,
+      armpitY - 0.1 * H - bandShift,
+    );
     const u = norm(sub(b, a));
     const shoulderY = armpitY + 0.05 * H;
     const shoulder = add(a, mul(u, (shoulderY - a[1]) / u[1]));
+    // The straight-line extrapolation overshoots inward on wide-splayed
+    // arms; the shoulder can't sit inside the chest, so clamp it out to
+    // the chest's edge (the run spanning the midline at the armpit
+    // slice, where the arms are separate). A shoulder already outside
+    // the chest is left alone.
+    const chestRun = runsOf(armpitS).find(([x0, x1]) => x0 <= 0 && x1 >= 0);
+    if (chestRun) {
+      const edge = side === "L" ? chestRun[1] : chestRun[0];
+      if (side === "L" ? shoulder[0] < edge : shoulder[0] > edge)
+        shoulder[0] = edge;
+    }
     // Upper-arm thickness (95th percentile distance from the centreline),
     // so the arm's region can hug it below the armpit, where the chest is
     // close (closer on the female scan).
     const radii = [];
     for (let i = 0; i < n; i++) {
       const y = pos[i * 3 + 1];
-      if (y < armpitY - 0.12 * H || y > armpitY - 0.02 * H) continue;
+      if (
+        y < armpitY - 0.12 * H - bandShift ||
+        y > armpitY - 0.02 * H - bandShift
+      )
+        continue;
       if (!isArmVertex(i, side)) continue;
       const d = sub(P(i), a);
       radii.push(len(sub(d, mul(u, dot(d, u)))));
     }
     radii.sort((x, y) => x - y);
-    armRadius[side] = radii[Math.floor(radii.length * 0.95)];
+    armRadius[side] =
+      radii.length > 0 ? radii[Math.floor(radii.length * 0.95)] : 0.05 * H;
+    // Fingertip = the arm vertex furthest from the shoulder, inside a
+    // tube around the upper-arm line. A leg fragment far below can be
+    // further from the shoulder than the hand, but it sits well off the
+    // arm's line, so the tube excludes it.
+    const tubeR = Math.max(armRadius[side] * 3, 0.08 * H);
     let tip = null;
-    // Fingertip = furthest arm vertex along the arm from the shoulder.
     let best = -Infinity;
     for (let i = 0; i < n; i++) {
       if (!isArmVertex(i, side)) continue;
-      const d = len(sub(P(i), shoulder));
-      if (d > best) {
-        best = d;
+      const d = sub(P(i), shoulder);
+      const along = dot(d, u);
+      if (along <= 0) continue;
+      if (len(sub(d, mul(u, along))) > tubeR) continue;
+      const dist = len(d);
+      if (dist > best) {
+        best = dist;
         tip = P(i);
       }
     }
+    if (!tip) {
+      // No arm vertex inside the tube: fall back to the plain furthest
+      // arm vertex from the shoulder.
+      for (let i = 0; i < n; i++) {
+        if (!isArmVertex(i, side)) continue;
+        const d = len(sub(P(i), shoulder));
+        if (d > best) {
+          best = d;
+          tip = P(i);
+        }
+      }
+    }
+    if (!tip) throw new Error(`No ${side} arm vertices found (not A-pose?)`);
     const L = best;
     // Elbow and wrist: centroids of thin cross-sections at anthropometric
     // fractions of shoulder->fingertip (upper arm .186H, forearm .146H,
@@ -270,6 +340,8 @@ export function rigMesh(pos, index) {
           k++;
         }
       }
+      if (k === 0)
+        throw new Error(`No ${side} arm vertices near t=${f.toFixed(3)}`);
       return mul(acc, 1 / k);
     };
     joints[`shoulder${side}`] = shoulder;
@@ -558,6 +630,10 @@ export function rigMesh(pos, index) {
   // the skin between them stretches a little when they move apart.
   const palm = {};
   const handStats = {};
+  // A hand whose thumb can't be found, or whose fingers are fused into
+  // too few peaks, is left rigid on the wrist instead of failing the
+  // whole rig; the engine then poses it fingerless.
+  let handsSkipped = 0;
   for (const s of ["L", "R"]) {
     const w = joints[`wrist${s}`];
     const handTip = tips[`wrist${s}`];
@@ -602,7 +678,11 @@ export function rigMesh(pos, index) {
         .sort((a, b) => b.length - a.length);
       if (others.length) thumb = others[0];
     }
-    if (!thumb) throw new Error(`No thumb found on the ${s} hand`);
+    if (!thumb) {
+      console.warn(`rig: no thumb found on the ${s} hand; leaving it rigid`);
+      handsSkipped++;
+      continue;
+    }
     const isThumb = new Uint8Array(n);
     for (const i of thumb) isThumb[i] = 1;
 
@@ -680,8 +760,13 @@ export function rigMesh(pos, index) {
       if (isTop(b) && peaks.every((p) => Math.abs(p - b) >= minGap))
         peaks.push(b);
     }
-    if (peaks.length < 4)
-      throw new Error(`Found ${peaks.length} fingertips on the ${s} hand`);
+    if (peaks.length < 4) {
+      console.warn(
+        `rig: found ${peaks.length} fingertips on the ${s} hand; leaving it rigid`,
+      );
+      handsSkipped++;
+      continue;
+    }
     peaks.sort((x, y) => x - y);
     const cutBins = [0, 1, 2].map((k) => {
       let best = peaks[k] + 1;
@@ -829,6 +914,7 @@ export function rigMesh(pos, index) {
       w.set(parent, (w.get(parent) ?? 0) + 1 - t);
     }
     for (const c of childrenOf[b] ?? []) {
+      if (!joints[c]) continue; // hand left rigid: no finger joints
       // Just before a child's joint, start handing over to the child.
       const s = signed(c, p);
       if (s <= -blend[c] || s > 0) continue;
@@ -887,5 +973,91 @@ export function rigMesh(pos, index) {
     hands: handStats,
   };
   if (process.env.RIG_LABELS) stats.label = label; // debug: per-vertex bone
-  return { joints, tips, palm, jointIdx, weights, stats };
+  // Null when a hand was left rigid: the engine then poses the fingerless
+  // path instead of reading a half-built palm frame.
+  return {
+    joints,
+    tips,
+    palm: handsSkipped ? null : palm,
+    jointIdx,
+    weights,
+    stats,
+  };
+}
+
+/** gltf-transform step: fit a skeleton to the (welded) mesh and bind it.
+ * A bone the fitter couldn't find (a finger on a fused hand) is kept as
+ * a node co-located with its nearest jointed ancestor, so the skin's
+ * joint indices stay aligned with BONES and no vertex is ever weighted
+ * to it. */
+export function rigTransform(skinName = "mannequin") {
+  return (doc) => {
+    const root = doc.getRoot();
+    const [node] = root.listNodes().filter((n) => n.getMesh());
+    const prim = node.getMesh().listPrimitives()[0];
+    const pos = prim.getAttribute("POSITION").getArray();
+    const r = rigMesh(pos, prim.getIndices().getArray());
+    const buffer = root.listBuffers()[0];
+
+    prim.setAttribute(
+      "JOINTS_0",
+      doc
+        .createAccessor()
+        .setType("VEC4")
+        .setArray(r.jointIdx)
+        .setBuffer(buffer),
+    );
+    prim.setAttribute(
+      "WEIGHTS_0",
+      doc
+        .createAccessor()
+        .setType("VEC4")
+        .setArray(r.weights)
+        .setBuffer(buffer),
+    );
+
+    // World-aligned bones: local translation = offset from the parent.
+    const parentOf = Object.fromEntries(BONES);
+    const nodes = {};
+    const world = {};
+    const ibm = new Float32Array(BONES.length * 16);
+    BONES.forEach(([name, parent], i) => {
+      let j = r.joints[name];
+      if (!j) {
+        // Nearest jointed ancestor up the parent chain (a missing
+        // finger bone's is the wrist).
+        let p = parent;
+        while (p && !r.joints[p]) p = parentOf[p];
+        j = p ? r.joints[p] : [0, 0, 0];
+      }
+      world[name] = j;
+      const p = parent ? world[parent] : [0, 0, 0];
+      nodes[name] = doc
+        .createNode(name)
+        .setTranslation([j[0] - p[0], j[1] - p[1], j[2] - p[2]]);
+      if (parent) nodes[parent].addChild(nodes[name]);
+      // Inverse bind matrix: translate(-joint), column-major.
+      ibm.set(
+        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -j[0], -j[1], -j[2], 1],
+        i * 16,
+      );
+    });
+    const skin = doc
+      .createSkin(skinName)
+      .setSkeleton(nodes.pelvis)
+      .setInverseBindMatrices(
+        doc.createAccessor().setType("MAT4").setArray(ibm).setBuffer(buffer),
+      );
+    for (const [name] of BONES) skin.addJoint(nodes[name]);
+    node.setSkin(skin);
+    // Limb tips (fingertips, toes, crown) let the runtime size its
+    // picking capsules without reading the mesh.
+    // Version 2: feet and fingers; `palm` gives each hand's frame (which
+    // way the palm faces, which way is towards the thumb) for posing.
+    // Null when a hand was left rigid: the engine then poses the
+    // fingerless path instead of reading a half-built frame.
+    node.setExtras({ rig: { version: 2, tips: r.tips, palm: r.palm } });
+    root.listScenes()[0].addChild(nodes.pelvis);
+    console.log(`  rigged: ${JSON.stringify(r.stats.labelCounts)}`);
+  };
 }
