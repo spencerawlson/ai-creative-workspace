@@ -14,25 +14,54 @@ export interface CharacterEntry {
   addedAt: number;
 }
 
+/** Bytes of a file's start that checkCharacterFile looks at. */
+export const CHARACTER_HEAD_BYTES = 16;
+
+/** What a file's first bytes say it is, for the kinds people try. */
+function sniff(head: Uint8Array): "glb" | "image" | "zip" | "fbx" | null {
+  const text = (from: number, to: number) =>
+    String.fromCharCode(...head.slice(from, to));
+  if (text(0, 4) === "glTF") return "glb";
+  if (
+    (head[0] === 0x89 && text(1, 4) === "PNG") ||
+    (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) ||
+    text(0, 4) === "GIF8" ||
+    (text(0, 4) === "RIFF" && text(8, 12) === "WEBP") ||
+    // HEIC and AVIF, iPhone and iPad photos: "ftyp" then the brand.
+    (text(4, 8) === "ftyp" &&
+      /^(heic|heix|hevc|mif1|msf1|avif)$/.test(text(8, 12)))
+  )
+    return "image";
+  if (text(0, 4) === "PK\x03\x04") return "zip";
+  if (text(0, 11) === "Kaydara FBX") return "fbx";
+  return null;
+}
+
 /** Why a file can't be a character, from its name, size and first
- * bytes; null when it looks fine. GLB and VRM (a GLB) only: a .gltf
- * points at other files the browser can't reach. */
+ * bytes; null when it is one. The content decides (a GLB or VRM file,
+ * whatever it's called: phones sometimes rename downloads); the name
+ * only helps say what's wrong. A .gltf points at other files the
+ * browser can't reach. */
 export function checkCharacterFile(
   name: string,
   size: number,
   head: Uint8Array,
 ): string | null {
   const ext = name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  const kind = sniff(head);
+  if (kind === "glb")
+    return size > MAX_CHARACTER_BYTES
+      ? `That file is ${Math.round(size / 1024 / 1024)} MB; the limit is ${MAX_CHARACTER_BYTES / 1024 / 1024} MB.`
+      : null;
+  if (kind === "image")
+    return "That's a picture, not a 3D character. A photo can't be turned into a character here yet. To copy the pose in a photo onto a figure, use Pose › Pose from photo.";
+  if (kind === "zip")
+    return "That's a zip file: unzip it first, then choose the .glb or .vrm file inside.";
+  if (kind === "fbx" || ext === "fbx" || ext === "obj" || ext === "blend")
+    return `${kind === "fbx" ? "FBX" : `.${ext}`} files can't be read here: open it in Blender and export it as .glb (File › Export › glTF 2.0, binary).`;
   if (ext === "gltf")
     return "A .gltf file points at other files; export a single .glb (or .vrm) instead.";
-  if (ext === "fbx" || ext === "obj" || ext === "blend")
-    return `.${ext} files can't be read here; export the character as .glb or .vrm.`;
-  if (ext !== "glb" && ext !== "vrm") return "Choose a .glb or .vrm file.";
-  if (size > MAX_CHARACTER_BYTES)
-    return `That file is ${Math.round(size / 1024 / 1024)} MB; the limit is ${MAX_CHARACTER_BYTES / 1024 / 1024} MB.`;
-  const magic = String.fromCharCode(...head.slice(0, 4));
-  if (magic !== "glTF") return "That file isn't a GLB (binary glTF) file.";
-  return null;
+  return "That isn't a character file. Choose a .glb or .vrm file with a human skeleton (from VRoid, Mixamo, Blender or Unreal).";
 }
 
 /** The name shown for a file: without its extension, tidied. */
@@ -104,7 +133,9 @@ export async function addCharacterFile(
     return {
       error: `At most ${MAX_CHARACTERS} characters on this device; remove one first.`,
     };
-  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const head = new Uint8Array(
+    await file.slice(0, CHARACTER_HEAD_BYTES).arrayBuffer(),
+  );
   const problem = checkCharacterFile(file.name, file.size, head);
   if (problem) return { error: problem };
   const entry: CharacterEntry = {

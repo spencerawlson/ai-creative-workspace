@@ -119,7 +119,9 @@ export function CharacterPicker({
       <input
         ref={input}
         type="file"
-        accept=".glb,.vrm,model/gltf-binary"
+        // No extension filter: iPhone and iPad don't know .glb or .vrm and
+        // grey those files out. Any file can be chosen; the import checks
+        // the content and says what's wrong.
         className="hidden"
         data-testid="character-file"
         onChange={async (e) => {
