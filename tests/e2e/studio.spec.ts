@@ -938,7 +938,24 @@ test.describe("Lighting Studio — critical journeys", () => {
       buffer: Buffer.from("hello, not a model"),
     });
     await expect(page.getByTestId("character-status")).toContainText(
-      "isn't a GLB",
+      "isn't a character file",
+    );
+    // A photo: told what to do instead (no file type filter, so phones
+    // can pick any file and hear why it won't do).
+    await expect(page.getByTestId("character-file")).not.toHaveAttribute(
+      "accept",
+      /.+/,
+    );
+    await page.getByTestId("character-file").setInputFiles({
+      name: "IMG_0001.jpg",
+      mimeType: "image/jpeg",
+      buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70]),
+    });
+    await expect(page.getByTestId("character-status")).toContainText(
+      "That's a picture",
+    );
+    await expect(page.getByTestId("character-status")).toContainText(
+      "Pose from photo",
     );
 
     // A Mixamo-style T-pose character facing away: imported, put on

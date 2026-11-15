@@ -17,22 +17,63 @@ import { SceneSchema } from "@/lib/studio/schema";
 const GLB = new TextEncoder().encode("glTF");
 
 describe("character files", () => {
-  it("takes GLB and VRM files and says why it won't take others", () => {
+  it("takes GLB and VRM files by their content, and says why it won't take others", () => {
+    const bytes = (...parts: Array<string | number[]>) =>
+      Uint8Array.from(
+        parts.flatMap((p) =>
+          typeof p === "string" ? [...p].map((c) => c.charCodeAt(0)) : p,
+        ),
+      );
     expect(checkCharacterFile("hero.glb", 1000, GLB)).toBeNull();
     expect(checkCharacterFile("Hero.VRM", 1000, GLB)).toBeNull();
-    expect(checkCharacterFile("hero.gltf", 1000, GLB)).toMatch(/single \.glb/);
-    expect(checkCharacterFile("hero.fbx", 1000, GLB)).toMatch(/\.fbx files/);
-    expect(checkCharacterFile("hero.png", 1000, GLB)).toMatch(/\.glb or \.vrm/);
+    // A GLB that lost its name on a phone is still a GLB.
+    expect(checkCharacterFile("download", 1000, GLB)).toBeNull();
+    expect(checkCharacterFile("hero.glb.bin", 1000, GLB)).toBeNull();
     expect(
       checkCharacterFile("hero.glb", MAX_CHARACTER_BYTES + 1, GLB),
     ).toMatch(/limit is 100 MB/);
+
+    // Photos: from a camera, a phone (HEIC), the web.
+    const photo = /That's a picture.*Pose from photo/;
+    expect(checkCharacterFile("me.png", 1000, bytes([0x89], "PNG"))).toMatch(
+      photo,
+    );
+    expect(
+      checkCharacterFile("me.jpg", 1000, bytes([0xff, 0xd8, 0xff, 0xe0])),
+    ).toMatch(photo);
     expect(
       checkCharacterFile(
-        "hero.glb",
+        "IMG_0001.HEIC",
         1000,
-        new TextEncoder().encode("PK\x03\x04"),
+        bytes([0, 0, 0, 24], "ftypheic"),
       ),
-    ).toMatch(/isn't a GLB/);
+    ).toMatch(photo);
+    expect(
+      checkCharacterFile("x.webp", 1000, bytes("RIFF", [0, 0, 0, 0], "WEBP")),
+    ).toMatch(photo);
+    // A picture named like a character is still a picture.
+    expect(checkCharacterFile("hero.glb", 1000, bytes([0x89], "PNG"))).toMatch(
+      photo,
+    );
+
+    expect(checkCharacterFile("hero.zip", 1000, bytes("PK", [3, 4]))).toMatch(
+      /unzip it first/,
+    );
+    expect(checkCharacterFile("hero.glb", 1000, bytes("PK", [3, 4]))).toMatch(
+      /unzip it first/,
+    );
+    expect(
+      checkCharacterFile("hero.fbx", 1000, bytes("Kaydara FBX Binary")),
+    ).toMatch(/FBX files.*export it as .glb/);
+    expect(checkCharacterFile("hero.obj", 1000, bytes("v 0 0 0"))).toMatch(
+      /.obj files/,
+    );
+    expect(checkCharacterFile("hero.gltf", 1000, bytes('{"asset"'))).toMatch(
+      /single .glb/,
+    );
+    expect(checkCharacterFile("notes.txt", 1000, bytes("hello"))).toMatch(
+      /isn't a character file/,
+    );
   });
 
   it("names a character after its file", () => {
