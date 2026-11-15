@@ -80,3 +80,21 @@ test.describe("Workspaces", () => {
     await expect(page.getByTestId("nav-menu-list")).toBeHidden();
   });
 });
+
+test("the Photography page has no automatically detectable WCAG A/AA violations", async ({
+  page,
+}) => {
+  await page.goto("/photography");
+  await expect(page.getByTestId("framing-portrait")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const r = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    r.violations.map(
+      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+    ),
+  ).toEqual([]);
+});
