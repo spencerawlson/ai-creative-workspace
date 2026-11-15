@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import {
+  BrandLink,
+  WorkspaceMenu,
+  WorkspaceTabs,
+} from "@/components/WorkspaceNav";
 import { LightingScene, type MannequinModel } from "@/components/LightingScene";
 import { PRESETS, cloneLights } from "@/lib/lighting";
 import {
@@ -46,14 +50,15 @@ export default function Photography() {
 
   return (
     <main className="flex min-h-dvh flex-col bg-zinc-950 text-zinc-100">
+      <div className="flex h-12 shrink-0 items-center border-b border-ink-800 bg-ink-900 px-2 sm:px-3">
+        <div className="flex items-center gap-2">
+          <BrandLink />
+          <WorkspaceTabs current="photography" className="hidden sm:flex" />
+          <WorkspaceMenu current="photography" className="sm:hidden" />
+        </div>
+      </div>
       <header className="shrink-0 px-4 pb-3 pt-4 sm:px-6">
-        <Link
-          href="/studio"
-          className="text-sm font-medium text-zinc-300 underline"
-        >
-          ← I-K-O 3D
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold leading-tight sm:text-2xl">
+        <h1 className="text-xl font-semibold leading-tight sm:text-2xl">
           Photography — Camera Basics
         </h1>
         <p className="mt-1 text-sm leading-snug text-zinc-400">

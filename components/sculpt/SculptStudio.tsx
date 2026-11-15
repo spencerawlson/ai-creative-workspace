@@ -5,7 +5,6 @@
  * material, undo, sculptures kept on this device, and export. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   Brush,
   Download,
@@ -42,6 +41,7 @@ import {
 } from "@/lib/sculpt/store";
 import type { SculptEngine, SculptTool } from "@/lib/sculpt/SculptEngine";
 import { toStl } from "@/lib/engine/statueExport";
+import { BrandLink, Sidebar, WorkspaceMenu } from "@/components/WorkspaceNav";
 import { openParam } from "@/lib/sculpt/fromFigure";
 import { MATERIAL_PRESETS } from "@/lib/studio/presets";
 import { downloadBlob, slug } from "@/components/studio/useStudio";
@@ -307,24 +307,10 @@ export function SculptStudio() {
   return (
     <main className="flex h-dvh flex-col bg-ink-950 text-ink-100">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
-        <Link
-          href="/studio"
-          className="flex min-w-0 items-center gap-2"
-          aria-label="I-K-O 3D studio"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static logo */}
-          <img
-            src="/brand/iko-logo-128.png"
-            alt=""
-            width={28}
-            height={28}
-            className="h-7 w-7 shrink-0"
-          />
-          <span className="hidden text-sm font-semibold sm:inline">
-            I-K-O 3D
-          </span>
-        </Link>
-        <span className="hidden text-sm text-ink-400 sm:inline">/ Sculpt</span>
+        <h1 className="sr-only">I-K-O 3D Sculpt</h1>
+        <BrandLink />
+        {/* Phones have no sidebar: the workspaces are a menu here. */}
+        <WorkspaceMenu current="sculpt" className="md:hidden" />
         <div className="mx-1 hidden h-6 w-px bg-ink-750 sm:block" />
         <label className="sr-only" htmlFor="sculpt-name">
           Sculpture name
@@ -390,6 +376,9 @@ export function SculptStudio() {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="hidden md:flex">
+          <Sidebar current="sculpt" />
+        </div>
         <div
           ref={container}
           className="relative order-1 min-h-[55dvh] flex-1 md:order-2 md:min-h-0"
