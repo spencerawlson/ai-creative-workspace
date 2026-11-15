@@ -249,8 +249,13 @@ export function StudioViewport({
     engineRef.current?.setActiveFigure(activeFigure);
   }, [activeFigure]);
 
+  // The lens, read when a view is asked for: changing it alone zooms
+  // (Photography's lesson) rather than re-aiming.
+  const fovRef = useRef(overrides?.fov);
+  fovRef.current = overrides?.fov;
   useEffect(() => {
-    if (viewNonce > 0) engineRef.current?.setView(view);
+    // With the lens about to be used, so a framing fits it.
+    if (viewNonce > 0) engineRef.current?.setView(view, fovRef.current);
   }, [view, viewNonce]);
 
   useImperativeHandle(

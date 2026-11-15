@@ -6,7 +6,7 @@
  */
 
 export type FramingId = "wide" | "portrait" | "closeup";
-export type CameraView = "face" | "full";
+export type CameraView = "face" | "full" | "medium";
 
 export interface FramingPreset {
   id: FramingId;
@@ -29,9 +29,9 @@ export const FRAMINGS: FramingPreset[] = [
   {
     id: "portrait",
     name: "Portrait",
-    view: "full",
+    view: "medium",
     focalMm: 50,
-    note: "The figure at a natural 50 mm view — closest to how a person actually sees, so features do not stretch or squash. Step in (orbit closer, or try Close-up) for a head-and-shoulders crop. Watch the headroom — a little space above the head, not a lot.",
+    note: "From mid-thigh up at a natural 50 mm view — closest to how a person actually sees, so features do not stretch or squash. Watch the headroom — a little space above the head, not a lot — and don't cut the frame at a joint (wrists, elbows, knees). Try Close-up for head and shoulders.",
   },
   {
     id: "closeup",
