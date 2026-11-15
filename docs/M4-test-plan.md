@@ -1,4 +1,4 @@
-# Real-iPhone Test Plan (I-K-O 3D)
+# Real-iPhone Test Plan (IKO 3D)
 
 Status: prepared, NOT run. This is a plan for Spencer to run on a real
 iPhone. Phone-width screenshots in a desktop browser, and the automated

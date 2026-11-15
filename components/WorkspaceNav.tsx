@@ -62,7 +62,7 @@ export function BrandLink() {
   return (
     <Link
       href="/"
-      aria-label="I-K-O 3D home"
+      aria-label="IKO 3D home"
       title="Home"
       className="flex shrink-0 items-center gap-2 rounded-md p-0.5 hover:bg-ink-800"
       data-testid="nav-home"
@@ -76,7 +76,7 @@ export function BrandLink() {
         className="h-7 w-7"
       />
       <span className="hidden text-sm font-semibold tracking-tight text-ink-100 lg:inline">
-        I-K-O 3D
+        IKO 3D
       </span>
     </Link>
   );

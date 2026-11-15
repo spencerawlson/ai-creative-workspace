@@ -10,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "I-K-O 3D",
+  title: "IKO 3D",
   description:
-    "I-K-O 3D: light, pose and animate 3D mannequins in the browser. Studio lights and presets, typed poses and moves, keyframes, share links, image and video export.",
+    "IKO 3D: light, pose and animate 3D mannequins in the browser. Studio lights and presets, typed poses and moves, keyframes, share links, image and video export.",
 };
 
 export const viewport: Viewport = {
