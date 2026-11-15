@@ -209,3 +209,72 @@ test.describe("Sculpt with a pen", () => {
     await expect.poll(() => steps(page)).toBe("3");
   });
 });
+
+test.describe("Sculpt: paint and mask", () => {
+  test("paint, mask, whole-mask actions as undo steps; material and paint kept; colours in the GLB", async ({
+    page,
+  }) => {
+    await openSculpt(page);
+    await page.getByTestId("sculpt-material-plaster").click();
+
+    await page.getByTestId("brush-paint").click();
+    await expect(page.getByTestId("paint-options")).toBeVisible();
+    await page.getByTestId("paint-swatch-c0392b").click();
+    await stroke(page, -20);
+    await expect.poll(() => steps(page)).toBe("1");
+
+    await page.getByTestId("brush-mask").click();
+    await expect(page.getByTestId("mask-options")).toBeVisible();
+    await stroke(page, 20);
+    await expect.poll(() => steps(page)).toBe("2");
+    await page.getByTestId("mask-invert").click();
+    await expect.poll(() => steps(page)).toBe("3");
+    await page.getByTestId("mask-clear").click();
+    await expect.poll(() => steps(page)).toBe("4");
+    await page.getByTestId("sculpt-undo").click();
+    await expect.poll(() => steps(page)).toBe("3");
+
+    // Kept on the device: the material and the paint.
+    await expect(page.getByTestId("sculpt-status")).toHaveText(
+      /^Saved on this device ·/,
+      { timeout: 10_000 },
+    );
+    await page.reload();
+    await expect(page.getByTestId("sculpt-view")).toHaveAttribute(
+      "data-status",
+      "ready",
+      { timeout: 60_000 },
+    );
+    await expect(page.getByTestId("sculpt-material-plaster")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // The GLB carries the paint as vertex colours.
+    await page.getByTestId("sculpt-export").click();
+    await page.getByTestId("sculpt-export-format-glb").click();
+    const download = page.waitForEvent("download");
+    await page.getByTestId("sculpt-export-confirm").click();
+    const fs = await import("node:fs");
+    const bytes = new Uint8Array(
+      await fs.promises.readFile(await (await download).path()),
+    );
+    const { NodeIO } = await import("@gltf-transform/core");
+    const doc = await new NodeIO().readBinary(bytes);
+    const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
+    const colors = prim.getAttribute("COLOR_0")!;
+    expect(colors).toBeTruthy();
+    // Somewhere it's red (the paint), somewhere the plaster's off-white.
+    let red = 0;
+    let plain = 0;
+    const c: number[] = [];
+    for (let i = 0; i < colors.getCount(); i++) {
+      colors.getElement(i, c);
+      // Paint mixes with the plaster by its coverage: redder, not pure.
+      if (c[0] - c[1] > 0.2 && c[0] - c[2] > 0.2) red++;
+      else if (c[0] > 0.8 && c[1] > 0.8) plain++;
+    }
+    expect(red).toBeGreaterThan(10);
+    expect(plain).toBeGreaterThan(1000);
+  });
+});

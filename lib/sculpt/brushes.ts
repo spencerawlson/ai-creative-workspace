@@ -11,7 +11,14 @@
  * never part. Pure maths on SculptMesh: tested in Node. */
 
 import { VertexGrid } from "./grid";
-import { updateNormals, type SculptMesh } from "./mesh";
+import {
+  CHANNELS,
+  channelArray,
+  updateNormals,
+  vertexCount,
+  type Channel,
+  type SculptMesh,
+} from "./mesh";
 
 export const BRUSHES = [
   "draw",
@@ -21,8 +28,12 @@ export const BRUSHES = [
   "flatten",
   "pinch",
   "grab",
+  "paint",
+  "mask",
 ] as const;
 export type BrushId = (typeof BRUSHES)[number];
+/** Brushes that change the shape (the rest change paint or the mask). */
+export type ShapeBrush = Exclude<BrushId, "grab" | "paint" | "mask">;
 
 export const BRUSH_INFO: Record<BrushId, { name: string; note: string }> = {
   draw: { name: "Draw", note: "Raise the surface (or dig in, subtracting)." },
@@ -35,6 +46,14 @@ export const BRUSH_INFO: Record<BrushId, { name: string; note: string }> = {
   flatten: { name: "Flatten", note: "Press the surface towards a flat plane." },
   pinch: { name: "Pinch", note: "Pull towards the stroke, for sharp creases." },
   grab: { name: "Grab", note: "Drag a whole region to reshape it." },
+  paint: {
+    name: "Paint",
+    note: "Paint colour onto the surface (or erase it, subtracting).",
+  },
+  mask: {
+    name: "Mask",
+    note: "Protect areas from the sculpting brushes (or free them, subtracting).",
+  },
 };
 
 export interface BrushSettings {
@@ -59,8 +78,10 @@ export interface Dab {
 /** 1 at the centre, 0 at the edge, smooth at both. */
 export const falloff = (t: number) => (t >= 1 ? 0 : (1 - t * t) ** 2);
 
-/** One stroke's undo record: the vertices it moved, before and after. */
+/** One stroke's undo record: the vertices it changed in one layer
+ * (positions, paint or the mask), before and after. */
 export interface StrokeRecord {
+  channel: Channel;
   indices: Uint32Array;
   before: Float32Array;
   after: Float32Array;
@@ -69,6 +90,8 @@ export interface StrokeRecord {
 export class Stroke {
   private slot = new Map<number, number>();
   private before: number[] = [];
+  /** The layer this stroke changes. */
+  constructor(readonly channel: Channel = "position") {}
   private grid: VertexGrid | null = null;
   private gridUses = 0;
 
@@ -87,29 +110,36 @@ export class Stroke {
     return this.grid;
   }
 
-  /** Keep `v`'s position from before the stroke first moved it. */
+  /** Keep `v`'s values in this stroke's layer from before the stroke
+   * first changed them. */
   remember(mesh: SculptMesh, v: number): void {
     if (this.slot.has(v)) return;
-    this.slot.set(v, this.before.length / 3);
-    const p = mesh.positions;
-    this.before.push(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+    const k = CHANNELS[this.channel];
+    this.slot.set(v, this.before.length / k);
+    const a = channelArray(mesh, this.channel);
+    for (let i = 0; i < k; i++) this.before.push(a[v * k + i]);
   }
 
   get size(): number {
     return this.slot.size;
   }
 
-  /** Null if nothing moved. */
+  /** Null if nothing changed. */
   finish(mesh: SculptMesh): StrokeRecord | null {
     if (!this.slot.size) return null;
+    const k = CHANNELS[this.channel];
+    const a = channelArray(mesh, this.channel);
     const indices = Uint32Array.from(this.slot.keys());
-    const after = new Float32Array(indices.length * 3);
+    const after = new Float32Array(indices.length * k);
     indices.forEach((v, i) => {
-      after[i * 3] = mesh.positions[v * 3];
-      after[i * 3 + 1] = mesh.positions[v * 3 + 1];
-      after[i * 3 + 2] = mesh.positions[v * 3 + 2];
+      for (let j = 0; j < k; j++) after[i * k + j] = a[v * k + j];
     });
-    return { indices, before: Float32Array.from(this.before), after };
+    return {
+      channel: this.channel,
+      indices,
+      before: Float32Array.from(this.before),
+      after,
+    };
   }
 }
 
@@ -120,11 +150,13 @@ export function applyRecord(
   which: "before" | "after",
 ): Uint32Array {
   const src = rec[which];
+  const k = CHANNELS[rec.channel];
+  const a = channelArray(mesh, rec.channel);
   rec.indices.forEach((v, i) => {
-    mesh.positions[v * 3] = src[i * 3];
-    mesh.positions[v * 3 + 1] = src[i * 3 + 1];
-    mesh.positions[v * 3 + 2] = src[i * 3 + 2];
+    for (let j = 0; j < k; j++) a[v * k + j] = src[i * k + j];
   });
+  // Paint and the mask change no shape: no normals to update.
+  if (rec.channel !== "position") return rec.indices;
   const ring = withNeighbors(mesh, rec.indices);
   updateNormals(mesh, ring);
   return ring;
@@ -149,6 +181,20 @@ export function withNeighbors(
 interface Gathered {
   indices: number[];
   weights: number[];
+}
+
+/** `g` with each weight reduced by the mask (a fully masked vertex
+ * dropped): what the sculpting brushes may move. */
+function unmasked(mesh: SculptMesh, g: Gathered): Gathered {
+  const out: Gathered = { indices: [], weights: [] };
+  g.indices.forEach((v, i) => {
+    const w = g.weights[i] * (1 - mesh.mask[v]);
+    if (w > 0) {
+      out.indices.push(v);
+      out.weights.push(w);
+    }
+  });
+  return out;
 }
 
 /** Gathers between rebuilds of a stroke's grid. */
@@ -262,17 +308,21 @@ function areaPlane(
  * and returns those whose normals need updating (already updated). */
 export function applyDab(
   mesh: SculptMesh,
-  brush: Exclude<BrushId, "grab">,
+  brush: ShapeBrush,
   dab: Dab,
   s: BrushSettings,
   stroke: Stroke,
 ): Uint32Array {
-  const [g1, g2, middle, whole] = mirroredGathers(
+  const [all1, all2, middle, whole] = mirroredGathers(
     mesh,
     dab.point,
     s,
     stroke.gridFor(mesh, s.radius),
   );
+  // Masked vertices stay put (the plane below still reads the whole
+  // surface under the brush).
+  const g1 = unmasked(mesh, all1);
+  const g2 = unmasked(mesh, all2);
   // A vertex on the middle line is its own mirror image: it moves only
   // along the line (the two dabs' sideways pushes cancel).
   const keepX = middle.map((v) => mesh.positions[v * 3]);
@@ -331,7 +381,7 @@ export function applyDab(
 
 function dabOnce(
   mesh: SculptMesh,
-  brush: Exclude<BrushId, "grab">,
+  brush: ShapeBrush,
   point: readonly number[],
   plane: Plane,
   g: Gathered,
@@ -455,12 +505,14 @@ export function startGrab(
   s: BrushSettings,
   stroke: Stroke,
 ): Grab {
-  const [first, second, middle] = mirroredGathers(
+  const [all1, all2, middle] = mirroredGathers(
     mesh,
     dab.point,
     s,
     stroke.gridFor(mesh, s.radius),
   );
+  const first = unmasked(mesh, all1);
+  const second = unmasked(mesh, all2);
   const onLine = new Set(middle);
   const indices = [...first.indices, ...second.indices];
   const k = s.strength * (dab.pressure ?? 1);
@@ -499,4 +551,98 @@ export function moveGrab(
   const ring = withNeighbors(mesh, grab.indices);
   updateNormals(mesh, ring);
   return ring;
+}
+
+// ------------------------------------------------------- paint and mask
+
+/** A dab of paint in `color` (sRGB, 0..1), laid over what's there; with
+ * subtract, an eraser. Mirrored like any dab; the mask doesn't stop
+ * paint. Returns the vertices it changed. */
+export function applyPaint(
+  mesh: SculptMesh,
+  dab: Dab,
+  s: BrushSettings,
+  color: readonly [number, number, number],
+  stroke: Stroke,
+): number[] {
+  const [g1, g2] = mirroredGathers(
+    mesh,
+    dab.point,
+    s,
+    stroke.gridFor(mesh, s.radius),
+  );
+  const k = s.strength * (dab.pressure ?? 1);
+  const p = mesh.paint;
+  const touched: number[] = [];
+  for (const g of [g1, g2])
+    g.indices.forEach((v, i) => {
+      const w = Math.min(1, g.weights[i] * k);
+      if (w <= 0) return;
+      stroke.remember(mesh, v);
+      const o = v * 4;
+      const a = p[o + 3];
+      if (s.invert) {
+        p[o + 3] = a * (1 - w);
+      } else {
+        // "Over": the new colour with coverage w, on top of what's there.
+        const out = w + a * (1 - w);
+        for (let c = 0; c < 3; c++)
+          p[o + c] = (color[c] * w + p[o + c] * a * (1 - w)) / out;
+        p[o + 3] = out;
+      }
+      touched.push(v);
+    });
+  return touched;
+}
+
+/** A dab of mask (protection from sculpting); with subtract, frees it. */
+export function applyMask(
+  mesh: SculptMesh,
+  dab: Dab,
+  s: BrushSettings,
+  stroke: Stroke,
+): number[] {
+  const [g1, g2] = mirroredGathers(
+    mesh,
+    dab.point,
+    s,
+    stroke.gridFor(mesh, s.radius),
+  );
+  const k = s.strength * (dab.pressure ?? 1);
+  const m = mesh.mask;
+  const touched: number[] = [];
+  for (const g of [g1, g2])
+    g.indices.forEach((v, i) => {
+      const w = Math.min(1, g.weights[i] * k);
+      if (w <= 0) return;
+      stroke.remember(mesh, v);
+      m[v] = s.invert ? m[v] * (1 - w) : m[v] + (1 - m[v]) * w;
+      touched.push(v);
+    });
+  return touched;
+}
+
+/** Changes to a whole layer at once, each one undo step. */
+export type LayerOp = "clearPaint" | "clearMask" | "invertMask";
+
+export function applyLayerOp(
+  mesh: SculptMesh,
+  op: LayerOp,
+): StrokeRecord | null {
+  const stroke = new Stroke(op === "clearPaint" ? "paint" : "mask");
+  for (let v = 0; v < vertexCount(mesh); v++) {
+    if (op === "clearPaint") {
+      if (mesh.paint[v * 4 + 3] === 0) continue;
+      stroke.remember(mesh, v);
+      mesh.paint[v * 4 + 3] = 0;
+    } else if (op === "clearMask") {
+      if (mesh.mask[v] === 0) continue;
+      stroke.remember(mesh, v);
+      mesh.mask[v] = 0;
+    } else {
+      stroke.remember(mesh, v);
+      mesh.mask[v] = 1 - mesh.mask[v];
+    }
+  }
+  return stroke.finish(mesh);
 }

@@ -14,9 +14,11 @@ import {
   Maximize2,
   Minimize2,
   Move3d,
+  Paintbrush,
   Plus,
   Redo2,
   Scan,
+  Shield,
   Trash2,
   Undo2,
   Waves,
@@ -44,6 +46,7 @@ import { toStl } from "@/lib/engine/statueExport";
 import { BrandLink, Sidebar, WorkspaceMenu } from "@/components/WorkspaceNav";
 import { openParam } from "@/lib/sculpt/fromFigure";
 import { MATERIAL_PRESETS } from "@/lib/studio/presets";
+import { packLayer, unpackLayer } from "@/lib/sculpt/paint";
 import { downloadBlob, slug } from "@/components/studio/useStudio";
 import {
   Button,
@@ -65,6 +68,28 @@ const BRUSH_ICONS: Record<BrushId, LucideIcon> = {
   flatten: Scan,
   pinch: Minimize2,
   grab: Hand,
+  paint: Paintbrush,
+  mask: Shield,
+};
+
+/** Ready colours for the paint brush (any other from the picker). */
+const PAINT_COLORS = [
+  "#f4f1ea",
+  "#1f1f22",
+  "#c0392b",
+  "#e67e22",
+  "#f1c40f",
+  "#27ae60",
+  "#2980b9",
+  "#8e44ad",
+  "#d9a98c",
+  "#7a5240",
+];
+
+/** What Subtract does with each kind of brush. */
+const SUBTRACT_HINT: Partial<Record<BrushId, string>> = {
+  paint: "Erase paint instead.",
+  mask: "Free masked areas instead.",
 };
 
 /** Clay looks: the studio's statue materials. */
@@ -97,8 +122,11 @@ export function SculptStudio() {
     invert: false,
     symmetry: true,
     turnView: false,
+    color: "#c0392b",
   });
   const [look, setLook] = useState("clay");
+  const lookRef = useRef(look);
+  lookRef.current = look;
   const [entry, setEntry] = useState<SculptEntry | null>(null);
   const [saved, setSaved] = useState<SculptEntry[]>([]);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
@@ -132,6 +160,11 @@ export function SculptStudio() {
       id: next.id,
       positions: e.mesh.positions,
       index: e.mesh.index,
+      ...(() => {
+        const paint = packLayer(e.mesh.paint, 4, 3);
+        const mask = packLayer(e.mesh.mask, 1);
+        return { ...(paint ? { paint } : {}), ...(mask ? { mask } : {}) };
+      })(),
     };
     const error = await saveSculpt(next, data);
     if (!pendingRef.current) setPending(false);
@@ -185,6 +218,8 @@ export function SculptStudio() {
       setEntry({
         id: newSculptId(),
         name: `${SHAPE_NAMES[shape]} sculpture`,
+        // A new sculpture starts in the material you were using.
+        look: lookRef.current,
         updatedAt: 0,
         triangles: faceCount(mesh),
       });
@@ -204,8 +239,14 @@ export function SculptStudio() {
         setNote("That sculpture isn't on this device any more.");
         return;
       }
-      e.setMesh(buildMesh(data.positions, data.index));
+      e.setMesh(
+        buildMesh(data.positions, data.index, {
+          paint: unpackLayer(data.paint),
+          mask: unpackLayer(data.mask),
+        }),
+      );
       setEntry(meta);
+      setLook(meta.look ?? "clay");
       setSteps(0);
     },
     [flush],
@@ -414,7 +455,7 @@ export function SculptStudio() {
         >
           <SectionTitle>Brush</SectionTitle>
           <div
-            className="grid grid-cols-7 gap-1 md:grid-cols-4"
+            className="grid grid-cols-5 gap-1 md:grid-cols-3"
             role="group"
             aria-label="Brushes"
           >
@@ -444,6 +485,84 @@ export function SculptStudio() {
           <p className="mt-1.5 text-2xs text-ink-400" data-testid="brush-note">
             {info.name}: {info.note}
           </p>
+          {tool.brush === "paint" && (
+            <div className="mt-2" data-testid="paint-options">
+              <div className="flex items-center gap-2">
+                <label htmlFor="paint-color" className="text-xs text-ink-300">
+                  Colour
+                </label>
+                <input
+                  id="paint-color"
+                  type="color"
+                  value={tool.color}
+                  onChange={(e) => set({ color: e.target.value })}
+                  className="h-7 w-10 cursor-pointer rounded border border-ink-700 bg-transparent"
+                  data-testid="paint-color"
+                />
+                <span className="text-2xs tabular-nums text-ink-400">
+                  {tool.color}
+                </span>
+              </div>
+              <div
+                className="mt-1.5 grid grid-cols-10 gap-1"
+                role="group"
+                aria-label="Paint colours"
+              >
+                {PAINT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={c}
+                    aria-label={`Paint colour ${c}`}
+                    aria-pressed={tool.color === c}
+                    onClick={() => set({ color: c, invert: false })}
+                    data-testid={`paint-swatch-${c.slice(1)}`}
+                    className={cx(
+                      "aspect-square rounded border-2",
+                      tool.color === c
+                        ? "border-accent"
+                        : "border-transparent hover:border-ink-500",
+                    )}
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-1.5 w-full"
+                onClick={() => engine.current?.layerOp("clearPaint")}
+                data-testid="paint-clear"
+              >
+                Clear all paint
+              </Button>
+            </div>
+          )}
+          {tool.brush === "mask" && (
+            <div
+              className="mt-2 grid grid-cols-2 gap-1"
+              data-testid="mask-options"
+            >
+              <Button
+                size="sm"
+                onClick={() => engine.current?.layerOp("invertMask")}
+                data-testid="mask-invert"
+              >
+                Invert mask
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => engine.current?.layerOp("clearMask")}
+                data-testid="mask-clear"
+              >
+                Clear mask
+              </Button>
+              <p className="col-span-2 text-2xs text-ink-400">
+                Masked areas show darker, and the sculpting brushes leave them
+                as they are.
+              </p>
+            </div>
+          )}
           <Slider
             label="Size"
             value={tool.sizePx}
@@ -474,7 +593,10 @@ export function SculptStudio() {
               tool.brush === "flatten" ||
               tool.brush === "grab"
             }
-            hint="Dig in, shrink or push apart instead."
+            hint={
+              SUBTRACT_HINT[tool.brush] ??
+              "Dig in, shrink or push apart instead."
+            }
             testId="sculpt-subtract"
           />
           <Toggle
@@ -514,7 +636,11 @@ export function SculptStudio() {
                 title={m.name}
                 aria-label={m.name}
                 aria-pressed={look === m.id}
-                onClick={() => setLook(m.id)}
+                onClick={() => {
+                  setLook(m.id);
+                  setEntry((cur) => (cur ? { ...cur, look: m.id } : cur));
+                  scheduleSave();
+                }}
                 data-testid={`sculpt-material-${m.id}`}
                 className={cx(
                   "aspect-square rounded-md border-2",

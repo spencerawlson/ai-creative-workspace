@@ -7,12 +7,18 @@ export interface SculptEntry {
   name: string;
   updatedAt: number;
   triangles: number;
+  /** The clay's material (a MATERIAL_PRESETS id); absent: clay. */
+  look?: string;
 }
 
 export interface SculptData {
   id: string;
   positions: Float32Array;
   index: Uint32Array;
+  /** Paint (r, g, b, coverage) and mask per vertex, 0..255; absent when
+   * empty, and in sculptures saved before painting. */
+  paint?: Uint8Array;
+  mask?: Uint8Array;
 }
 
 /** Kept at once; saving past this lets the oldest go. */
