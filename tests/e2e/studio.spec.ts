@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PRESETS, cloneLights } from "../../lib/lighting";
 import { encodeSetup } from "../../lib/share";
+import { decodeScene } from "../../lib/studio/share";
 import {
   canvasBrightness,
   dragOnPage,
@@ -1482,6 +1483,54 @@ test.describe("Statues", () => {
         .listNodes()
         .map((n) => n.getName()),
     ).toContain("plinth");
+  });
+});
+
+test.describe("Surfaces", () => {
+  test("statue materials bring their surface; a chosen surface is kept by the link", async ({
+    page,
+  }) => {
+    const errors = await openStudio(page);
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await expect(page.getByTestId("finish-plain")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.getByTestId("material-marble").click();
+    await expect(page.getByTestId("finish-marble")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.getByTestId("finish-patina").click();
+    await expect(page.getByTestId("finish-patina")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // The view keeps rendering with the finish (no shader errors).
+    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
+      "data-status",
+      "ready",
+    );
+
+    // The address is the share link, updated shortly after each change:
+    // wait for the one with the patina in it.
+    await expect
+      .poll(async () => decodeScene(await sParam(page))?.material.finish)
+      .toBe("patina");
+    await openStudio(
+      page,
+      new URL(page.url()).pathname + new URL(page.url()).search,
+    );
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await expect(page.getByTestId("finish-patina")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(errors).toEqual([]);
   });
 });
 

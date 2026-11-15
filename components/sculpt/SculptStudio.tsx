@@ -101,6 +101,7 @@ const LOOKS = [
   "sandstone",
   "dark-stone",
   "bronze",
+  "aged-bronze",
   "gold",
 ].flatMap((id) => MATERIAL_PRESETS.filter((m) => m.id === id));
 
@@ -625,7 +626,7 @@ export function SculptStudio() {
 
           <SectionTitle>Material</SectionTitle>
           <div
-            className="grid grid-cols-8 gap-1 md:grid-cols-4"
+            className="grid grid-cols-9 gap-1 md:grid-cols-3"
             role="group"
             aria-label="Clay material"
           >

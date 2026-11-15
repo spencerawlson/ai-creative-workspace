@@ -5,7 +5,7 @@
  *     l: [[id, label, kind, on, az, el, dist, int, temp, soft, shadows, spot, size], ...],
  *     c: [focalMm, exposureEv, toneMapping, aperture, bloom, vignette,
  *         grain],
- *     mt: [preset, color, roughness, metalness],
+ *     mt: [preset, color, roughness, metalness, finish index in FINISHES?],
  *     b: [preset, color, style, shadowOpacity],
  *     q: shadowQuality,
  *     po?: [posePreset, [joint angles in pose.ts order, whole degrees]],
@@ -40,6 +40,7 @@
  */
 
 import { decodeSetup } from "@/lib/share";
+import { FINISHES } from "@/lib/engine/surface";
 import { defaultScene, fromLegacyLight, presetLights } from "./presets";
 import { flattenJoints, isNeutral, unflattenJoints } from "./pose";
 import { isAnimated } from "./speech";
@@ -94,6 +95,10 @@ function scenePayload(scene: SceneDoc) {
       scene.material.color,
       round2(scene.material.roughness),
       round2(scene.material.metalness),
+      // A finish only when there is one: older links stay the same.
+      ...(scene.material.finish && scene.material.finish !== "plain"
+        ? [FINISHES.indexOf(scene.material.finish)]
+        : []),
     ],
     b: [
       scene.backdrop.preset,
@@ -160,6 +165,9 @@ function decodePayload(parsed: object): SceneDoc | null {
       color: arr(p.mt)[1],
       roughness: arr(p.mt)[2],
       metalness: arr(p.mt)[3],
+      ...(typeof arr(p.mt)[4] === "number" && FINISHES[arr(p.mt)[4] as number]
+        ? { finish: FINISHES[arr(p.mt)[4] as number] }
+        : {}),
     },
     backdrop: {
       preset: arr(p.b)[0],

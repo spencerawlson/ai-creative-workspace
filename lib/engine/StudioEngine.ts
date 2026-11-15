@@ -89,6 +89,7 @@ import {
   type StudioLight,
 } from "@/lib/studio/schema";
 import { plinthGeometry } from "./plinth";
+import { patchSurface, type Finish } from "./surface";
 import { bakeStatue, toStl, type StlResult } from "./statueExport";
 
 /** "medium": the active figure from mid-thigh up, framed for the lens
@@ -346,9 +347,11 @@ export class StudioEngine {
   private postSize = "";
   private readonly handlesRoot = new THREE.Group();
   private readonly skeletonRoot = new THREE.Group();
-  private readonly material = Object.assign(new THREE.MeshStandardMaterial(), {
-    name: "Mannequin",
-  });
+  private readonly material = this.finishable(
+    Object.assign(new THREE.MeshStandardMaterial(), { name: "Mannequin" }),
+  );
+  /** The material's surface finish (lib/engine/surface.ts). */
+  private finish: Finish = "plain";
   private readonly catcher: THREE.Mesh<
     THREE.CircleGeometry,
     THREE.ShadowMaterial
@@ -1046,8 +1049,21 @@ export class StudioEngine {
 
   // ------------------------------------------------------ material/backdrop
 
+  /** The studio material, with its surface finish compiled in (one
+   * program per finish). */
+  private finishable(m: THREE.MeshStandardMaterial) {
+    m.onBeforeCompile = (shader) => patchSurface(shader, this.finish);
+    m.customProgramCacheKey = () => `finish-${this.finish}`;
+    return m;
+  }
+
   private syncMaterial(doc: SceneDoc): void {
     const m = doc.material;
+    const finish = m.finish ?? "plain";
+    if (finish !== this.finish) {
+      this.finish = finish;
+      this.material.needsUpdate = true;
+    }
     this.material.color.set(m.color);
     this.material.roughness = m.roughness;
     this.material.metalness = m.metalness;
