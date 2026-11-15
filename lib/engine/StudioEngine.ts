@@ -91,7 +91,9 @@ import {
 import { plinthGeometry } from "./plinth";
 import { bakeStatue, toStl, type StlResult } from "./statueExport";
 
-export type CameraView = "face" | "full" | "studio";
+/** "medium": the active figure from mid-thigh up, framed for the lens
+ * in use (Photography's Portrait). */
+export type CameraView = "face" | "full" | "studio" | "medium";
 /** Light id, "model", "camera", "backdrop", "pose", or `pose:<joint>`
  * (a body part tapped in the viewport). */
 export type Selection = string | null;
@@ -578,9 +580,14 @@ export class StudioEngine {
     this.invalidate();
   }
 
-  setView(view: CameraView): void {
+  /** Aim the camera for a view. `fovDeg`: the vertical angle of view
+   * about to be used (Photography sets the lens and the framing
+   * together), else the camera's own. */
+  setView(view: CameraView, fovDeg?: number): void {
     this.view = view;
-    if (view === "face") {
+    if (view === "medium") {
+      this.aimMedium(fovDeg ?? this.camera.fov);
+    } else if (view === "face") {
       // Keep the current orbit direction; pull in close to the head.
       const dir = this.camera.position
         .clone()
@@ -1365,6 +1372,40 @@ export class StudioEngine {
     return a
       ? a.root.localToWorld(new THREE.Vector3(0, a.headHeight, 0))
       : new THREE.Vector3(0, 1.72, 0);
+  }
+
+  /** The active figure from mid-thigh to a little above its head (a
+   * medium shot, cut below the hands: a classic portrait), from the
+   * front at chest height, as close as the lens and the screen's shape
+   * allow while the arms and the headroom still fit. */
+  private aimMedium(fovDeg: number): void {
+    const a = this.active;
+    const H = FIGURE_HEIGHT;
+    // Mid-thigh: below the hands, so the frame cuts no joint.
+    const bottom = 0.4 * H;
+    const top = H * 1.05; // headroom: a little space above the head
+    const centre = (bottom + top) / 2;
+    const fov = THREE.MathUtils.degToRad(fovDeg);
+    const hfov = 2 * Math.atan(Math.tan(fov / 2) * this.camera.aspect);
+    // Tall enough for the span, wide enough for the arms (not cut at
+    // the elbows or wrists, the joints the framing note warns about).
+    const dist =
+      Math.max(
+        (top - bottom) / 2 / Math.tan(fov / 2),
+        // The mannequin stands with its arms out a little: all of them.
+        0.6 / Math.tan(hfov / 2),
+      ) * 1.02;
+    const local = (x: number, y: number, z: number) => {
+      const v = new THREE.Vector3(x, y, z);
+      return a ? a.root.localToWorld(v) : v;
+    };
+    // The top of the frame stays at the headroom; on a tall, narrow
+    // screen (where the arms set the distance) the extra height goes to
+    // the legs, not above the head.
+    const seen = 2 * dist * Math.tan(fov / 2);
+    const aim = Math.min(centre, top - seen / 2);
+    this.controls.target.copy(local(0, aim, 0));
+    this.camera.position.copy(local(0, aim + 0.04, dist));
   }
 
   /** Face view framed on the active figure, from its front-left. */

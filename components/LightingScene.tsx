@@ -21,7 +21,7 @@ export function LightingScene({
   exposure,
 }: {
   lights: LightState[];
-  view: "face" | "full";
+  view: "face" | "full" | "medium";
   viewNonce: number;
   model: MannequinModel;
   /** Optional camera override: vertical field of view in degrees.

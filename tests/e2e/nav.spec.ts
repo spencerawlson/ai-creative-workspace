@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { jointsOnScreen } from "./helpers";
 
 type Workspace = "studio" | "sculpt" | "photography";
 const LABEL: Record<Workspace, string> = {
@@ -97,4 +98,58 @@ test("the Photography page has no automatically detectable WCAG A/AA violations"
       (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
     ),
   ).toEqual([]);
+});
+
+test("Photography's framings fit the figure: portrait from mid-thigh with the head and hands, wide all of it", async ({
+  page,
+}) => {
+  await page.goto("/photography");
+  const scene = page.getByTestId("lighting-scene");
+  await expect(scene).toHaveAttribute("data-status", "ready", {
+    timeout: 90_000,
+  });
+  const box = (await scene.boundingBox())!;
+  const inside = (p?: { x: number; y: number }) =>
+    !!p &&
+    p.x > box.x &&
+    p.x < box.x + box.width &&
+    p.y > box.y &&
+    p.y < box.y + box.height;
+  // The engine's camera follows the next frame: poll until it settles.
+  const joints = () => jointsOnScreen(page);
+  // The mannequin loads after the view is ready: wait for its joints.
+  await expect
+    .poll(async () => Object.keys(await joints()).length, { timeout: 60_000 })
+    .toBeGreaterThan(10);
+
+  // Portrait opens first.
+  await expect.poll(async () => inside((await joints()).head)).toBe(true);
+  const portrait = await joints();
+  expect(inside(portrait.handL) && inside(portrait.handR)).toBe(true);
+  // Cut mid-thigh: the hips are in the frame, the ankles below it (on a
+  // tall, narrow view the arms set the distance and more legs show).
+  const wideView = box.width >= box.height;
+  expect(inside(portrait.hipL) && inside(portrait.hipR)).toBe(true);
+  if (wideView) expect(portrait.ankleL.y).toBeGreaterThan(box.y + box.height);
+  // The head (its neck pivot) in the upper part of the frame, as in a
+  // portrait, with room above it.
+  expect(portrait.head.y).toBeGreaterThan(box.y + box.height * 0.05);
+  expect(portrait.head.y).toBeLessThan(box.y + box.height * 0.45);
+
+  await page.getByTestId("framing-wide").click();
+  await expect
+    .poll(async () => {
+      const j = await joints();
+      return ["head", "handL", "handR", "ankleL", "ankleR"].every((k) =>
+        inside(j[k]),
+      );
+    })
+    .toBe(true);
+
+  // Back to portrait after a wide shot: framed the same.
+  await page.getByTestId("framing-portrait").click();
+  // The same framing as on opening: the head back where it was.
+  await expect
+    .poll(async () => Math.abs((await joints()).head.y - portrait.head.y))
+    .toBeLessThan(2);
 });
