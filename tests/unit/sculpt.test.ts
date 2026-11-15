@@ -344,3 +344,77 @@ describe("undo", () => {
     expect(m.neighborStart[3]).toBe(6);
   });
 });
+
+describe("symmetry near the middle", () => {
+  it("strokes across the middle stay exact mirror images, without a seam", () => {
+    const m = makeShape("sphere");
+    // Each vertex's mirror image across x = 0, found before sculpting.
+    const mirrorOf = new Int32Array(vertexCount(m)).fill(-1);
+    const byPlace = new Map<string, number>();
+    const key = (x: number, y: number, z: number) =>
+      `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`;
+    for (let v = 0; v < vertexCount(m); v++) {
+      const [x, y, z] = at(m, v);
+      byPlace.set(key(x, y, z), v);
+    }
+    for (let v = 0; v < vertexCount(m); v++) {
+      const [x, y, z] = at(m, v);
+      mirrorOf[v] = byPlace.get(key(-x, y, z)) ?? -1;
+    }
+    const stroke = new Stroke();
+    // Dabs just right of the middle: the brush and its mirror overlap.
+    for (const [x, brush] of [
+      [0.02, "draw"],
+      [0.04, "clay"],
+      [0.01, "inflate"],
+      [0.03, "smooth"],
+    ] as const)
+      applyDab(
+        m,
+        brush,
+        sphereDab([x, 0.3, 1]),
+        settings({ symmetry: true, strength: 1 }),
+        stroke,
+      );
+    const g = startGrab(
+      m,
+      sphereDab([0.02, 0.5, 1]),
+      settings({ symmetry: true }),
+      stroke,
+    );
+    moveGrab(m, g, [0.03, 0.05, 0.04]);
+    let checked = 0;
+    for (let v = 0; v < vertexCount(m); v++) {
+      const w = mirrorOf[v];
+      if (w < 0) continue;
+      const [x, y, z] = at(m, v);
+      const [mx, my, mz] = at(m, w);
+      expect(Math.abs(x + mx)).toBeLessThan(1e-5);
+      expect(Math.abs(y - my)).toBeLessThan(1e-5);
+      expect(Math.abs(z - mz)).toBeLessThan(1e-5);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(vertexCount(m) * 0.9);
+  });
+});
+
+describe("the clay in the 3D view", () => {
+  it("building the hit-test tree leaves the clay's own triangles alone", async () => {
+    const { clayGeometry } = await import("@/lib/sculpt/SculptEngine");
+    const m = makeShape("sphere");
+    const before = m.index.slice();
+    const { geometry, bvh } = clayGeometry(m);
+    expect(m.index).toEqual(before);
+    // The drawn arrays are the clay's, so brushes show up directly.
+    expect(geometry.attributes.position.array).toBe(m.positions);
+    expect(geometry.attributes.normal.array).toBe(m.normals);
+    // And the tree finds the surface.
+    const THREE = await import("three");
+    const hit = bvh.raycastFirst(
+      new THREE.Ray(new THREE.Vector3(0, 0.5, 3), new THREE.Vector3(0, 0, -1)),
+      THREE.FrontSide,
+    );
+    expect(hit?.point.z).toBeCloseTo(0.5, 2);
+    geometry.dispose();
+  });
+});

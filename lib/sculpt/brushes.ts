@@ -4,9 +4,11 @@
  * A stroke is a run of dabs (the pointer dragged across the surface);
  * it remembers each vertex's position from before its first touch, so
  * the whole stroke is one undo step. Symmetry repeats each dab mirrored
- * across x = 0; vertices the first dab moved are left to it, so the
- * middle line isn't moved twice. Pure maths on SculptMesh: tested in
- * Node. */
+ * across x = 0; where the two overlap (near the middle) each vertex goes
+ * to the nearer one, so a vertex and its mirror image always move as
+ * mirror images and nothing is moved twice. A vertex on the middle line
+ * is its own mirror image: it moves only along the line, so the halves
+ * never part. Pure maths on SculptMesh: tested in Node. */
 
 import { updateNormals, type SculptMesh } from "./mesh";
 
@@ -131,13 +133,11 @@ interface Gathered {
   weights: number[];
 }
 
-/** Vertices within `radius` of `c`, with their falloff weights; those
- * in `skip` left out. */
+/** Vertices within `radius` of `c`, with their falloff weights. */
 function gather(
   mesh: SculptMesh,
   c: readonly number[],
   radius: number,
-  skip?: Set<number>,
 ): Gathered {
   const p = mesh.positions;
   const r2 = radius * radius;
@@ -148,16 +148,62 @@ function gather(
     const dy = p[i + 1] - c[1];
     const dz = p[i + 2] - c[2];
     const d2 = dx * dx + dy * dy + dz * dz;
-    if (d2 >= r2 || skip?.has(v)) continue;
+    if (d2 >= r2) continue;
     indices.push(v);
     weights.push(falloff(Math.sqrt(d2) / radius));
   }
   return { indices, weights };
 }
 
+/** How close to x = 0 counts as on the middle line, in metres. */
+const MIDDLE = 1e-6;
+
+/** A dab and its mirror image: where both reach a vertex, the nearer
+ * (heavier) one keeps it. Without symmetry (or on the middle line), the
+ * mirror is empty. Also: the vertices under the brush that lie on the
+ * middle line (with symmetry), which must stay on it. */
+function mirroredGathers(
+  mesh: SculptMesh,
+  point: readonly number[],
+  s: BrushSettings,
+): [Gathered, Gathered, number[]] {
+  const first = gather(mesh, point, s.radius);
+  if (!s.symmetry) return [first, { indices: [], weights: [] }, []];
+  const middle = first.indices.filter(
+    (v) => Math.abs(mesh.positions[v * 3]) <= MIDDLE,
+  );
+  if (Math.abs(point[0]) <= MIDDLE)
+    return [first, { indices: [], weights: [] }, middle];
+  const second = gather(mesh, [-point[0], point[1], point[2]], s.radius);
+  const w1 = new Map(first.indices.map((v, i) => [v, first.weights[i]]));
+  const w2 = new Map(second.indices.map((v, i) => [v, second.weights[i]]));
+  const keep = (g: Gathered, other: Map<number, number>, ties: boolean) => {
+    const out: Gathered = { indices: [], weights: [] };
+    g.indices.forEach((v, i) => {
+      const o = other.get(v);
+      const w = g.weights[i];
+      if (o === undefined || w > o || (w === o && ties)) {
+        out.indices.push(v);
+        out.weights.push(w);
+      }
+    });
+    return out;
+  };
+  return [keep(first, w2, true), keep(second, w1, false), middle];
+}
+
 /** The weighted average position and normal under the brush: the plane
  * that clay, flatten and draw work against. */
-function areaPlane(mesh: SculptMesh, g: Gathered, fallback: readonly number[]) {
+interface Plane {
+  c: readonly number[];
+  n: readonly number[];
+}
+
+function areaPlane(
+  mesh: SculptMesh,
+  g: Gathered,
+  fallback: readonly number[],
+): Plane {
   let cx = 0;
   let cy = 0;
   let cz = 0;
@@ -191,22 +237,58 @@ export function applyDab(
   s: BrushSettings,
   stroke: Stroke,
 ): Uint32Array {
-  const moved: number[] = [];
-  const first = dabOnce(mesh, brush, dab.point, dab.normal, dab, s, stroke);
-  moved.push(...first);
-  if (s.symmetry && Math.abs(dab.point[0]) > 1e-6) {
-    const mirrored = dabOnce(
+  const [g1, g2, middle] = mirroredGathers(mesh, dab.point, s);
+  // A vertex on the middle line is its own mirror image: it moves only
+  // along the line (the two dabs' sideways pushes cancel).
+  const keepX = middle.map((v) => mesh.positions[v * 3]);
+  const holdMiddle = () =>
+    middle.forEach((v, i) => (mesh.positions[v * 3] = keepX[i]));
+  if (brush === "smooth") {
+    // One pass over both sides, every neighbour read before anything
+    // moves: done one side after the other, the second would read the
+    // first's moves near the middle and drift from a mirror image.
+    const both = {
+      indices: [...g1.indices, ...g2.indices],
+      weights: [...g1.weights, ...g2.weights],
+    };
+    const moved = dabOnce(
       mesh,
       brush,
-      [-dab.point[0], dab.point[1], dab.point[2]],
-      [-dab.normal[0], dab.normal[1], dab.normal[2]],
+      dab.point,
+      // Smooth needs no plane.
+      { c: dab.point, n: dab.normal },
+      both,
       dab,
       s,
       stroke,
-      new Set(first),
     );
-    moved.push(...mirrored);
+    holdMiddle();
+    const ring = withNeighbors(mesh, moved);
+    updateNormals(mesh, ring);
+    return ring;
   }
+  // The surface plane under the whole brush, and its mirror image for
+  // the other side: each side working out its own from its share of the
+  // vertices would give planes that aren't quite mirror images.
+  const plane = areaPlane(mesh, gather(mesh, dab.point, s.radius), dab.normal);
+  const mirrorPlane: Plane = {
+    c: [-plane.c[0], plane.c[1], plane.c[2]],
+    n: [-plane.n[0], plane.n[1], plane.n[2]],
+  };
+  const moved = [
+    ...dabOnce(mesh, brush, dab.point, plane, g1, dab, s, stroke),
+    ...dabOnce(
+      mesh,
+      brush,
+      [-dab.point[0], dab.point[1], dab.point[2]],
+      mirrorPlane,
+      g2,
+      dab,
+      s,
+      stroke,
+    ),
+  ];
+  holdMiddle();
   const ring = withNeighbors(mesh, moved);
   updateNormals(mesh, ring);
   return ring;
@@ -216,13 +298,12 @@ function dabOnce(
   mesh: SculptMesh,
   brush: Exclude<BrushId, "grab">,
   point: readonly number[],
-  normal: readonly number[],
+  plane: Plane,
+  g: Gathered,
   dab: Dab,
   s: BrushSettings,
   stroke: Stroke,
-  skip?: Set<number>,
 ): number[] {
-  const g = gather(mesh, point, s.radius, skip);
   if (!g.indices.length) return [];
   const p = mesh.positions;
   const sign = s.invert ? -1 : 1;
@@ -255,7 +336,7 @@ function dabOnce(
     return g.indices;
   }
 
-  const { c, n } = areaPlane(mesh, g, normal);
+  const { c, n } = plane;
   g.indices.forEach((v, i) => {
     const w = g.weights[i] * k;
     const o = v * 3;
@@ -329,6 +410,8 @@ export interface Grab {
   origins: Float32Array;
   /** Mirrored across x = 0: moves with x flipped. */
   mirrored: boolean[];
+  /** On the middle line: moves along it only (no x). */
+  middle: boolean[];
 }
 
 export function startGrab(
@@ -337,16 +420,8 @@ export function startGrab(
   s: BrushSettings,
   stroke: Stroke,
 ): Grab {
-  const first = gather(mesh, dab.point, s.radius);
-  const mirroredOn = s.symmetry && Math.abs(dab.point[0]) > 1e-6;
-  const second = mirroredOn
-    ? gather(
-        mesh,
-        [-dab.point[0], dab.point[1], dab.point[2]],
-        s.radius,
-        new Set(first.indices),
-      )
-    : { indices: [], weights: [] };
+  const [first, second, middle] = mirroredGathers(mesh, dab.point, s);
+  const onLine = new Set(middle);
   const indices = [...first.indices, ...second.indices];
   const k = s.strength * (dab.pressure ?? 1);
   const weights = [...first.weights, ...second.weights].map((w) =>
@@ -364,6 +439,7 @@ export function startGrab(
     weights,
     origins,
     mirrored: indices.map((_, i) => i >= first.indices.length),
+    middle: indices.map((v) => onLine.has(v)),
   };
 }
 
@@ -375,7 +451,7 @@ export function moveGrab(
 ): Uint32Array {
   grab.indices.forEach((v, i) => {
     const w = grab.weights[i];
-    const dx = grab.mirrored[i] ? -delta[0] : delta[0];
+    const dx = grab.middle[i] ? 0 : grab.mirrored[i] ? -delta[0] : delta[0];
     mesh.positions[v * 3] = grab.origins[i * 3] + dx * w;
     mesh.positions[v * 3 + 1] = grab.origins[i * 3 + 1] + delta[1] * w;
     mesh.positions[v * 3 + 2] = grab.origins[i * 3 + 2] + delta[2] * w;
