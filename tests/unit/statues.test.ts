@@ -31,7 +31,7 @@ function readStl(buffer: ArrayBuffer) {
       ),
     );
   }
-  return { count, tris, header: new TextDecoder().decode(buffer.slice(0, 34)) };
+  return { count, tris, header: new TextDecoder().decode(buffer.slice(0, 32)) };
 }
 
 describe("statues: plinths and statue materials", () => {
@@ -218,7 +218,7 @@ describe("statues: baking and STL", () => {
     expect(r.triangles).toBe(8);
     expect(r.sizeMm[2]).toBe(120);
     const stl = readStl(await r.blob.arrayBuffer());
-    expect(stl.header).toBe("I-K-O 3D statue, millimetres, Z up");
+    expect(stl.header).toBe("IKO 3D statue, millimetres, Z up");
     expect(stl.count).toBe(8);
     expect(r.blob.size).toBe(84 + 8 * 50);
     const corners = stl.tris.flatMap((t) => t.slice(1));

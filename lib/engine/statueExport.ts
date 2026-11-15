@@ -109,7 +109,7 @@ export function toStl(baked: BakedTriangles, heightMm: number): StlResult {
 
   const buffer = new ArrayBuffer(84 + baked.triangles * 50);
   const out = new DataView(buffer);
-  const header = "I-K-O 3D statue, millimetres, Z up";
+  const header = "IKO 3D statue, millimetres, Z up";
   for (let i = 0; i < header.length; i++) out.setUint8(i, header.charCodeAt(i));
   out.setUint32(80, baked.triangles, true);
   const a = new THREE.Vector3();

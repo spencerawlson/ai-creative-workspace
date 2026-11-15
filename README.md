@@ -1,4 +1,4 @@
-# I-K-O 3D
+# IKO 3D
 
 (The repository is still called ai-creative-workspace.)
 

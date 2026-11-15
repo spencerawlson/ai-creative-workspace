@@ -324,7 +324,7 @@ export const TOOLS: Tool[] = [
     name: "share_link",
     title: "Link to open the scene in the studio",
     description:
-      "A link that opens this scene in the I-K-O 3D studio, with its animation when it fits in a link. Give it to the person to see the result.",
+      "A link that opens this scene in the IKO 3D studio, with its animation when it fits in a link. Give it to the person to see the result.",
     input: z.object({}),
     readOnly: true,
     run: async (session, _args, ctx) => {
@@ -342,7 +342,7 @@ export const TOOLS: Tool[] = [
     name: "open_link",
     title: "Open a studio share link",
     description:
-      "Load a scene from an I-K-O 3D share link (the whole URL, or its s= value), as one undo step.",
+      "Load a scene from an IKO 3D share link (the whole URL, or its s= value), as one undo step.",
     input: z.object({ link: z.string().trim().min(1).max(20000) }),
     run: async (session, { link }) => {
       let param: string | null = link;

@@ -6,11 +6,11 @@ import { ProcessVideo } from "@/components/landing/ProcessVideo";
 import { studioRedirectTarget } from "@/lib/studio/landing-redirect";
 
 export const metadata: Metadata = {
-  title: "I-K-O 3D — Light, pose and animate 3D characters",
+  title: "IKO 3D — Light, pose and animate 3D characters",
   description:
     "A studio for lighting, posing and animating 3D figures. Real Three.js light, presets a photographer would recognise, and share links that reproduce the whole scene. No accounts, no uploads, nothing to install.",
   openGraph: {
-    title: "I-K-O 3D — Light, pose and animate 3D characters",
+    title: "IKO 3D — Light, pose and animate 3D characters",
     description:
       "Light, pose and animate 3D characters — right in your browser.",
     images: [
@@ -76,7 +76,7 @@ export default async function LandingPage({
             height={28}
             className="h-7 w-7 shrink-0"
           />
-          <span className="text-sm font-semibold">I-K-O 3D</span>
+          <span className="text-sm font-semibold">IKO 3D</span>
           <nav aria-label="Sections" className="ml-auto flex gap-4 text-sm">
             <Link
               href="/sculpt"
@@ -98,7 +98,7 @@ export default async function LandingPage({
           className="grid items-center gap-8 py-8 sm:py-12 lg:grid-cols-2"
         >
           <div>
-            <p className="text-sm font-medium text-accent">I-K-O 3D</p>
+            <p className="text-sm font-medium text-accent">IKO 3D</p>
             <h1
               id="landing-hero"
               className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl"
@@ -223,7 +223,7 @@ export default async function LandingPage({
 
         <footer className="border-t border-ink-800 py-8 text-sm text-ink-400">
           <p>
-            I-K-O 3D — no accounts, no backend, free. The pose finder runs
+            IKO 3D — no accounts, no backend, free. The pose finder runs
             entirely in your browser.
           </p>
           <p className="mt-2">

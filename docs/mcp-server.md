@@ -1,9 +1,9 @@
-# The I-K-O 3D MCP server
+# The IKO 3D MCP server
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI read and
 direct a studio scene: Claude Desktop, Claude Code, or a local model in
 an MCP client such as LM Studio. It is the groundwork for running
-I-K-O 3D with a local AI behind it. Later tools (live view, generating
+IKO 3D with a local AI behind it. Later tools (live view, generating
 and rigging characters, generating motion) plug into the same server.
 
 It changes the scene only through the studio's own actions

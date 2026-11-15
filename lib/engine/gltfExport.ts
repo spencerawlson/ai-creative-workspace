@@ -137,7 +137,7 @@ export async function exportGlb(
   opts: GlbOptions,
 ): Promise<GlbResult> {
   const scene = new THREE.Scene();
-  scene.name = "I-K-O 3D";
+  scene.name = "IKO 3D";
   /** Live object → its clone in the file, for the animation. */
   const pairs: Array<[THREE.Object3D, THREE.Object3D]> = [];
   for (const f of src.figures) {
@@ -273,11 +273,7 @@ export async function exportGlb(
     }
     if (tracks.length)
       animations.push(
-        new THREE.AnimationClip(
-          "I-K-O 3D animation",
-          times[frames - 1],
-          tracks,
-        ),
+        new THREE.AnimationClip("IKO 3D animation", times[frames - 1], tracks),
       );
   }
 
