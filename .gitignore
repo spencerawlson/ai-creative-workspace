@@ -11,6 +11,8 @@ test-results/
 
 # Copied from node_modules by scripts/copy-mediapipe.mjs
 public/mediapipe/wasm/
+# Copied from node_modules by scripts/copy-xatlas.mjs
+public/xatlas/
 
 # Meshy downloads for the cast (large; the slimmed copies are in public/cast)
 assets/cast/source/
