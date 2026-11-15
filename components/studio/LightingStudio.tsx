@@ -147,6 +147,7 @@ export function LightingStudio() {
   const [quality, setQuality] = useRenderQuality();
   const [exportOpen, setExportOpen] = useState(false);
   const [export3DOpen, setExport3DOpen] = useState(false);
+  const [export3DFormat, setExport3DFormat] = useState<"glb" | "stl">("glb");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -484,6 +485,10 @@ export function LightingStudio() {
       time={time}
       onPlayFrom={playFrom}
       characters={characters}
+      onPrint={() => {
+        setExport3DFormat("stl");
+        setExport3DOpen(true);
+      }}
     />
   );
   const panels: Record<Tool, React.ReactNode> = {
@@ -859,11 +864,13 @@ export function LightingStudio() {
         viewport={viewport}
         onExport3D={() => {
           setExportOpen(false);
+          setExport3DFormat("glb");
           setExport3DOpen(true);
         }}
       />
       <Export3DDialog
         open={export3DOpen}
+        startWith={export3DFormat}
         onClose={() => setExport3DOpen(false)}
         studio={studio}
         viewport={viewport}

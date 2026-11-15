@@ -284,7 +284,7 @@ export function ScenePanel({
               }
               detail={`${f.character ? "Imported" : f.model === "male" ? "Male" : "Female"} · ${
                 posePreset(f.pose.preset)?.name ?? "Custom pose"
-              }`}
+              }${f.plinth ? " · Statue" : ""}`}
               selected={selection === "model" && f.id === figure.id}
               onSelect={() => onSelect("model", f.id)}
               testId={`node-figure-${f.id}`}

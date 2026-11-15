@@ -112,7 +112,7 @@ export function ExportDialog({
               onClick={onExport3D}
               data-testid="export-3d-open"
             >
-              3D file
+              3D file / print
             </Button>
           )}
           <Button variant="ghost" onClick={onClose}>
@@ -548,14 +548,22 @@ export function Export3DDialog({
   onClose,
   studio,
   viewport,
+  startWith = "glb",
 }: {
   open: boolean;
   onClose: () => void;
   studio: Studio;
   viewport: React.RefObject<ViewportHandle | null>;
+  /** The format chosen when it opens. */
+  startWith?: "glb" | "stl";
 }) {
   const animated = isAnimated(studio.scene);
-  const [format, setFormat] = useState<"glb" | "stl">("glb");
+  const [format, setFormat] = useState<"glb" | "stl">(startWith);
+  // Each opening starts on the format it was opened for (the Statue
+  // section's print button opens it on STL).
+  useEffect(() => {
+    if (open) setFormat(startWith);
+  }, [open, startWith]);
   const [animation, setAnimation] = useState(true);
   const [stage, setStage] = useState(false);
   const [heightMm, setHeightMm] = useState(150);

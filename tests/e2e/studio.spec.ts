@@ -1355,11 +1355,23 @@ function wav(parts: Array<[number, number[] | null]>): Buffer {
 
 test.describe("Statues", () => {
   /** Export the statue as STL; returns the triangles and the height. */
-  async function exportStl(page: import("@playwright/test").Page) {
-    await page.getByTestId("export-open").click();
-    await page.getByTestId("export-3d-open").click();
+  async function exportStl(
+    page: import("@playwright/test").Page,
+    /** From the Statue section's print button (already on STL). */
+    fromStatue = false,
+  ) {
     const dialog = page.getByTestId("export-3d-dialog");
-    await dialog.getByTestId("export-3d-format-stl").click();
+    if (fromStatue) {
+      await page.getByTestId("statue-print").click();
+      await expect(dialog.getByTestId("export-3d-format-stl")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    } else {
+      await page.getByTestId("export-open").click();
+      await page.getByTestId("export-3d-open").click();
+      await dialog.getByTestId("export-3d-format-stl").click();
+    }
     await dialog.getByTestId("export-stl-height").fill("150");
     const download = page.waitForEvent("download", { timeout: 60_000 });
     await dialog.getByTestId("export-3d-confirm").click();
@@ -1405,8 +1417,12 @@ test.describe("Statues", () => {
       "true",
     );
 
+    await showPanel(page, "scene");
+    await expect(page.getByTestId("node-figure-fig-1")).toContainText("Statue");
+    await showInspector(page);
+
     // The plinth comes along: the same height, more triangles.
-    const statue = await exportStl(page);
+    const statue = await exportStl(page, true);
     expect(statue.count).toBeGreaterThan(bare.count + 500);
     expect(statue.maxZ).toBeCloseTo(150, 2);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Gauge, Trash2 } from "lucide-react";
+import { Copy, Gauge, Printer, Trash2 } from "lucide-react";
 import { figureLabel } from "@/lib/studio/figures";
 import { useSelectNewFigure } from "./useSelectNewFigure";
 import { CUSTOM_NOTE, PRESETS } from "@/lib/lighting";
@@ -62,6 +62,8 @@ type Props = {
   /** This device's render quality. */
   quality?: RenderQuality;
   onQuality?: (q: RenderQuality) => void;
+  /** Open the 3D export set for printing (STL). */
+  onPrint?: () => void;
 };
 
 export function Inspector(props: Props) {
@@ -286,6 +288,7 @@ function ModelInspector({
   time,
   onPlayFrom,
   characters,
+  onPrint,
 }: Props) {
   const { scene, dispatch, seal } = studio;
   const m = scene.material;
@@ -353,6 +356,39 @@ function ModelInspector({
             />
           </div>
         )}
+        <SectionTitle>Statue</SectionTitle>
+        <Segmented
+          label="Plinth"
+          value={figure.plinth ?? "none"}
+          testIdPrefix="plinth"
+          options={[
+            { value: "none", label: "None" },
+            { value: "round", label: "Round" },
+            { value: "square", label: "Square" },
+          ]}
+          onChange={(v) =>
+            dispatch({
+              type: "setPlinth",
+              figure: figure.id,
+              plinth: v === "none" ? null : v,
+            })
+          }
+        />
+        <Tip className="mt-1">
+          Stand it on a plinth, pick a statue material under Material below
+          (marble, bronze, plaster…), and print it.
+        </Tip>
+        {onPrint && (
+          <Button
+            size="sm"
+            icon={Printer}
+            className="mt-2 w-full"
+            onClick={onPrint}
+            data-testid="statue-print"
+          >
+            Export for 3D printing (STL)
+          </Button>
+        )}
         <div className="mt-3">
           <MotionSearch
             studio={studio}
@@ -413,28 +449,6 @@ function ModelInspector({
         <Tip className="mt-1">
           With this panel open, drag a figure in the viewport to move it across
           the floor.
-        </Tip>
-        <SectionTitle>Statue</SectionTitle>
-        <Segmented
-          label="Plinth"
-          value={figure.plinth ?? "none"}
-          testIdPrefix="plinth"
-          options={[
-            { value: "none", label: "None" },
-            { value: "round", label: "Round" },
-            { value: "square", label: "Square" },
-          ]}
-          onChange={(v) =>
-            dispatch({
-              type: "setPlinth",
-              figure: figure.id,
-              plinth: v === "none" ? null : v,
-            })
-          }
-        />
-        <Tip className="mt-1">
-          Stand it on a plinth and pick a material below (marble, bronze,
-          plaster…), then Export › 3D file › STL to print it.
         </Tip>
         <SectionTitle>
           {many ? "Material (all figures)" : "Material"}
