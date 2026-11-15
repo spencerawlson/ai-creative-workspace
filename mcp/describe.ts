@@ -73,7 +73,7 @@ export function describeScene(scene: SceneDoc): string {
   ].filter(Boolean);
   out.push(
     `Camera: ${r1(c.focalMm)} mm, exposure ${c.exposureEv >= 0 ? "+" : ""}${r1(c.exposureEv)} EV, ${c.toneMapping} tone mapping, ${lens.join(", ")}`,
-    `Material: "${scene.material.preset}" ${scene.material.color}, roughness ${r2(scene.material.roughness)}, metalness ${r2(scene.material.metalness)}`,
+    `Material: "${scene.material.preset}" ${scene.material.color}, roughness ${r2(scene.material.roughness)}, metalness ${r2(scene.material.metalness)}${scene.material.finish && scene.material.finish !== "plain" ? `, ${scene.material.finish} surface` : ""}`,
     `Backdrop: "${scene.backdrop.preset}" ${scene.backdrop.style} ${scene.backdrop.color}, shadow opacity ${r2(scene.backdrop.shadowOpacity)}; shadows ${scene.shadows.quality}`,
   );
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Copy, Gauge, Hammer, Printer, Trash2 } from "lucide-react";
 import { figureLabel } from "@/lib/studio/figures";
+import { FINISHES, FINISH_NAMES } from "@/lib/engine/surface";
 import { useSelectNewFigure } from "./useSelectNewFigure";
 import { CUSTOM_NOTE, PRESETS } from "@/lib/lighting";
 import type {
@@ -497,6 +498,15 @@ function ModelInspector({
           {MATERIAL_PRESETS.find((p) => p.id === m.preset)?.name ??
             "Custom material"}
         </p>
+        <Segmented
+          label="Surface"
+          value={m.finish ?? "plain"}
+          testIdPrefix="finish"
+          options={FINISHES.map((f) => ({ value: f, label: FINISH_NAMES[f] }))}
+          onChange={(finish) =>
+            dispatch({ type: "updateMaterial", patch: { finish } })
+          }
+        />
         <ColorField
           label="Base colour"
           value={m.color}

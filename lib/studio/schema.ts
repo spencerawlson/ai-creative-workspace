@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { FINISHES } from "@/lib/engine/surface";
 import { PoseJointsSchema, PoseSchema, defaultPose } from "./pose";
 
 export const LIMITS = {
@@ -125,6 +126,9 @@ export const MaterialSchema = z.object({
   color: hexColor,
   roughness: num("roughness"),
   metalness: num("metalness"),
+  /** A surface finish over the colour (lib/engine/surface.ts): marble
+   * veins, stone grain, bronze patina. Absent: plain. */
+  finish: z.enum(FINISHES).optional(),
 });
 export type MaterialSettings = z.infer<typeof MaterialSchema>;
 

@@ -30,6 +30,7 @@ import {
 import { SculptHistory } from "./history";
 import { faceCount, hasAny, type Channel, type SculptMesh } from "./mesh";
 import { bakeColors, hexToSrgb } from "./paint";
+import { patchSurface, type Finish } from "@/lib/engine/surface";
 
 export interface SculptTool {
   brush: BrushId;
@@ -49,6 +50,7 @@ export interface ClayLook {
   color: string;
   roughness: number;
   metalness: number;
+  finish?: Finish;
 }
 
 export interface SculptCallbacks {
@@ -88,9 +90,12 @@ export function clayGeometry(clay: SculptMesh): {
 /** The clay's material, drawing its paint and mask: paint laid over
  * the material's colour by its coverage (converted from sRGB), masked
  * areas shown darker. */
-function withPaintAndMask(m: THREE.MeshStandardMaterial) {
+function withPaintAndMask(m: THREE.MeshStandardMaterial, finish: () => Finish) {
   m.vertexColors = true;
   m.onBeforeCompile = (shader) => {
+    // The surface finish first: it changes the base colour, and the
+    // paint (below) goes over it.
+    patchSurface(shader, finish());
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -112,7 +117,7 @@ function withPaintAndMask(m: THREE.MeshStandardMaterial) {
         ].join("\n"),
       );
   };
-  m.customProgramCacheKey = () => "sculpt-paint-mask";
+  m.customProgramCacheKey = () => `sculpt-paint-mask-${finish()}`;
   return m;
 }
 
@@ -121,8 +126,10 @@ export class SculptEngine {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
   private readonly controls: OrbitControls;
+  private finish: Finish = "plain";
   private readonly material = withPaintAndMask(
     new THREE.MeshStandardMaterial({ color: "#b0705a", roughness: 0.85 }),
+    () => this.finish,
   );
   private readonly cursor: THREE.Mesh;
   private readonly floor: THREE.Mesh;
@@ -284,6 +291,11 @@ export class SculptEngine {
   }
 
   setLook(look: ClayLook): void {
+    const finish = look.finish ?? "plain";
+    if (finish !== this.finish) {
+      this.finish = finish;
+      this.material.needsUpdate = true;
+    }
     this.material.color.set(look.color);
     this.material.roughness = look.roughness;
     this.material.metalness = look.metalness;

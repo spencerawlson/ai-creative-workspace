@@ -135,6 +135,7 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
     color: "#ece8e1",
     roughness: 0.22,
     metalness: 0,
+    finish: "marble",
   },
   {
     id: "sandstone",
@@ -142,6 +143,7 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
     color: "#c9b08a",
     roughness: 0.9,
     metalness: 0,
+    finish: "stone",
   },
   {
     id: "dark-stone",
@@ -149,6 +151,15 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
     color: "#3b3a3d",
     roughness: 0.45,
     metalness: 0,
+    finish: "stone",
+  },
+  {
+    id: "aged-bronze",
+    name: "Aged bronze",
+    color: "#8f6a40",
+    roughness: 0.45,
+    metalness: 1,
+    finish: "patina",
   },
   {
     id: "gold",

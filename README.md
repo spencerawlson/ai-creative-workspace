@@ -80,6 +80,9 @@ real Three.js/WebGL and runs in the browser, on desktop, tablet and phone.
   sandstone, dark stone, gold) and export it for 3D printing (Export ›
   3D file › STL): posed as shown, Z up, in millimetres, at the height
   you choose. Plinths also come along in GLB files and share links.
+  A material's Surface adds real marble veins, stone grain or bronze
+  patina (worked out on the surface itself, no UV maps; it stays put
+  when the figure moves), in the studio and in Sculpt.
 - Sculpt (`/sculpt`): shape digital clay with brushes (draw, clay,
   inflate, smooth, flatten, pinch, grab), size, strength, pen pressure,
   subtract and left–right symmetry, starting from a sphere or a rounded
