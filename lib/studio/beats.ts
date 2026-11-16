@@ -13,6 +13,7 @@
 
 import { roundTime } from "./animation";
 import { findMotion, planMotion, type MotionOptions } from "./motions";
+import { creatureCantDo, creatureWalkOptions } from "./creatureWalk";
 import { describeOptions, searchMotions } from "./motionSearch";
 import { keepFace, type PoseJoints } from "./pose";
 import { LIMITS, type Figure, type Speech } from "./schema";
@@ -196,9 +197,16 @@ export function planBeats(
     } else {
       const motion = findMotion(d.motion);
       if (!motion) return { error: `Unknown move "${d.motion}"` };
+      // A creature has no human joints: only its baked walk is available.
+      if (figure.creature && d.motion !== "walk")
+        return { error: creatureCantDo(motion) };
       const { kind: _kind, motion: _id, ...opts } = d;
       // Body only: the face stays as it was set.
-      const steps = planMotion(motion, state, opts).steps.map((s) => ({
+      const steps = planMotion(
+        motion,
+        state,
+        creatureWalkOptions(figure, motion, opts),
+      ).steps.map((s) => ({
         x: s.x,
         y: s.y,
         z: s.z,

@@ -219,8 +219,12 @@ export function LightingStudio() {
     (t: number) => {
       setTime(t);
       studio.showTime(t);
-      const view = keyCamera ? evaluate(sceneNow.current, t).view : null;
-      if (view) viewport.current?.setCameraPlacement(view);
+      const frame = evaluate(sceneNow.current, t);
+      // The evaluated scene, at its time: a creature mid-walk shows
+      // the clip where its body is, not standing.
+      viewport.current?.preview(withSpeech(frame.scene, t), t);
+      if (keyCamera && frame.view)
+        viewport.current?.setCameraPlacement(frame.view);
     },
     [studio, keyCamera],
   );

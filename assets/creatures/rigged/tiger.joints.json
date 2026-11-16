@@ -1,0 +1,201 @@
+{
+  "species": "tiger",
+  "type": "quad",
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "head": [0, -0.0142, -0.5166],
+      "tail": [0, -0.0142, -0.4566],
+      "radius": 0.0951
+    },
+    {
+      "name": "spine",
+      "parent": "root",
+      "head": [0, 0.4974, 0.0883],
+      "tail": [0, -0.0142, 0.0883],
+      "radius": 0.1879
+    },
+    {
+      "name": "chest",
+      "parent": "spine",
+      "head": [0, -0.0142, 0.0883],
+      "tail": [0, -0.4878, 0.1033],
+      "radius": 0.1691
+    },
+    {
+      "name": "neck",
+      "parent": "chest",
+      "head": [0, -0.5639, 0.1183],
+      "tail": [0, -0.6572, 0.2959],
+      "radius": 0.2436
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "head": [0, -0.6572, 0.2959],
+      "tail": [0, -0.9131, 0.2859],
+      "radius": 0.3045
+    },
+    {
+      "name": "tail1",
+      "parent": "spine",
+      "head": [0.0, 0.4964, 0.0883],
+      "tail": [-0.0002, 0.7158, -0.231],
+      "radius": 0.0571
+    },
+    {
+      "name": "tail2",
+      "parent": "tail1",
+      "head": [-0.0002, 0.7158, -0.231],
+      "tail": [-0.0012, 0.8904, -0.2899],
+      "radius": 0.0381
+    },
+    {
+      "name": "legFL",
+      "parent": "chest",
+      "head": [0.1147, -0.3955, -0.0817],
+      "tail": [0.0917, -0.4092, -0.3765],
+      "radius": 0.0714
+    },
+    {
+      "name": "legFLLower",
+      "parent": "legFL",
+      "head": [0.0917, -0.4092, -0.3765],
+      "tail": [0.1007, -0.4707, -0.4637],
+      "radius": 0.0607
+    },
+    {
+      "name": "footFL",
+      "parent": "legFLLower",
+      "head": [0.1007, -0.4707, -0.4637],
+      "tail": [0.1007, -0.5754, -0.5116],
+      "radius": 0.05
+    },
+    {
+      "name": "legFR",
+      "parent": "chest",
+      "head": [-0.1051, -0.4313, -0.0817],
+      "tail": [-0.1013, -0.4022, -0.3043],
+      "radius": 0.0714
+    },
+    {
+      "name": "legFRLower",
+      "parent": "legFR",
+      "head": [-0.1013, -0.4022, -0.3043],
+      "tail": [-0.0987, -0.4657, -0.4489],
+      "radius": 0.0607
+    },
+    {
+      "name": "footFR",
+      "parent": "legFRLower",
+      "head": [-0.0987, -0.4657, -0.4489],
+      "tail": [-0.0987, -0.5704, -0.5116],
+      "radius": 0.05
+    },
+    {
+      "name": "legBL",
+      "parent": "spine",
+      "head": [0.1014, 0.4703, -0.0817],
+      "tail": [0.1092, 0.4564, -0.4245],
+      "radius": 0.0714
+    },
+    {
+      "name": "legBLLower",
+      "parent": "legBL",
+      "head": [0.1092, 0.4564, -0.4245],
+      "tail": [0.1179, 0.4161, -0.4729],
+      "radius": 0.0607
+    },
+    {
+      "name": "footBL",
+      "parent": "legBLLower",
+      "head": [0.1179, 0.4161, -0.4729],
+      "tail": [0.1179, 0.3114, -0.5116],
+      "radius": 0.05
+    },
+    {
+      "name": "legBR",
+      "parent": "spine",
+      "head": [-0.096, 0.4465, -0.0817],
+      "tail": [-0.1024, 0.4675, -0.3386],
+      "radius": 0.0714
+    },
+    {
+      "name": "legBRLower",
+      "parent": "legBR",
+      "head": [-0.1024, 0.4675, -0.3386],
+      "tail": [-0.1169, 0.4246, -0.4506],
+      "radius": 0.0607
+    },
+    {
+      "name": "footBR",
+      "parent": "legBRLower",
+      "head": [-0.1169, 0.4246, -0.4506],
+      "tail": [-0.1169, 0.3199, -0.5116],
+      "radius": 0.05
+    }
+  ],
+  "analysis": {
+    "L": 1.9029853343963623,
+    "W": 0.38559943437576294,
+    "H": 1.0320296883583069,
+    "z0": -0.5166468620300293,
+    "belly": -0.12963572889566422,
+    "legH": 0.434946002215147,
+    "yF": -0.44976656918239677,
+    "yB": 0.42129429941608276,
+    "z_spine": 0.08829398299218172,
+    "z_top": 0.5153828263282776
+  },
+  "stretch": {
+    "legFL": {
+      "max": 2.53,
+      "over2x": 6,
+      "over4x": 0,
+      "max_all": 2.73
+    },
+    "legFLLower": {
+      "max": 1.6,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 2.19
+    },
+    "legFR": {
+      "max": 2.63,
+      "over2x": 6,
+      "over4x": 0,
+      "max_all": 3.78
+    },
+    "legFRLower": {
+      "max": 1.54,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 3.3
+    },
+    "legBL": {
+      "max": 2.97,
+      "over2x": 47,
+      "over4x": 0,
+      "max_all": 4.84
+    },
+    "legBLLower": {
+      "max": 1.59,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 2.07
+    },
+    "legBR": {
+      "max": 2.84,
+      "over2x": 27,
+      "over4x": 0,
+      "max_all": 4.36
+    },
+    "legBRLower": {
+      "max": 1.68,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 2.97
+    }
+  }
+}

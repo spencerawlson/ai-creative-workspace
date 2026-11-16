@@ -1,0 +1,202 @@
+{
+  "species": "rat",
+  "type": "rat",
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "head": [0, -0.0736, -0.7393],
+      "tail": [0, -0.0736, -0.6893],
+      "radius": 0.059
+    },
+    {
+      "name": "pelvis",
+      "parent": "root",
+      "head": [0.0002, -0.0736, -0.2962],
+      "tail": [0.0002, -0.1688, -0.1486],
+      "radius": 0.1476
+    },
+    {
+      "name": "spine",
+      "parent": "pelvis",
+      "head": [0.0002, -0.1688, -0.1486],
+      "tail": [0.0005, -0.3233, 0.1244],
+      "radius": 0.1328
+    },
+    {
+      "name": "neck",
+      "parent": "spine",
+      "head": [0.0005, -0.3233, 0.1244],
+      "tail": [0.0009, -0.535, 0.5154],
+      "radius": 0.0738
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "head": [0.0009, -0.535, 0.5154],
+      "tail": [0.0009, -0.6301, 0.5449],
+      "radius": 0.0886
+    },
+    {
+      "name": "legL",
+      "parent": "pelvis",
+      "head": [0.2295, -0.164, -0.2965],
+      "tail": [0.2295, -0.2211, -0.5031],
+      "radius": 0.059
+    },
+    {
+      "name": "legLLower",
+      "parent": "legL",
+      "head": [0.2295, -0.2211, -0.5031],
+      "tail": [0.2295, -0.2592, -0.6655],
+      "radius": 0.0443
+    },
+    {
+      "name": "footL",
+      "parent": "legLLower",
+      "head": [0.2295, -0.2592, -0.6655],
+      "tail": [0.2295, -0.4094, -0.7363],
+      "radius": 0.0738
+    },
+    {
+      "name": "armL",
+      "parent": "spine",
+      "head": [0.0428, -0.5044, 0.011],
+      "tail": [0.028, -0.5235, -0.0628],
+      "radius": 0.0295
+    },
+    {
+      "name": "armLLower",
+      "parent": "armL",
+      "head": [0.028, -0.5235, -0.0628],
+      "tail": [-0.0015, -0.5425, -0.1366],
+      "radius": 0.0221
+    },
+    {
+      "name": "handL",
+      "parent": "armLLower",
+      "head": [-0.0015, -0.5425, -0.1366],
+      "tail": [-0.0015, -0.5806, -0.1661],
+      "radius": 0.0177
+    },
+    {
+      "name": "legR",
+      "parent": "pelvis",
+      "head": [-0.228, -0.1662, -0.2965],
+      "tail": [-0.228, -0.2234, -0.5031],
+      "radius": 0.059
+    },
+    {
+      "name": "legRLower",
+      "parent": "legR",
+      "head": [-0.228, -0.2234, -0.5031],
+      "tail": [-0.228, -0.2614, -0.6655],
+      "radius": 0.0443
+    },
+    {
+      "name": "footR",
+      "parent": "legRLower",
+      "head": [-0.228, -0.2614, -0.6655],
+      "tail": [-0.228, -0.4092, -0.7363],
+      "radius": 0.0738
+    },
+    {
+      "name": "armR",
+      "parent": "spine",
+      "head": [-0.0458, -0.5044, 0.011],
+      "tail": [-0.031, -0.5235, -0.0628],
+      "radius": 0.0295
+    },
+    {
+      "name": "armRLower",
+      "parent": "armR",
+      "head": [-0.031, -0.5235, -0.0628],
+      "tail": [-0.0015, -0.5425, -0.1366],
+      "radius": 0.0221
+    },
+    {
+      "name": "handR",
+      "parent": "armRLower",
+      "head": [-0.0015, -0.5425, -0.1366],
+      "tail": [-0.0015, -0.5806, -0.1661],
+      "radius": 0.0177
+    },
+    {
+      "name": "tail1",
+      "parent": "pelvis",
+      "head": [-0.0004, 0.0995, -0.2959],
+      "tail": [0.0006, 0.2828, -0.5014],
+      "radius": 0.0295
+    },
+    {
+      "name": "tail2",
+      "parent": "tail1",
+      "head": [0.0006, 0.2828, -0.5014],
+      "tail": [-0.0009, 0.6216, -0.2826],
+      "radius": 0.0221
+    },
+    {
+      "name": "tail3",
+      "parent": "tail2",
+      "head": [-0.0009, 0.6216, -0.2826],
+      "tail": [-0.0003, 0.8281, -0.2257],
+      "radius": 0.0148
+    }
+  ],
+  "analysis": {
+    "L": 1.9033746719360352,
+    "W": 0.6655784547328949,
+    "H": 1.4759124517440796,
+    "z0": -0.7392624020576477
+  },
+  "stretch": {
+    "legL": {
+      "max": 4.23,
+      "over2x": 44,
+      "over4x": 2,
+      "max_all": 30.73
+    },
+    "legLLower": {
+      "max": 2.7,
+      "over2x": 11,
+      "over4x": 0,
+      "max_all": 20.24
+    },
+    "armL": {
+      "max": 1.26,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.32
+    },
+    "armLLower": {
+      "max": 1.0,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.0
+    },
+    "legR": {
+      "max": 3.78,
+      "over2x": 46,
+      "over4x": 0,
+      "max_all": 13.97
+    },
+    "legRLower": {
+      "max": 2.5,
+      "over2x": 6,
+      "over4x": 0,
+      "max_all": 9.32
+    },
+    "armR": {
+      "max": 1.27,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.31
+    },
+    "armRLower": {
+      "max": 1.0,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.0
+    }
+  }
+}

@@ -68,6 +68,7 @@ import {
   withKeyValue,
 } from "./animation";
 import { findMotion, motionSteps, type MotionStep } from "./motions";
+import { creatureCantDo, creatureWalkOptions } from "./creatureWalk";
 import { speechEnd } from "./speech";
 import { MAX_BEATS, TURN_TARGETS, planBeats, type FigureState } from "./beats";
 import {
@@ -791,8 +792,15 @@ function applyMotion(
   if (!motion) return { ok: false, error: `Unknown motion "${action.motion}"` };
   const figure = findFigure(scene, action.figure);
   if (!figure) return { ok: false, error: `No figure "${action.figure}"` };
+  // A creature has no human joints: only its baked walk is available.
+  if (figure.creature && action.motion !== "walk")
+    return { ok: false, error: creatureCantDo(motion) };
   // Moves are body only: every step keeps the figure's face.
-  const steps = motionSteps(motion, figure, action).map((s) => ({
+  const steps = motionSteps(
+    motion,
+    figure,
+    creatureWalkOptions(figure, motion, action),
+  ).map((s) => ({
     ...s,
     joints: keepFace(s.joints, figure.pose.joints),
   }));

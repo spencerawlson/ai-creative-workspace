@@ -15,6 +15,7 @@ import {
   searchMotions,
   type MotionMatch,
 } from "@/lib/studio/motionSearch";
+import { creatureWalkOptions } from "@/lib/studio/creatureWalk";
 import type { Figure } from "@/lib/studio/schema";
 import type { Studio } from "./useStudio";
 import { SectionTitle, cx } from "./ui";
@@ -62,15 +63,19 @@ export function MotionSearch({
 
   const matches = useMemo(() => searchMotions(text, 8), [text]);
   const browsing = text.trim() === "";
-  const list: MotionMatch[] = browsing
-    ? CATEGORIES.flatMap((c) =>
-        MOTIONS.filter((m) => m.category === c).map((motion) => ({
-          motion,
-          score: 0,
-          options: {},
-        })),
-      )
-    : matches;
+  // A creature has no human joints: the library offers it only its
+  // baked walk (anything else is refused by the action, with a message).
+  const list: MotionMatch[] = (
+    browsing
+      ? CATEGORIES.flatMap((c) =>
+          MOTIONS.filter((m) => m.category === c).map((motion) => ({
+            motion,
+            score: 0,
+            options: {},
+          })),
+        )
+      : matches
+  ).filter((m) => !figure.creature || m.motion.id === "walk");
 
   function apply(match: MotionMatch) {
     const typed = Number(seconds.replace(",", "."));
@@ -101,7 +106,11 @@ export function MotionSearch({
     }
     dispatch(action);
     if (m.motion.kind === "move") {
-      const plan = planMotion(m.motion, figure, m.options);
+      const plan = planMotion(
+        m.motion,
+        figure,
+        creatureWalkOptions(figure, m.motion, m.options),
+      );
       const room =
         plan.path === "spot"
           ? " On the spot: no room to walk (move the figure towards the middle)."
@@ -277,7 +286,9 @@ export function MotionSearch({
         {open && !browsing && matches.length === 0
           ? unsupported
             ? "Lying down, crawling and swimming need the figure tipped over, which it can't do yet."
-            : `Nothing called “${text.trim()}” yet. Try walk, run, sit, wave or eat.`
+            : figure.creature
+              ? `Nothing called “${text.trim()}” yet. Creatures can only walk.`
+              : `Nothing called “${text.trim()}” yet. Try walk, run, sit, wave or eat.`
           : status}
       </p>
     </div>

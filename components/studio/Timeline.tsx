@@ -144,7 +144,7 @@ export function Timeline({
         }
       }
       const frame = evaluate(l.scene, t);
-      viewport.current?.preview(withSpeech(frame.scene, t));
+      viewport.current?.preview(withSpeech(frame.scene, t), t);
       if (l.keyCamera && frame.view)
         viewport.current?.setCameraPlacement(frame.view);
       setPlayT(t);

@@ -54,6 +54,7 @@
     "test:watch": "vitest",
     "models": "node scripts/optimize-models.mjs",
     "cast": "node scripts/meshy-cast.mjs",
+    "animals": "node scripts/slim-animals.mjs",
     "test:e2e": "playwright test",
     "mcp": "node mcp/start.mjs"
   },

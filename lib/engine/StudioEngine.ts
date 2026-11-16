@@ -28,6 +28,10 @@ import {
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { LIGHT_PIVOT_Y, kelvinToRgb, lightPosition } from "@/lib/lighting";
 import { evaluate } from "@/lib/studio/animation";
+import {
+  creatureStrideMeters,
+  creatureWalkPhase,
+} from "@/lib/studio/creatureWalk";
 import { isAnimated, withSpeech } from "@/lib/studio/speech";
 import { exposureMultiplier, focalToVerticalFov } from "@/lib/studio/presets";
 import { FINGERS, type JointId } from "@/lib/studio/pose";
@@ -52,6 +56,10 @@ import {
   type PhotoPoseResult,
   type PhotoRest,
 } from "./photoPose";
+import {
+  attachCreatureWalk,
+  type CreatureWalkPlayer,
+} from "./creatureWalkPlayer";
 import { exportGlb, type GlbOptions, type GlbResult } from "./gltfExport";
 import {
   OVERLAY_LAYER,
@@ -254,6 +262,24 @@ interface FigureInstance {
   rig: ModelRig | null;
   /** The pose last applied (by identity), to skip unchanged figures. */
   joints: unknown;
+  /** A creature's baked walk (lib/engine/creatureWalkPlayer.ts): its
+   * own mixer on this clone, the stride it travels per loop, and where
+   * it was last put (the no-time fallback advances the clip by how far
+   * the figure moved). Null for anything without a walk clip. */
+  walk: {
+    player: CreatureWalkPlayer;
+    stride: number;
+    /** Seconds into the clip, for the no-time fallback. */
+    clipTime: number;
+    lastX: number;
+    lastZ: number;
+    /** Clip phase 0..1, null when standing (as last set). */
+    phase: number | null;
+    /** Front-left leg (legFL, else legL), and its bind pose, for the
+     * leg-swing reading. */
+    leg: THREE.Bone | null;
+    legBind: THREE.Quaternion;
+  } | null;
   /** The statue base it stands on, if any: in `root`, held on the floor. */
   plinth: THREE.Mesh | null;
   /** A character's face, with this clone's shape meshes and eye bones. */
@@ -271,6 +297,8 @@ interface CachedModel {
   rig: ModelRig | null;
   /** An imported character's face, when it has one. */
   face?: FaceRig | null;
+  /** A creature's baked "walk" clip, when its GLB carries one. */
+  walkClip?: THREE.AnimationClip;
 }
 
 /** Tap targets: one invisible capsule per bone, from the joint to the
@@ -556,7 +584,11 @@ export class StudioEngine {
 
   // ---------------------------------------------------------------- state
 
-  update(doc: SceneDoc, overrides: EngineOverrides = {}): void {
+  /** Draw `doc` now. `time` is the animation time the document was
+   * evaluated at, when it was (playback, scrubbing, recording): a
+   * creature's walk clip is posed from it. Without it, the clip
+   * follows how far the figure moved instead. */
+  update(doc: SceneDoc, overrides: EngineOverrides = {}, time?: number): void {
     if (this.disposed) return;
     const prev = this.doc;
     this.doc = doc;
@@ -568,7 +600,7 @@ export class StudioEngine {
     }
     if (!prev || prev.material !== doc.material) this.syncMaterial(doc);
     if (!prev || prev.backdrop !== doc.backdrop) this.syncBackdrop(doc);
-    if (!prev || prev.figures !== doc.figures) this.syncFigures();
+    if (!prev || prev.figures !== doc.figures) this.syncFigures(time);
 
     const fov = overrides.fov ?? focalToVerticalFov(doc.camera.focalMm);
     if (this.camera.fov !== fov) {
@@ -1142,6 +1174,13 @@ export class StudioEngine {
           this.syncFigures();
           return;
         }
+        // A creature's baked walk clip travels with its template; each
+        // figure gets its own mixer on its own clone (instantiate).
+        // Without a "walk" clip the creature stands, as it used to.
+        if (creature) {
+          const clip = gltf.animations.find((a) => a.name === "walk");
+          if (clip) model.walkClip = clip;
+        }
         if (this.disposed) {
           disposeModel(model, this.material);
           return;
@@ -1257,8 +1296,10 @@ export class StudioEngine {
   /** Bring the stage in line with the document's figures: load models
    * as needed, add, remove or swap clones, place them and apply their
    * poses. A figure whose new model is still downloading keeps the old
-   * one meanwhile, so nothing is ever half-swapped. */
-  private syncFigures(): void {
+   * one meanwhile, so nothing is ever half-swapped. `time` is the
+   * animation time the document was evaluated at, when it was: a
+   * creature's walk clip is posed from it. */
+  private syncFigures(time?: number): void {
     const doc = this.doc;
     if (!doc || this.disposed) return;
     for (const inst of [...this.instances.values()])
@@ -1302,6 +1343,7 @@ export class StudioEngine {
           );
         inst.joints = f.pose.joints;
       }
+      if (inst.walk) this.syncCreatureWalk(inst, f, time);
     }
     this.setStatus(
       failed
@@ -1313,6 +1355,74 @@ export class StudioEngine {
         : { model: waiting ? "loading" : "ready" },
     );
     this.invalidate();
+  }
+
+  /** Pose a creature's baked walk clip for where its body is.
+   *
+   * With the animation time (playback, scrubbing, recording), the phase
+   * comes from the keys (lib/studio/creatureWalk.ts): exact, and the
+   * clip returns to the bind pose when the walk is over. Without it
+   * (an undo, a figure dragged across the floor), the clip advances by
+   * how far the body moved since the last sync, signed along the way
+   * the figure faces — so walking backwards plays the clip backwards,
+   * and dragging the figure walks its legs. That fallback can't tell a
+   * pause mid-walk from a finished walk, so it holds the pose when the
+   * body doesn't move; the timed path is what ends a walk standing. */
+  private syncCreatureWalk(
+    inst: FigureInstance,
+    f: SceneDoc["figures"][number],
+    time: number | undefined,
+  ): void {
+    const w = inst.walk;
+    const doc = this.doc;
+    if (!w || !doc) return;
+    if (time !== undefined) {
+      const state = creatureWalkPhase(doc, f.id, time);
+      w.phase = state?.phase ?? null;
+      w.player.setPhase(state?.phase ?? null, state?.weight ?? 1);
+      w.clipTime = state ? state.phase * w.player.duration : 0;
+      w.lastX = f.x;
+      w.lastZ = f.z;
+      return;
+    }
+    if (!Number.isFinite(w.lastX)) {
+      w.lastX = f.x;
+      w.lastZ = f.z;
+      return;
+    }
+    const dx = f.x - w.lastX;
+    const dz = f.z - w.lastZ;
+    w.lastX = f.x;
+    w.lastZ = f.z;
+    const heading = THREE.MathUtils.degToRad(f.rotation);
+    const signed = dx * Math.sin(heading) + dz * Math.cos(heading);
+    if (Math.abs(signed) < 0.001) return;
+    const duration = w.player.duration;
+    w.clipTime =
+      (((w.clipTime + (signed / w.stride) * duration) % duration) + duration) %
+      duration;
+    w.phase = w.clipTime / duration;
+    w.player.setPhase(w.phase);
+  }
+
+  /** A creature figure's walk, for tests and automation: the clip phase
+   * (0..1, null when standing) and the front-left leg's swing from its
+   * bind pose, in degrees — the axis the clip rotates the leg about.
+   * Null when the figure isn't a creature with a walk clip. */
+  creatureLegSwing(
+    figure?: string,
+  ): { phase: number | null; swingDeg: number } | null {
+    const inst = (figure && this.instances.get(figure)) || this.active || null;
+    const w = inst?.walk;
+    if (!w || !w.leg) return null;
+    const angle = (q: THREE.Quaternion) =>
+      (2 * Math.atan2(q.x, q.w) * 180) / Math.PI;
+    const swing = angle(w.leg.quaternion) - angle(w.legBind);
+    return {
+      phase: w.phase,
+      swingDeg:
+        Math.round((((((swing + 180) % 360) + 360) % 360) - 180) * 10) / 10,
+    };
   }
 
   /** Give a figure its statue base, change its shape, or take it away. */
@@ -1404,6 +1514,28 @@ export class StudioEngine {
       });
       face = { rig: template.face, meshes: shapeMeshes(object), eyes };
     }
+    // A creature's baked walk: its own mixer on this clone, so figures
+    // don't share a skeleton's pose. Without a clip the figure stands
+    // (as it used to).
+    let walk: FigureInstance["walk"] = null;
+    if (template.walkClip) {
+      const stride = creatureStrideMeters(this.creatureIds.get(url));
+      const player = attachCreatureWalk(object, template.walkClip);
+      if (player) {
+        const leg = (object.getObjectByName("legFL") ??
+          object.getObjectByName("legL")) as THREE.Bone | null;
+        walk = {
+          player,
+          stride,
+          clipTime: 0,
+          lastX: NaN,
+          lastZ: NaN,
+          phase: null,
+          leg,
+          legBind: leg ? leg.quaternion.clone() : new THREE.Quaternion(),
+        };
+      }
+    }
     this.figure.add(root);
     const inst: FigureInstance = {
       id,
@@ -1413,6 +1545,7 @@ export class StudioEngine {
       headHeight: template.headHeight,
       rig,
       joints: null,
+      walk,
       plinth: null,
       face,
     };
@@ -1422,6 +1555,7 @@ export class StudioEngine {
 
   private removeInstance(inst: FigureInstance): void {
     this.figure.remove(inst.root);
+    inst.walk?.player.dispose();
     if (inst.rig) {
       this.skeletonRoot.remove(inst.rig.lines);
       inst.rig.lines.geometry.dispose();
