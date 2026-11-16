@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
+  <title id="t">IKO 3D</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1d30"/>
+      <stop offset="1" stop-color="#0a0a12"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a855f7"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="three-d" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3f4f6"/>
+      <stop offset="1" stop-color="#9ca3af"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="url(#tile)"/>
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="none" stroke="#2c2e48" stroke-width="4"/>
+
+  <!-- Arc around the figure -->
+  <path d="M120 236 A 150 150 0 0 1 404 196" fill="none" stroke="url(#arc)" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- Mannequin reaching out -->
+  <g fill="url(#body)">
+    <ellipse cx="300" cy="120" rx="30" ry="36"/>
+    <rect x="286" y="150" width="28" height="20" rx="8"/>
+    <!-- Chest: broad at the shoulders, narrowing to the waist -->
+    <path d="M258 180 C 280 166 330 164 352 180 C 356 200 346 228 334 246 C 316 258 290 258 276 246 C 266 228 256 202 258 180 Z"/>
+  </g>
+  <g stroke="url(#body)" stroke-linecap="round" fill="none">
+    <!-- Reaching arm -->
+    <path d="M268 186 L 206 204 L 156 214" stroke-width="22"/>
+    <!-- Other arm -->
+    <path d="M346 192 L 360 238" stroke-width="20"/>
+  </g>
+  <g fill="url(#body)">
+    <!-- Open hand -->
+    <circle cx="146" cy="216" r="17"/>
+    <path d="M132 210 L 110 198" stroke="url(#body)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M130 218 L 104 216" stroke="url(#body)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M134 226 L 110 236" stroke="url(#body)" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <!-- IKO -->
+  <g stroke="#ffffff" stroke-width="34" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M140 292 V 372"/>
+    <path d="M196 292 V 372"/>
+    <path d="M266 292 L 214 332 L 268 372"/>
+    <ellipse cx="350" cy="332" rx="40" ry="40"/>
+  </g>
+
+  <!-- 3D -->
+  <g stroke="url(#three-d)" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M306 416 H 340 L 323 434 C 344 432 353 446 347 459 C 341 472 318 474 307 465"/>
+    <path d="M372 414 V 472 H 382 C 416 472 422 414 382 414 Z"/>
+  </g>
+</svg>
