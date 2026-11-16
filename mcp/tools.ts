@@ -17,6 +17,7 @@ import { JOINTS, POSE_PRESETS } from "@/lib/studio/pose";
 import { BACKDROP_PRESETS, MATERIAL_PRESETS } from "@/lib/studio/presets";
 import { FigureIdSchema, LIMITS } from "@/lib/studio/schema";
 import { decodeSceneLink, encodeSceneLink } from "@/lib/studio/share";
+import { BLENDER_TOOLS, blenderContext, type BlenderContext } from "./blender";
 import { describeScene } from "./describe";
 import {
   AGENT_ACTION_TYPES,
@@ -31,6 +32,9 @@ export interface ToolContext {
   studioUrl: string;
   /** The app's built-in cast (public/cast/cast.json). */
   cast: CastEntry[];
+  /** Where the Blender tools find built-in models and write results
+   * (default: this folder, results in ./out). */
+  blender?: BlenderContext;
 }
 
 export interface ToolResult {
@@ -165,7 +169,7 @@ function catalog(list: (typeof CATALOGS)[number], ctx: ToolContext): string {
   }
 }
 
-export const TOOLS: Tool[] = [
+const STUDIO_TOOLS: Tool[] = [
   tool({
     name: "scene",
     title: "Read the scene",
@@ -359,6 +363,22 @@ export const TOOLS: Tool[] = [
       return afterAct(session, session.load(scene, "Open shared scene"));
     },
   }),
+];
+
+/** The studio's tools, then the Blender jobs (they work on model files,
+ * not the scene). */
+export const TOOLS: Tool[] = [
+  ...STUDIO_TOOLS,
+  ...BLENDER_TOOLS.map((b) =>
+    tool({
+      name: b.name,
+      title: b.title,
+      description: b.description,
+      input: b.input,
+      run: (_session, args, ctx) =>
+        b.run(args, ctx.blender ?? blenderContext(process.cwd())),
+    }),
+  ),
 ];
 
 /** Run a tool by name with unchecked arguments. Never throws. */
