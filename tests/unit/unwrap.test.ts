@@ -70,7 +70,9 @@ describe("UV unwrapping", () => {
     expect(trianglesOverlap(a, [1, 0, 0, 1, 1, 1])).toBe(false);
     expect(trianglesOverlap(a, [2, 2, 3, 2, 2, 3])).toBe(false);
     // Either winding.
-    expect(trianglesOverlap([0, 0, 0, 1, 1, 0], [0.1, 0.1, 0.3, 0.1, 0.1, 0.3])).toBe(true);
+    expect(
+      trianglesOverlap([0, 0, 0, 1, 1, 0], [0.1, 0.1, 0.3, 0.1, 0.1, 0.3]),
+    ).toBe(true);
   });
 
   it.each(["sphere", "block"] as const)(

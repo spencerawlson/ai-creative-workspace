@@ -139,7 +139,12 @@ function makeChart(
   for (const f of tris)
     for (let k = 0; k < 3; k++) {
       const v = index[f * 3 + k] * 3;
-      const [u, w] = project(d, positions[v], positions[v + 1], positions[v + 2]);
+      const [u, w] = project(
+        d,
+        positions[v],
+        positions[v + 1],
+        positions[v + 2],
+      );
       uv.push(u, w);
       if (u < minU) minU = u;
       if (u > maxU) maxU = u;
@@ -244,7 +249,9 @@ function shelfPack(
   sizes: Array<[number, number]>,
   gap: number,
 ): { at: Array<[number, number]>; height: number } {
-  const order = sizes.map((_, i) => i).sort((i, j) => sizes[j][1] - sizes[i][1]);
+  const order = sizes
+    .map((_, i) => i)
+    .sort((i, j) => sizes[j][1] - sizes[i][1]);
   const at: Array<[number, number]> = new Array(sizes.length);
   let x = gap;
   let y = gap;

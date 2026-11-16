@@ -292,7 +292,10 @@ test.describe("Sculpt: paint and mask", () => {
         const out: number[][] = [];
         for (let i = 0; i < at.length; i += 2) {
           const x = Math.min(img.width - 1, Math.floor(at[i] * img.width));
-          const y = Math.min(img.height - 1, Math.floor(at[i + 1] * img.height));
+          const y = Math.min(
+            img.height - 1,
+            Math.floor(at[i + 1] * img.height),
+          );
           const o = (y * img.width + x) * 4;
           out.push([d[o], d[o + 1], d[o + 2]]);
         }
