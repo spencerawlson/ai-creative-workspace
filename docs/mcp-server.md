@@ -26,6 +26,22 @@ and the server makes no network calls.
 | `share_link`  | A link that opens the scene, with its animation, in the studio                                                            |
 | `open_link`   | Load a scene from a studio share link                                                                                     |
 
+### Blender tools
+
+These work on model files (a `.glb` path, or a built-in model id such
+as `cast-real-man`, `creature-lion` or `mannequin-female`) and run
+Blender headless on the machine the server runs on. Blender is found
+from `BLENDER`, the PATH, or the usual install folders; without it they
+say so. Results go only into the output folder (`IKO_OUTPUT_DIR`,
+default `out/` in the app's folder) under a fresh name, so a tool never
+overwrites a file.
+
+| Tool             | What it does                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `blender_retopo` | A clean, even quad mesh of about `faces` faces (a dense sculpt becomes light and animatable)     |
+| `blender_export` | FBX (Unity, Unreal) or USD (film pipelines), keeping skeleton, skin and animations               |
+| `blender_render` | A studio render: a PNG still, or an MP4 turntable or of the model's own animation (EEVEE/Cycles) |
+
 `act` takes every studio action except three: opening a whole scene
 (`open_link` does that), lip sync (read from a real sound, in the
 studio) and the graph editor's tangent handles. "say" beats need a

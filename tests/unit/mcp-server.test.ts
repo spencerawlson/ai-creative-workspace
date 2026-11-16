@@ -26,6 +26,9 @@ describe("the MCP server's tools", () => {
       "history",
       "share_link",
       "open_link",
+      "blender_retopo",
+      "blender_export",
+      "blender_render",
     ]);
     for (const t of tools) expect(t.inputSchema.type).toBe("object");
     const act = JSON.stringify(
@@ -249,7 +252,7 @@ describe("the MCP server over stdio", () => {
     try {
       expect(client.getInstructions()).toMatch(/share_link/);
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(10);
+      expect(tools).toHaveLength(13);
       const r = await client.callTool({
         name: "act",
         arguments: { actions: [{ type: "addFigure", model: "female" }] },
