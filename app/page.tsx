@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import CookieSettingsButton from "@/components/CookieSettingsButton";
 import { ProcessVideo } from "@/components/landing/ProcessVideo";
 import { studioRedirectTarget } from "@/lib/studio/landing-redirect";
 
@@ -15,10 +16,10 @@ export const metadata: Metadata = {
       "Light, pose and animate 3D characters — right in your browser.",
     images: [
       {
-        url: "/landing/portrait.jpg",
-        width: 1206,
-        height: 1206,
-        alt: "A stylised portrait of a young man, drawn in black line art with grey tones",
+        url: "/og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "IKO 3D — light, pose and animate 3D characters in your browser",
       },
     ],
   },
@@ -241,6 +242,19 @@ export default async function LandingPage({
             <Link href="/sculpt" className="hover:text-ink-100 hover:underline">
               Sculpt
             </Link>
+            {" · "}
+            <Link
+              href="/privacy"
+              className="hover:text-ink-100 hover:underline"
+            >
+              Privacy
+            </Link>
+            {" · "}
+            <Link href="/terms" className="hover:text-ink-100 hover:underline">
+              Terms
+            </Link>
+            {" · "}
+            <CookieSettingsButton className="hover:text-ink-100 hover:underline" />
           </p>
         </footer>
       </div>

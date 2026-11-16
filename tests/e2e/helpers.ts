@@ -2,6 +2,23 @@ import { expect, type Page, type TestInfo } from "@playwright/test";
 
 export const isMobile = (info: TestInfo) => info.project.name === "mobile";
 
+/** Run as a returning visitor who declined analytics: the cookie
+ * consent banner never appears. The banner is a fixed bottom bar, so
+ * on a fresh context it covers the studio's bottom timeline controls
+ * and every click on them waits out its timeout — that is what blew
+ * the 30-minute CI E2E budget. The banner itself is covered by
+ * tests/e2e/legal.spec.ts, which must NOT call this. */
+export async function declineCookies(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("iko-cookie-consent"))
+        localStorage.setItem("iko-cookie-consent", "declined");
+    } catch {
+      // No storage: the banner just shows.
+    }
+  });
+}
+
 /** Open the studio and wait until WebGL is running and the model loaded. */
 export async function openStudio(
   page: Page,
@@ -11,6 +28,7 @@ export async function openStudio(
   beforeReady?: () => Promise<void>,
 ) {
   const errors: string[] = [];
+  await declineCookies(page);
   // Fast render quality unless a test picks High: CI's software WebGL
   // would spend most of its time on ambient occlusion.
   await page.addInitScript(() => {
