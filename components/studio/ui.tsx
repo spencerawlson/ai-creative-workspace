@@ -6,11 +6,12 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type ReactNode,
 } from "react";
 import type { LucideIcon } from "lucide-react";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -307,6 +308,49 @@ export function SectionTitle({
       </h3>
       {action}
     </div>
+  );
+}
+
+/** A titled part of a panel that folds away: its title is a button
+ * (aria-expanded); folded, its contents stay mounted, only hidden. */
+export function Section({
+  title,
+  children,
+  defaultOpen = true,
+  testId,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = useId();
+  return (
+    <section className="border-b border-ink-800 py-1.5 last:border-b-0">
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => setOpen(!open)}
+          data-testid={testId}
+          className="flex h-8 w-full items-center justify-between text-2xs font-semibold uppercase tracking-wider text-ink-300 hover:text-ink-100"
+        >
+          {title}
+          <ChevronDown
+            aria-hidden
+            className={cx(
+              "h-3.5 w-3.5 transition-transform",
+              !open && "-rotate-90",
+            )}
+          />
+        </button>
+      </h3>
+      <div id={id} hidden={!open} className="pb-1">
+        {children}
+      </div>
+    </section>
   );
 }
 

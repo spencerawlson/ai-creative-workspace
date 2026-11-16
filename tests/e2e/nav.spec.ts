@@ -153,3 +153,52 @@ test("Photography's framings fit the figure: portrait from mid-thigh with the he
     .poll(async () => Math.abs((await joints()).head.y - portrait.head.y))
     .toBeLessThan(2);
 });
+
+test.describe("The menu bar", () => {
+  for (const path of ["/studio", "/sculpt"])
+    test(`${path}: File, Edit, View by keyboard, and accessible`, async ({
+      page,
+    }, info) => {
+      await page.goto(path);
+      const phone = info.project.name === "mobile";
+      // Phones: one "Menu" with every group; wider: File, Edit, View….
+      const first = page.getByTestId(phone ? "menu-all" : "menu-file");
+      await expect(first).toBeVisible();
+      if (!phone)
+        for (const m of ["edit", "view"])
+          await expect(page.getByTestId(`menu-${m}`)).toBeVisible();
+
+      // Opening by keyboard puts focus on the first item; arrows move.
+      await first.focus();
+      await page.keyboard.press("Enter");
+      const list = page.getByTestId(phone ? "menu-all-list" : "menu-file-list");
+      await expect(list).toBeVisible();
+      await expect(first).toHaveAttribute("aria-expanded", "true");
+      const focused = () =>
+        page.evaluate(() => document.activeElement?.textContent ?? "");
+      const top = await focused();
+      await page.keyboard.press("ArrowDown");
+      expect(await focused()).not.toBe(top);
+
+      const r = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .include(`[data-testid=${phone ? "menu-all-list" : "menu-file-list"}]`)
+        .analyze();
+      expect(r.violations.map((v) => v.id)).toEqual([]);
+
+      // Right goes to the next menu (wider screens).
+      if (!phone) {
+        await page.keyboard.press("ArrowRight");
+        await expect(page.getByTestId("menu-edit-list")).toBeVisible();
+        await expect(list).toHaveCount(0);
+      }
+      // Escape closes and hands focus back to the menu's button.
+      await page.keyboard.press("Escape");
+      await expect(page.locator("[role=menu]")).toHaveCount(0);
+      expect(
+        await page.evaluate(() =>
+          document.activeElement?.getAttribute("data-testid"),
+        ),
+      ).toMatch(/^menu-/);
+    });
+});

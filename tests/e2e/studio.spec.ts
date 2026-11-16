@@ -281,6 +281,10 @@ test.describe("Lighting Studio — critical journeys", () => {
     await showPanel(page, "presets");
     await page.getByTestId("preset-butterfly").click();
     const download = page.waitForEvent("download");
+    // File > Save project file (on phones: Menu > Save).
+    await page
+      .locator("[data-testid=menu-file], [data-testid=menu-all]")
+      .click();
     await page.getByTestId("save-project").click();
     const path = (await (await download).path())!;
     await page.getByTestId("preset-split").click();
@@ -1574,6 +1578,11 @@ test.describe("Statues", () => {
     await dialog.getByTestId("export-3d-confirm").click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/\.stl$/);
+    // The notice shows for a few seconds: check it before reading the
+    // (large) file, not after.
+    await expect(page.getByTestId("notice")).toContainText(
+      "Exported a statue for 3D printing",
+    );
     const fs = await import("node:fs");
     const bytes = await fs.promises.readFile(await file.path());
     const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -1587,9 +1596,6 @@ test.describe("Statues", () => {
         minZ = Math.min(minZ, z);
         maxZ = Math.max(maxZ, z);
       }
-    await expect(page.getByTestId("notice")).toContainText(
-      "Exported a statue for 3D printing",
-    );
     return { count, minZ, maxZ };
   }
 
@@ -1862,5 +1868,62 @@ test.describe("layout", () => {
     expect(
       [...origins].filter((o) => o !== new URL(page.url()).origin),
     ).toEqual([]);
+  });
+
+  test("View menu: floor grid, snapping and units, kept on this device", async ({
+    page,
+  }, info) => {
+    await openStudio(page);
+    const view = async (item: string) => {
+      await page
+        .locator("[data-testid=menu-view], [data-testid=menu-all]")
+        .click();
+      await page.getByTestId(item).click();
+    };
+    const engine = () =>
+      page.evaluate(() => {
+        const e = (
+          window as unknown as {
+            __studioEngine: { grid: unknown; snapStep: number | null };
+          }
+        ).__studioEngine;
+        return { grid: !!e.grid, snap: e.snapStep };
+      });
+    expect(await engine()).toEqual({ grid: false, snap: null });
+
+    await view("view-grid");
+    await view("view-step-0.5");
+    await view("view-snap");
+    expect(await engine()).toEqual({ grid: true, snap: 0.5 });
+
+    // A dragged figure lands on the grid.
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    const x = page.getByTestId("figure-x");
+    const body = (await jointsOnScreen(page, "fig-1")).body;
+    if (body && (await onCanvas(page, body))) {
+      await dragOnPage(page, info, body, { x: body.x + 90, y: body.y });
+      await expect.poll(async () => Number(await x.inputValue())).not.toBe(0);
+      const m = Number(await x.inputValue());
+      expect(Math.abs(m / 0.5 - Math.round(m / 0.5))).toBeLessThan(1e-6);
+    }
+
+    // Centimetres: the same place, read in cm.
+    const before = Number(await x.inputValue());
+    await view("view-units-cm");
+    await expect(x).toHaveAttribute(
+      "aria-valuetext",
+      `${Math.round(before * 100)} cm`,
+    );
+
+    // Kept on this device.
+    await page.reload();
+    await expect(page.getByTestId("lighting-scene")).toHaveAttribute(
+      "data-status",
+      "ready",
+      { timeout: 120_000 },
+    );
+    await expect.poll(engine).toEqual({ grid: true, snap: 0.5 });
   });
 });

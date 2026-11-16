@@ -81,6 +81,10 @@ test.describe("Sculpt", () => {
       { timeout: 60_000 },
     );
     await expect(page.getByTestId("sculpt-name")).toHaveValue("Test head");
+    // In the menu bar: File > Open (on phones: Menu > Open).
+    await page
+      .locator("[data-testid=menu-file], [data-testid=menu-all]")
+      .click();
     await page.getByTestId("sculpt-open").click();
     await expect(page.getByTestId("sculpt-open-dialog")).toContainText(
       "Test head",
@@ -120,6 +124,9 @@ test.describe("Sculpt", () => {
     expect(maxZ).toBeGreaterThan(75);
 
     // A new sculpture from a block; the head stays kept.
+    await page
+      .locator("[data-testid=menu-file], [data-testid=menu-all]")
+      .click();
     await page.getByTestId("sculpt-new").click();
     await page.getByTestId("sculpt-new-block").click();
     await expect(page.getByTestId("sculpt-name")).toHaveValue(
