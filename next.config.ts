@@ -2,19 +2,21 @@ import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 
-/** No third-party origins: fonts are self-hosted by next/font, models
- * (the pose finder's too) are same-origin, and there is no analytics.
+/** One third-party origin: Plausible analytics (https://plausible.io),
+ * loaded only after cookie consent (components/CookieConsent.tsx).
+ * Everything else is same-origin: fonts are self-hosted by next/font,
+ * models (the pose finder's too) are same-origin.
  * 'wasm-unsafe-eval' is for WebAssembly (the meshopt decoder, the pose
  * finder). 'unsafe-inline' scripts are needed by
  * Next's inline bootstrap without a nonce middleware. Dev mode needs
  * eval for HMR, so the CSP is production-only. */
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://plausible.io",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' data: blob:",
+  "connect-src 'self' data: blob: https://plausible.io",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

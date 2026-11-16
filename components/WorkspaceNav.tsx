@@ -20,6 +20,7 @@ import {
   House,
   type LucideIcon,
 } from "lucide-react";
+import CookieSettingsButton from "@/components/CookieSettingsButton";
 import { cx } from "@/components/studio/ui";
 
 export type Workspace = "studio" | "sculpt" | "photography";
@@ -371,6 +372,24 @@ export function WorkspaceMenu({
             <House aria-hidden className="h-4 w-4 text-ink-300" />
             Home
           </Link>
+          <div className="my-1 h-px bg-ink-800" />
+          <div className="flex items-center gap-3 px-2.5 py-2 text-sm text-ink-400">
+            <Link
+              href="/privacy"
+              onClick={() => setOpen(false)}
+              className="hover:text-ink-100 hover:underline"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              onClick={() => setOpen(false)}
+              className="hover:text-ink-100 hover:underline"
+            >
+              Terms
+            </Link>
+            <CookieSettingsButton className="hover:text-ink-100 hover:underline" />
+          </div>
         </nav>
       )}
     </div>

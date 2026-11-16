@@ -1,10 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openStudio, showInspector, showPanel } from "./helpers";
+import {
+  declineCookies,
+  openStudio,
+  showInspector,
+  showPanel,
+} from "./helpers";
 
 /** Open the Sculpt page on a device with no sculptures kept yet. */
 async function openSculpt(page: Page) {
   const errors: string[] = [];
+  await declineCookies(page);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/sculpt");
   await page.evaluate(
