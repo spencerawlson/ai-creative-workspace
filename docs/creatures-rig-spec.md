@@ -203,3 +203,30 @@ walk-phase renders (which exercise every joint).
 - **Do not re-slim the served files with the static-mesh Collapse
   pipeline** — it destroys the skeleton. Use
   `scripts/slim-animals.mjs`.
+
+## Re-skinned 2026-11-16 (bone heat)
+
+The skin weights of ten creatures were replaced with bone-heat weights
+by `scripts/reskin-cast.mjs` (skeleton, bind pose and `"walk"` clip
+kept). Measured by playing the clip at 12 phases and counting visible
+tears (edges growing more than 2× and by more than 1% of the height),
+worst phase, torn area per 1 m of height:
+
+| species      | before (cm²) | after (cm²) | kept     |
+| ------------ | ------------ | ----------- | -------- |
+| rat          | 935          | 101         | re-skin  |
+| gorilla      | 300          | 62          | re-skin  |
+| lion         | 152          | 1.6         | re-skin  |
+| elephant     | 128          | 31          | re-skin  |
+| tiger        | 85           | 23          | re-skin  |
+| hippo        | 50           | 38          | re-skin  |
+| dog-side     | 45           | 7           | re-skin  |
+| cat          | 23           | 4           | re-skin  |
+| dog-standing | 22           | 10          | re-skin  |
+| monkey       | 10           | 0           | re-skin  |
+| bird         | 51           | 151         | original |
+| rhino        | 26           | 30          | original |
+
+The bird keeps its original weights: its legs sit right under the round
+belly, so bone heat pulls the belly into a lump at each step. The rat's
+tail tip, fused to a hind foot in the source, no longer drags the foot.
