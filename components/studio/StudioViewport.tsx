@@ -77,6 +77,8 @@ export function StudioViewport({
   viewNonce,
   selection = null,
   showHandles = true,
+  grid = null,
+  snap = null,
   quality = "fast",
   onSelect,
   onLightDrag,
@@ -103,6 +105,10 @@ export function StudioViewport({
   viewNonce: number;
   selection?: Selection;
   showHandles?: boolean;
+  /** The floor grid's spacing in metres, or null: no grid. */
+  grid?: number | null;
+  /** Snap step for dragged figures, metres; null: free. */
+  snap?: number | null;
   /** This device's render quality (lib/engine/post.ts). */
   quality?: RenderQuality;
   onSelect?: (s: Selection, figure?: string) => void;
@@ -147,6 +153,8 @@ export function StudioViewport({
     viewNonce,
     selection,
     showHandles,
+    grid,
+    snap,
     quality,
     onSelect,
     onLightDrag,
@@ -171,6 +179,8 @@ export function StudioViewport({
     viewNonce,
     selection,
     showHandles,
+    grid,
+    snap,
     quality,
     onSelect,
     onLightDrag,
@@ -225,6 +235,8 @@ export function StudioViewport({
           Object.assign(window, { __studioEngine: engine });
         const p = latest.current;
         engine.setShowHandles(p.showHandles);
+        engine.setGrid(p.grid != null, p.grid ?? 0.25);
+        engine.setSnap(p.snap);
         engine.setQuality(p.quality);
         engine.setSelection(p.selection);
         engine.setActiveFigure(p.activeFigure);
@@ -262,6 +274,14 @@ export function StudioViewport({
   useEffect(() => {
     engineRef.current?.setShowHandles(showHandles);
   }, [showHandles]);
+
+  useEffect(() => {
+    engineRef.current?.setGrid(grid != null, grid ?? 0.25);
+  }, [grid]);
+
+  useEffect(() => {
+    engineRef.current?.setSnap(snap);
+  }, [snap]);
 
   useEffect(() => {
     engineRef.current?.setQuality(quality);

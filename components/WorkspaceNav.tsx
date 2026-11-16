@@ -152,6 +152,20 @@ export function RailButton({
   );
 }
 
+/** A small label over a group in the sidebar, so the apps (where you
+ * go) read apart from this page's panels (what you open here). Visual
+ * only: each group is already a named nav for assistive tech. */
+function RailHeading({ children }: { children: ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-ink-400"
+    >
+      {children}
+    </span>
+  );
+}
+
 /** The sidebar: the workspaces on top, then this page's own tools
  * (`children`), then `footer` at the bottom. */
 export function Sidebar({
@@ -171,10 +185,12 @@ export function Sidebar({
       aria-label={label}
       role="group"
     >
+      <RailHeading>Apps</RailHeading>
       <WorkspaceRail current={current} />
       {children && (
         <>
           <div aria-hidden className="my-1.5 h-px w-9 bg-ink-750" />
+          <RailHeading>Panels</RailHeading>
           {children}
         </>
       )}

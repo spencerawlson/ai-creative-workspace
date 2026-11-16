@@ -1,6 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type ComponentProps,
+} from "react";
+import { lengthField, type Units } from "@/lib/studio/precision";
 import { Copy, Gauge, Hammer, Printer, Trash2 } from "lucide-react";
 import { figureLabel } from "@/lib/studio/figures";
 import { FINISHES, FINISH_NAMES } from "@/lib/engine/surface";
@@ -63,6 +69,8 @@ type Props = {
   characters?: CharacterLibrary;
   /** Built-in creatures on this device. */
   creatures?: CreatureLibrary;
+  /** This device's units for distances (the scene keeps metres). */
+  units?: Units;
   /** This device's render quality. */
   quality?: RenderQuality;
   onQuality?: (q: RenderQuality) => void;
@@ -76,21 +84,52 @@ export function Inspector(props: Props) {
   const { studio, selection } = props;
   const light = studio.scene.lights.find((l) => l.id === selection);
   return (
-    <div className="flex min-h-full flex-col" data-testid="inspector">
-      {light ? (
-        <LightInspector light={light} {...props} />
-      ) : isPoseSelection(selection) ? (
-        <PoseInspector {...props} />
-      ) : selection === "model" ? (
-        <ModelInspector {...props} />
-      ) : selection === "camera" ? (
-        <CameraInspector {...props} />
-      ) : selection === "backdrop" ? (
-        <BackdropInspector {...props} />
-      ) : (
-        <SceneInspector {...props} />
-      )}
-    </div>
+    <UnitsContext.Provider value={props.units ?? "m"}>
+      <div className="flex min-h-full flex-col" data-testid="inspector">
+        {light ? (
+          <LightInspector light={light} {...props} />
+        ) : isPoseSelection(selection) ? (
+          <PoseInspector {...props} />
+        ) : selection === "model" ? (
+          <ModelInspector {...props} />
+        ) : selection === "camera" ? (
+          <CameraInspector {...props} />
+        ) : selection === "backdrop" ? (
+          <BackdropInspector {...props} />
+        ) : (
+          <SceneInspector {...props} />
+        )}
+      </div>
+    </UnitsContext.Provider>
+  );
+}
+
+/** This device's units, for the distance fields below. */
+const UnitsContext = createContext<Units>("m");
+
+/** A distance (metres in the scene) shown in this device's units. */
+function LengthSlider({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  ...rest
+}: Omit<ComponentProps<typeof Slider>, "unit" | "format">) {
+  const units = useContext(UnitsContext);
+  const f = lengthField(units, step);
+  const decimals = f.step >= 1 ? 0 : f.step >= 0.1 ? 1 : 2;
+  const round = (v: number) => Math.round(v * 10 ** decimals) / 10 ** decimals;
+  return (
+    <Slider
+      {...rest}
+      value={round(value * f.scale)}
+      min={round(min * f.scale)}
+      max={round(max * f.scale)}
+      step={f.step}
+      unit={f.unit}
+      onChange={(v) => onChange(v / f.scale)}
+    />
   );
 }
 
@@ -188,13 +227,12 @@ function LightInspector({
           onCommitEnd={seal}
           testId="light-elevation"
         />
-        <Slider
+        <LengthSlider
           label="Distance"
           value={light.distance}
           min={LIMITS.distance[0]}
           max={LIMITS.distance[1]}
           step={0.1}
-          unit=" m"
           onChange={(distance) => set({ distance })}
           onCommitEnd={seal}
           hint={
@@ -240,13 +278,12 @@ function LightInspector({
           />
         )}
         {light.kind === "area" && (
-          <Slider
+          <LengthSlider
             label="Softbox size"
             value={light.size}
             min={LIMITS.size[0]}
             max={LIMITS.size[1]}
             step={0.1}
-            unit=" m"
             onChange={(size) => set({ size })}
             onCommitEnd={seal}
             hint="Bigger source, softer light — at the same total output."
@@ -420,37 +457,34 @@ function ModelInspector({
           />
         </div>
         <SectionTitle>Placement</SectionTitle>
-        <Slider
+        <LengthSlider
           label="Left / right"
           value={figure.x}
           min={LIMITS.figureX[0]}
           max={LIMITS.figureX[1]}
           step={0.05}
-          unit=" m"
           testId="figure-x"
           hint="As seen from the front"
           onChange={(x) => place({ x })}
           onCommitEnd={seal}
         />
-        <Slider
+        <LengthSlider
           label="Forward / back"
           value={figure.z}
           min={LIMITS.figureZ[0]}
           max={LIMITS.figureZ[1]}
           step={0.05}
-          unit=" m"
           testId="figure-z"
           hint="Positive comes towards the camera"
           onChange={(z) => place({ z })}
           onCommitEnd={seal}
         />
-        <Slider
+        <LengthSlider
           label="Up / down"
           value={figure.y}
           min={LIMITS.figureY[0]}
           max={LIMITS.figureY[1]}
           step={0.01}
-          unit=" m"
           testId="figure-y"
           hint="Lift or lower the whole figure (jumps, sitting)"
           onChange={(y) => place({ y })}

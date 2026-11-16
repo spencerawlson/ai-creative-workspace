@@ -43,6 +43,7 @@ import {
 } from "@/lib/sculpt/store";
 import type { SculptEngine, SculptTool } from "@/lib/sculpt/SculptEngine";
 import { toStl } from "@/lib/engine/statueExport";
+import { MenuBar, useNarrowScreen } from "@/components/MenuBar";
 import { BrandLink, Sidebar, WorkspaceMenu } from "@/components/WorkspaceNav";
 import { openParam } from "@/lib/sculpt/fromFigure";
 import { MATERIAL_PRESETS } from "@/lib/studio/presets";
@@ -52,7 +53,7 @@ import {
   Button,
   Dialog,
   IconButton,
-  SectionTitle,
+  Section,
   Segmented,
   Slider,
   Tip,
@@ -344,6 +345,7 @@ export function SculptStudio() {
 
   const set = (patch: Partial<SculptTool>) =>
     setTool((t) => ({ ...t, ...patch }));
+  const narrow = useNarrowScreen();
   const info = BRUSH_INFO[tool.brush];
 
   return (
@@ -353,6 +355,81 @@ export function SculptStudio() {
         <BrandLink />
         {/* Phones have no sidebar: the workspaces are a menu here. */}
         <WorkspaceMenu current="sculpt" className="md:hidden" />
+        <MenuBar
+          compact={narrow}
+          menus={[
+            {
+              id: "file",
+              label: "File",
+              items: [
+                {
+                  label: "New sculpture…",
+                  icon: Plus,
+                  onSelect: () => setDialog("new"),
+                  testId: "sculpt-new",
+                },
+                {
+                  label: "Open…",
+                  icon: FolderOpen,
+                  onSelect: () => setDialog("open"),
+                  testId: "sculpt-open",
+                },
+                "separator",
+                {
+                  label: "Export…",
+                  icon: Download,
+                  onSelect: () => setDialog("export"),
+                },
+              ],
+            },
+            {
+              id: "edit",
+              label: "Edit",
+              items: [
+                {
+                  label: "Undo",
+                  shortcut: "Ctrl+Z",
+                  disabled: !history.canUndo,
+                  onSelect: () => {
+                    engine.current?.undo();
+                    scheduleSave();
+                  },
+                },
+                {
+                  label: "Redo",
+                  shortcut: "Ctrl+Shift+Z",
+                  disabled: !history.canRedo,
+                  onSelect: () => {
+                    engine.current?.redo();
+                    scheduleSave();
+                  },
+                },
+              ],
+            },
+            {
+              id: "view",
+              label: "View",
+              items: [
+                {
+                  label: "Frame the sculpture",
+                  icon: Move3d,
+                  onSelect: () => engine.current?.frameView(),
+                },
+                "separator",
+                {
+                  label: "Turn view",
+                  checked: !!tool.turnView,
+                  onSelect: () => set({ turnView: !tool.turnView }),
+                },
+                {
+                  label: "Symmetry",
+                  checked: tool.symmetry,
+                  onSelect: () => set({ symmetry: !tool.symmetry }),
+                },
+              ],
+            },
+          ]}
+        />
         <div className="mx-1 hidden h-6 w-px bg-ink-750 sm:block" />
         <label className="sr-only" htmlFor="sculpt-name">
           Sculpture name
@@ -392,18 +469,6 @@ export function SculptStudio() {
             scheduleSave();
           }}
           data-testid="sculpt-redo"
-        />
-        <IconButton
-          icon={Plus}
-          label="New sculpture"
-          onClick={() => setDialog("new")}
-          data-testid="sculpt-new"
-        />
-        <IconButton
-          icon={FolderOpen}
-          label="Open a sculpture"
-          onClick={() => setDialog("open")}
-          data-testid="sculpt-open"
         />
         <Button
           variant="primary"
@@ -454,205 +519,213 @@ export function SculptStudio() {
           className="order-2 max-h-[45dvh] shrink-0 overflow-y-auto border-t border-ink-800 bg-ink-900 px-3 pb-4 md:order-1 md:max-h-none md:w-72 md:border-r md:border-t-0"
           aria-label="Sculpting tools"
         >
-          <SectionTitle>Brush</SectionTitle>
-          <div
-            className="grid grid-cols-5 gap-1 md:grid-cols-3"
-            role="group"
-            aria-label="Brushes"
-          >
-            {BRUSHES.map((b) => {
-              const Icon = BRUSH_ICONS[b];
-              return (
-                <button
-                  key={b}
-                  type="button"
-                  aria-pressed={tool.brush === b}
-                  title={BRUSH_INFO[b].note}
-                  onClick={() => set({ brush: b, turnView: false })}
-                  data-testid={`brush-${b}`}
-                  className={cx(
-                    "flex flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-2xs transition-colors",
-                    tool.brush === b
-                      ? "bg-accent text-ink-950"
-                      : "bg-ink-800 text-ink-200 hover:bg-ink-750",
-                  )}
-                >
-                  <Icon className="h-4 w-4" aria-hidden />
-                  {BRUSH_INFO[b].name}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-1.5 text-2xs text-ink-400" data-testid="brush-note">
-            {info.name}: {info.note}
-          </p>
-          {tool.brush === "paint" && (
-            <div className="mt-2" data-testid="paint-options">
-              <div className="flex items-center gap-2">
-                <label htmlFor="paint-color" className="text-xs text-ink-300">
-                  Colour
-                </label>
-                <input
-                  id="paint-color"
-                  type="color"
-                  value={tool.color}
-                  onChange={(e) => set({ color: e.target.value })}
-                  className="h-7 w-10 cursor-pointer rounded border border-ink-700 bg-transparent"
-                  data-testid="paint-color"
-                />
-                <span className="text-2xs tabular-nums text-ink-400">
-                  {tool.color}
-                </span>
-              </div>
-              <div
-                className="mt-1.5 grid grid-cols-10 gap-1"
-                role="group"
-                aria-label="Paint colours"
-              >
-                {PAINT_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    title={c}
-                    aria-label={`Paint colour ${c}`}
-                    aria-pressed={tool.color === c}
-                    onClick={() => set({ color: c, invert: false })}
-                    data-testid={`paint-swatch-${c.slice(1)}`}
-                    className={cx(
-                      "aspect-square rounded border-2",
-                      tool.color === c
-                        ? "border-accent"
-                        : "border-transparent hover:border-ink-500",
-                    )}
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="mt-1.5 w-full"
-                onClick={() => engine.current?.layerOp("clearPaint")}
-                data-testid="paint-clear"
-              >
-                Clear all paint
-              </Button>
-            </div>
-          )}
-          {tool.brush === "mask" && (
+          <Section title="Brush" testId="sculpt-section-brush">
             <div
-              className="mt-2 grid grid-cols-2 gap-1"
-              data-testid="mask-options"
+              className="grid grid-cols-5 gap-1 md:grid-cols-3"
+              role="group"
+              aria-label="Brushes"
             >
-              <Button
-                size="sm"
-                onClick={() => engine.current?.layerOp("invertMask")}
-                data-testid="mask-invert"
-              >
-                Invert mask
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => engine.current?.layerOp("clearMask")}
-                data-testid="mask-clear"
-              >
-                Clear mask
-              </Button>
-              <p className="col-span-2 text-2xs text-ink-400">
-                Masked areas show darker, and the sculpting brushes leave them
-                as they are.
-              </p>
+              {BRUSHES.map((b) => {
+                const Icon = BRUSH_ICONS[b];
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    aria-pressed={tool.brush === b}
+                    title={BRUSH_INFO[b].note}
+                    onClick={() => set({ brush: b, turnView: false })}
+                    data-testid={`brush-${b}`}
+                    className={cx(
+                      "flex flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-2xs transition-colors",
+                      tool.brush === b
+                        ? "bg-accent text-ink-950"
+                        : "bg-ink-800 text-ink-200 hover:bg-ink-750",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden />
+                    {BRUSH_INFO[b].name}
+                  </button>
+                );
+              })}
             </div>
-          )}
-          <Slider
-            label="Size"
-            value={tool.sizePx}
-            min={10}
-            max={200}
-            step={5}
-            unit=" px"
-            testId="sculpt-size"
-            onChange={(sizePx) => set({ sizePx })}
-          />
-          <Slider
-            label="Strength"
-            value={Math.round(tool.strength * 100)}
-            min={5}
-            max={100}
-            step={5}
-            unit="%"
-            testId="sculpt-strength"
-            hint="With a pen, pressing harder adds strength."
-            onChange={(v) => set({ strength: v / 100 })}
-          />
-          <Toggle
-            label="Subtract"
-            checked={tool.invert}
-            onChange={(invert) => set({ invert })}
-            disabled={
-              tool.brush === "smooth" ||
-              tool.brush === "flatten" ||
-              tool.brush === "grab"
-            }
-            hint={
-              SUBTRACT_HINT[tool.brush] ??
-              "Dig in, shrink or push apart instead."
-            }
-            testId="sculpt-subtract"
-          />
-          <Toggle
-            label="Symmetry"
-            checked={tool.symmetry}
-            onChange={(symmetry) => set({ symmetry })}
-            hint="Every stroke is mirrored left to right."
-            testId="sculpt-symmetry"
-          />
-          <Toggle
-            label="Turn view"
-            checked={!!tool.turnView}
-            onChange={(turnView) => set({ turnView })}
-            hint="Every drag turns the view, even on the clay: handy on a phone."
-            testId="sculpt-turn-view"
-          />
-          <Button
-            size="sm"
-            icon={Move3d}
-            className="mt-1 w-full"
-            onClick={() => engine.current?.frameView()}
-            data-testid="sculpt-frame"
-          >
-            Frame the sculpture
-          </Button>
-
-          <SectionTitle>Material</SectionTitle>
-          <div
-            className="grid grid-cols-9 gap-1 md:grid-cols-3"
-            role="group"
-            aria-label="Clay material"
-          >
-            {LOOKS.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                title={m.name}
-                aria-label={m.name}
-                aria-pressed={look === m.id}
-                onClick={() => {
-                  setLook(m.id);
-                  setEntry((cur) => (cur ? { ...cur, look: m.id } : cur));
-                  scheduleSave();
-                }}
-                data-testid={`sculpt-material-${m.id}`}
-                className={cx(
-                  "aspect-square rounded-md border-2",
-                  look === m.id
-                    ? "border-accent"
-                    : "border-transparent hover:border-ink-500",
-                )}
-                style={{ background: m.color }}
-              />
-            ))}
-          </div>
+            <p
+              className="mt-1.5 text-2xs text-ink-400"
+              data-testid="brush-note"
+            >
+              {info.name}: {info.note}
+            </p>
+            {tool.brush === "paint" && (
+              <div className="mt-2" data-testid="paint-options">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="paint-color" className="text-xs text-ink-300">
+                    Colour
+                  </label>
+                  <input
+                    id="paint-color"
+                    type="color"
+                    value={tool.color}
+                    onChange={(e) => set({ color: e.target.value })}
+                    className="h-7 w-10 cursor-pointer rounded border border-ink-700 bg-transparent"
+                    data-testid="paint-color"
+                  />
+                  <span className="text-2xs tabular-nums text-ink-400">
+                    {tool.color}
+                  </span>
+                </div>
+                <div
+                  className="mt-1.5 grid grid-cols-10 gap-1"
+                  role="group"
+                  aria-label="Paint colours"
+                >
+                  {PAINT_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      title={c}
+                      aria-label={`Paint colour ${c}`}
+                      aria-pressed={tool.color === c}
+                      onClick={() => set({ color: c, invert: false })}
+                      data-testid={`paint-swatch-${c.slice(1)}`}
+                      className={cx(
+                        "aspect-square rounded border-2",
+                        tool.color === c
+                          ? "border-accent"
+                          : "border-transparent hover:border-ink-500",
+                      )}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="mt-1.5 w-full"
+                  onClick={() => engine.current?.layerOp("clearPaint")}
+                  data-testid="paint-clear"
+                >
+                  Clear all paint
+                </Button>
+              </div>
+            )}
+            {tool.brush === "mask" && (
+              <div
+                className="mt-2 grid grid-cols-2 gap-1"
+                data-testid="mask-options"
+              >
+                <Button
+                  size="sm"
+                  onClick={() => engine.current?.layerOp("invertMask")}
+                  data-testid="mask-invert"
+                >
+                  Invert mask
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => engine.current?.layerOp("clearMask")}
+                  data-testid="mask-clear"
+                >
+                  Clear mask
+                </Button>
+                <p className="col-span-2 text-2xs text-ink-400">
+                  Masked areas show darker, and the sculpting brushes leave them
+                  as they are.
+                </p>
+              </div>
+            )}
+          </Section>
+          <Section title="Stroke" testId="sculpt-section-stroke">
+            <Slider
+              label="Size"
+              value={tool.sizePx}
+              min={10}
+              max={200}
+              step={5}
+              unit=" px"
+              testId="sculpt-size"
+              onChange={(sizePx) => set({ sizePx })}
+            />
+            <Slider
+              label="Strength"
+              value={Math.round(tool.strength * 100)}
+              min={5}
+              max={100}
+              step={5}
+              unit="%"
+              testId="sculpt-strength"
+              hint="With a pen, pressing harder adds strength."
+              onChange={(v) => set({ strength: v / 100 })}
+            />
+            <Toggle
+              label="Subtract"
+              checked={tool.invert}
+              onChange={(invert) => set({ invert })}
+              disabled={
+                tool.brush === "smooth" ||
+                tool.brush === "flatten" ||
+                tool.brush === "grab"
+              }
+              hint={
+                SUBTRACT_HINT[tool.brush] ??
+                "Dig in, shrink or push apart instead."
+              }
+              testId="sculpt-subtract"
+            />
+          </Section>
+          <Section title="Symmetry & view" testId="sculpt-section-view">
+            <Toggle
+              label="Symmetry"
+              checked={tool.symmetry}
+              onChange={(symmetry) => set({ symmetry })}
+              hint="Every stroke is mirrored left to right."
+              testId="sculpt-symmetry"
+            />
+            <Toggle
+              label="Turn view"
+              checked={!!tool.turnView}
+              onChange={(turnView) => set({ turnView })}
+              hint="Every drag turns the view, even on the clay: handy on a phone."
+              testId="sculpt-turn-view"
+            />
+            <Button
+              size="sm"
+              icon={Move3d}
+              className="mt-1 w-full"
+              onClick={() => engine.current?.frameView()}
+              data-testid="sculpt-frame"
+            >
+              Frame the sculpture
+            </Button>
+          </Section>
+          <Section title="Material" testId="sculpt-section-material">
+            <div
+              className="grid grid-cols-9 gap-1 md:grid-cols-6"
+              role="group"
+              aria-label="Clay material"
+            >
+              {LOOKS.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  title={m.name}
+                  aria-label={m.name}
+                  aria-pressed={look === m.id}
+                  onClick={() => {
+                    setLook(m.id);
+                    setEntry((cur) => (cur ? { ...cur, look: m.id } : cur));
+                    scheduleSave();
+                  }}
+                  data-testid={`sculpt-material-${m.id}`}
+                  className={cx(
+                    "aspect-square rounded-md border-2",
+                    look === m.id
+                      ? "border-accent"
+                      : "border-transparent hover:border-ink-500",
+                  )}
+                  style={{ background: m.color }}
+                />
+              ))}
+            </div>
+          </Section>
           <p className="mt-2 text-2xs text-ink-400" data-testid="sculpt-status">
             {note ??
               (pending

@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   FolderOpen,
+  Grid3x3,
   History as HistoryIcon,
   Keyboard,
   Layers,
@@ -41,6 +42,15 @@ import {
   VideoExportDialog,
 } from "./Dialogs";
 import { Inspector } from "./Inspector";
+import { MenuBar, type Menu, type MenuEntry } from "@/components/MenuBar";
+import {
+  DEFAULT_PRECISION,
+  SNAP_STEPS,
+  formatLength,
+  loadPrecision,
+  savePrecision,
+  type Precision,
+} from "@/lib/studio/precision";
 import {
   BrandLink,
   RailButton,
@@ -157,6 +167,16 @@ export function LightingStudio() {
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
   const [quality, setQuality] = useRenderQuality();
+  // Grid, snapping and units: this device's, kept in the browser.
+  const [precision, setPrecisionState] = useState<Precision>(DEFAULT_PRECISION);
+  useEffect(() => setPrecisionState(loadPrecision()), []);
+  const setPrecision = useCallback((patch: Partial<Precision>) => {
+    setPrecisionState((p) => {
+      const next = { ...p, ...patch };
+      savePrecision(next);
+      return next;
+    });
+  }, []);
   const [exportOpen, setExportOpen] = useState(false);
   const [export3DOpen, setExport3DOpen] = useState(false);
   const [export3DFormat, setExport3DFormat] = useState<"glb" | "stl">("glb");
@@ -496,6 +516,7 @@ export function LightingStudio() {
       onView={changeView}
       showHandles={showHandles}
       onShowHandles={setShowHandles}
+      units={precision.units}
       quality={quality}
       onQuality={setQuality}
       time={time}
@@ -618,6 +639,19 @@ export function LightingStudio() {
         onOpen={() => fileInput.current?.click()}
         onSave={saveProject}
         onShortcuts={() => setShortcutsOpen(true)}
+        precision={precision}
+        onPrecision={setPrecision}
+        onPanel={(p) => {
+          if (isDesktop) {
+            setTool(p);
+            setPanelOpen(true);
+          } else {
+            setMobileTab(p);
+            setSheetOpen(true);
+          }
+        }}
+        panelOpen={isDesktop && panelOpen}
+        onTogglePanel={isDesktop ? () => setPanelOpen(!panelOpen) : undefined}
         compact={!isDesktop}
       />
       <input
@@ -730,6 +764,8 @@ export function LightingStudio() {
               viewNonce={viewNonce}
               selection={previewing ? null : validSelection}
               showHandles={showHandles && !previewing}
+              grid={precision.grid && !previewing ? precision.step : null}
+              snap={precision.snap ? precision.step : null}
               quality={quality}
               onSelect={select}
               onLightDrag={onLightDrag}
@@ -955,6 +991,11 @@ function Toolbar({
   onOpen,
   onSave,
   onShortcuts,
+  precision,
+  onPrecision,
+  onPanel,
+  panelOpen,
+  onTogglePanel,
   compact,
 }: {
   studio: Studio;
@@ -964,9 +1005,129 @@ function Toolbar({
   onOpen: () => void;
   onSave: () => void;
   onShortcuts: () => void;
+  precision: Precision;
+  onPrecision: (patch: Partial<Precision>) => void;
+  /** Show a panel (desktop: the side panel; phones: the sheet tab). */
+  onPanel: (panel: Tool) => void;
+  panelOpen: boolean;
+  /** Desktop only: fold the side panel away or back. */
+  onTogglePanel?: () => void;
   compact: boolean;
 }) {
   const { undo, redo, canUndo, canRedo, dispatch } = studio;
+  const menus: Menu[] = [
+    {
+      id: "file",
+      label: "File",
+      items: [
+        {
+          label: "New scene",
+          icon: RotateCcw,
+          onSelect: () => dispatch({ type: "reset" }),
+          testId: "reset-setup",
+        },
+        {
+          label: "Open project file…",
+          icon: FolderOpen,
+          onSelect: onOpen,
+          testId: "open-project",
+        },
+        {
+          label: "Save project file",
+          icon: Save,
+          shortcut: "Ctrl+S",
+          onSelect: onSave,
+          testId: "save-project",
+        },
+        "separator",
+        { label: "Copy share link", icon: Link2, onSelect: onShare },
+        { label: "Export…", icon: Download, onSelect: onExport },
+      ],
+    },
+    {
+      id: "edit",
+      label: "Edit",
+      items: [
+        {
+          label: "Undo",
+          shortcut: "Ctrl+Z",
+          disabled: !canUndo,
+          onSelect: undo,
+        },
+        {
+          label: "Redo",
+          shortcut: "Ctrl+Shift+Z",
+          disabled: !canRedo,
+          onSelect: redo,
+        },
+        "separator",
+        { label: "History", onSelect: () => onPanel("history") },
+      ],
+    },
+    {
+      id: "view",
+      label: "View",
+      items: [
+        { label: "Scene", onSelect: () => onPanel("scene") },
+        { label: "Presets", onSelect: () => onPanel("presets") },
+        "separator",
+        {
+          label: "Floor grid",
+          icon: Grid3x3,
+          checked: precision.grid,
+          onSelect: () => onPrecision({ grid: !precision.grid }),
+          testId: "view-grid",
+        },
+        {
+          label: "Snap to grid (Alt: free)",
+          checked: precision.snap,
+          onSelect: () => onPrecision({ snap: !precision.snap }),
+          testId: "view-snap",
+        },
+        ...SNAP_STEPS.map((step) => ({
+          label: `Grid every ${formatLength(step, precision.units)}`,
+          checked: precision.step === step,
+          onSelect: () => onPrecision({ step }),
+          testId: `view-step-${step}`,
+        })),
+        "separator",
+        ...(
+          [
+            ["m", "Metres"],
+            ["cm", "Centimetres"],
+            ["ft", "Feet and inches"],
+          ] as const
+        ).map(([units, label]) => ({
+          label,
+          checked: precision.units === units,
+          onSelect: () => onPrecision({ units }),
+          testId: `view-units-${units}`,
+        })),
+        ...(onTogglePanel
+          ? ([
+              "separator",
+              {
+                label: "Side panel",
+                shortcut: "[",
+                checked: panelOpen,
+                onSelect: onTogglePanel,
+              },
+            ] as MenuEntry[])
+          : []),
+      ],
+    },
+    {
+      id: "help",
+      label: "Help",
+      items: [
+        {
+          label: "Keyboard shortcuts",
+          shortcut: "?",
+          onSelect: onShortcuts,
+        },
+      ],
+    },
+  ];
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
       <h1 className="sr-only">IKO 3D Studio</h1>
@@ -975,6 +1136,7 @@ function Toolbar({
         {/* With no sidebar (phones), the workspaces are a menu here. */}
         {compact && <WorkspaceMenu current="studio" />}
       </div>
+      <MenuBar menus={menus} compact={compact} />
       <div className="mx-1 hidden h-6 w-px bg-ink-750 sm:block" />
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <label className="sr-only" htmlFor="project-name">
@@ -1021,37 +1183,6 @@ function Toolbar({
           onClick={redo}
           data-testid="redo"
         />
-        {!compact && (
-          <>
-            <IconButton
-              icon={RotateCcw}
-              label="Reset scene (undoable)"
-              onClick={() => dispatch({ type: "reset" })}
-              data-testid="reset-setup"
-            />
-            <div className="mx-1 h-6 w-px bg-ink-750" />
-            <IconButton
-              icon={FolderOpen}
-              label="Open project file"
-              onClick={onOpen}
-              data-testid="open-project"
-            />
-            <IconButton
-              icon={Save}
-              label="Save project file"
-              shortcut="Ctrl+S"
-              onClick={onSave}
-              data-testid="save-project"
-            />
-            <IconButton
-              icon={Keyboard}
-              label="Keyboard shortcuts"
-              shortcut="?"
-              onClick={onShortcuts}
-              className="md:hidden"
-            />
-          </>
-        )}
         <Button
           size="sm"
           variant="secondary"

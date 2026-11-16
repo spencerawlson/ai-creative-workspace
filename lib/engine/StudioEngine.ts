@@ -87,6 +87,7 @@ import {
   vrmHumanoid,
   type Retarget,
 } from "./humanoid";
+import { snapTo } from "@/lib/studio/precision";
 import {
   LIMITS,
   PLINTH_SIZE,
@@ -442,6 +443,10 @@ export class StudioEngine {
   private disposed = false;
   private interacting = false;
   private dragging: { id: string; pointerId: number } | null = null;
+  /** The floor grid, when shown (in handlesRoot). */
+  private grid: THREE.Group | null = null;
+  /** Snap step for dragged figures, metres; null: free. */
+  private snapStep: number | null = null;
   /** A body part held in pose mode. `moved` stays false for a tap. */
   private poseDrag: {
     pointerId: number;
@@ -623,6 +628,34 @@ export class StudioEngine {
     this.showHandles = show;
     this.handlesRoot.visible = show;
     this.invalidate();
+  }
+
+  /** The floor grid (a viewport helper, with the handles: never in an
+   * export): lines every `step` metres, stronger every metre, and the
+   * two axes through the middle, over the floor figures can stand on. */
+  setGrid(visible: boolean, step: number): void {
+    if (this.grid) {
+      this.handlesRoot.remove(this.grid);
+      this.grid.traverse((o) => {
+        const l = o as THREE.LineSegments;
+        if (l.isLineSegments) {
+          l.geometry.dispose();
+          (l.material as THREE.Material).dispose();
+        }
+      });
+      this.grid = null;
+    }
+    if (visible) {
+      this.grid = buildFloorGrid(LIMITS.figureX[1], step);
+      this.handlesRoot.add(this.grid);
+    }
+    this.invalidate();
+  }
+
+  /** Dragged figures land on multiples of `step` metres (Alt places
+   * freely); null: no snapping. */
+  setSnap(step: number | null): void {
+    this.snapStep = step;
   }
 
   /** Aim the camera for a view. `fovDeg`: the vertical angle of view
@@ -2526,6 +2559,11 @@ export class StudioEngine {
       if (!p) return;
       const delta = p.sub(move.start).setY(0);
       const at = move.from.clone().add(delta);
+      // Snapping (Alt places freely, as in most 3D tools).
+      if (this.snapStep && !e.altKey) {
+        at.x = snapTo(at.x, this.snapStep);
+        at.z = snapTo(at.z, this.snapStep);
+      }
       const clamp = (v: number, [lo, hi]: readonly [number, number]) =>
         Math.round(THREE.MathUtils.clamp(v, lo, hi) * 100) / 100;
       this.callbacks.onFigureMove?.(move.figure, {
@@ -2976,6 +3014,48 @@ export function dragOnSphere(
       ),
     ),
   };
+}
+
+/** A floor grid from -half to half metres: minor lines every `step`,
+ * major every metre, and the x (red) and z (blue) axes, just above the
+ * floor. It ignores clicks (they go to the figure or the floor). */
+export function buildFloorGrid(half: number, step: number): THREE.Group {
+  const minor: number[] = [];
+  const major: number[] = [];
+  const n = Math.round(half / step);
+  for (let i = -n; i <= n; i++) {
+    const v = Math.round(i * step * 1e6) / 1e6;
+    if (v === 0) continue; // the axes are drawn on their own
+    const onMetre = Math.abs(v - Math.round(v)) < 1e-6;
+    const into = onMetre ? major : minor;
+    into.push(v, 0, -half, v, 0, half, -half, 0, v, half, 0, v);
+  }
+  const lines = (points: number[], color: number, opacity: number) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    const l = new THREE.LineSegments(
+      g,
+      new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+      }),
+    );
+    l.raycast = () => {};
+    l.renderOrder = -1;
+    return l;
+  };
+  const group = new THREE.Group();
+  group.name = "floor-grid";
+  group.position.y = 0.002;
+  group.add(
+    lines(minor, 0x8a8f9c, 0.18),
+    lines(major, 0xaab0bd, 0.38),
+    lines([-half, 0, 0, half, 0, 0], 0xd0584b, 0.75),
+    lines([0, 0, -half, 0, 0, half], 0x4b7fd0, 0.75),
+  );
+  return group;
 }
 
 /** Seamless studio sweep: floor in front, a curve, and a back wall. */
