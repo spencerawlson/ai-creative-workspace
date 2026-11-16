@@ -14,3 +14,7 @@ public/mediapipe/wasm/
 
 # Meshy downloads for the cast (large; the slimmed copies are in public/cast)
 assets/cast/source/
+
+# Rigged (pre-slim) creature GLBs (large; the slimmed copies are in
+# public/creatures). The per-species *.joints.json rig data IS committed.
+assets/creatures/rigged/*.glb

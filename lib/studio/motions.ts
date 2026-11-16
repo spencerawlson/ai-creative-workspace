@@ -2045,6 +2045,15 @@ export interface MotionOptions {
   /** How long it should last, in seconds: repeats (and speed, a
    * little) are chosen to fill it exactly. */
   seconds?: number;
+  /** Cycle length, in seconds, instead of the motion's own (a
+   * creature's baked walk: 1 s per stride). */
+  cycle?: number;
+  /** Metres forward per cycle, instead of the motion's own (a
+   * creature's stride). */
+  travel?: number;
+  /** Neutral joints and no floor offset: the figure has no human
+   * joints to pose (a creature — its baked clip moves its legs). */
+  neutral?: boolean;
 }
 
 export interface MotionPlacement {
@@ -2148,7 +2157,7 @@ export function planMotion(
   opts: MotionOptions = {},
 ): MotionPlan {
   const once = motion.frames[motion.frames.length - 1].at;
-  const unit = motion.cycle ?? once; // seconds per repeat at speed 1
+  const unit = opts.cycle ?? motion.cycle ?? once; // seconds per repeat at speed 1
   const canRepeat = repeatable(motion) && unit > 0;
   let slow = Math.max(0.25, Math.min(4, opts.slow ?? 1));
   let repeat = canRepeat
@@ -2204,7 +2213,7 @@ export function planMotion(
   // goes round a circle instead; with no room for that, on the spot.
   const sign = opts.backwards ? -1 : 1;
   const th0 = (from.rotation * Math.PI) / 180;
-  const per = opts.inPlace ? 0 : (motion.travel ?? 0);
+  const per = opts.inPlace ? 0 : (opts.travel ?? motion.travel ?? 0);
   const distance = per * repeat;
   let path: MotionPlan["path"] = "straight";
   let circle: { radius: number; turn: 1 | -1 } | null = null;
@@ -2236,13 +2245,18 @@ export function planMotion(
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const steps = raw.map((fr) => {
-    let joints = build(fr.pose, { ...motion.hands, ...fr.hands });
-    if (opts.mirror) joints = mirrorJoints(joints);
+    let joints = opts.neutral
+      ? neutralJoints()
+      : build(fr.pose, { ...motion.hands, ...fr.hands });
+    if (opts.mirror && !opts.neutral) joints = mirrorJoints(joints);
     joints = roundJoints(joints);
     const turn = ((fr.turn ?? 0) + fr.spin) * (opts.mirror ? -1 : 1);
     const at = place(per * fr.progress);
     const heading = (at.heading * 180) / Math.PI;
-    const y = Math.max(-1, Math.min(1.5, floorOffset(joints) + (fr.air ?? 0)));
+    // A neutral figure stands on the floor: no human floor offset.
+    const y = opts.neutral
+      ? 0
+      : Math.max(-1, Math.min(1.5, floorOffset(joints) + (fr.air ?? 0)));
     return {
       at: Math.round(fr.at * slow * 100) / 100,
       x: r2(at.x),

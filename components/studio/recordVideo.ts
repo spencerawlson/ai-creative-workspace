@@ -125,7 +125,7 @@ export async function recordVideo(opts: {
         throw new DOMException("Export cancelled", "AbortError");
       const t = Math.min(i / fps, scene.animation.duration);
       const frame = evaluate(scene, t);
-      viewport.preview(withSpeech(frame.scene, t));
+      viewport.preview(withSpeech(frame.scene, t), t);
       if (opts.keyCamera && frame.view) viewport.setCameraPlacement(frame.view);
       viewport.renderCapture();
       await source.add(i / fps, 1 / fps); // waits for the encoder

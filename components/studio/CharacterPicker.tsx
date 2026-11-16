@@ -16,8 +16,8 @@ const mb = (bytes: number) =>
 /** Which character a figure shows: the mannequin, one of the app's
  * built-in cast (when it has one), one imported onto this device
  * (GLB or VRM, with a human skeleton), or one of the app's built-in
- * creatures — an animal, which stands still (it has no skeleton to
- * pose). Importing puts the new character on this figure. */
+ * creatures — an animal, which walks on its own baked walk cycle but
+ * can't be posed. Importing puts the new character on this figure. */
 export function CharacterPicker({
   studio,
   figure,
@@ -130,7 +130,7 @@ export function CharacterPicker({
         )}
         {creatures.list.map((c) => (
           <li key={c.id} className="flex">
-            {creatureOption(c.id, c.name, "static")}
+            {creatureOption(c.id, c.name, "walks")}
           </li>
         ))}
         {characters.list.length > 0 && characters.cast.length > 0 && (
@@ -195,7 +195,7 @@ export function CharacterPicker({
         {characters.error ??
           problem ??
           (creature
-            ? `${creature.name}: made with ${creature.credit.tool} from the description “${creature.credit.prompt}”. Built in, so share links show it on every device. It has no skeleton, so it stands still — move it and turn it, but it can't be posed.`
+            ? `${creature.name}: made with ${creature.credit.tool} from the description “${creature.credit.prompt}”. Built in, so share links show it on every device. It walks with its own baked walk cycle — type “walk” — but it has no human skeleton, so it can't be posed. Move it and turn it as usual.`
             : member
               ? `${member.name}: made with ${member.credit.tool} from the description “${member.credit.prompt}”. Built in, so share links show it on every device.`
               : missing

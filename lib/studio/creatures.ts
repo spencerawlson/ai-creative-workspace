@@ -5,8 +5,10 @@
  * talks to Meshy and holds no key.
  *
  * Unlike the cast, a creature has no human skeleton, so it can't be
- * posed — it stands in the scene as a static figure (a picker + place
- * in the scene, no posing). Its heightMeters is how tall it stands:
+ * posed — it stands in the scene as a figure (a picker + place in the
+ * scene, no posing), but it can walk: each served GLB carries one baked
+ * "walk" clip the engine plays while the figure travels
+ * (lib/studio/creatureWalk.ts). Its heightMeters is how tall it stands:
  * the engine scales it so its height is that many metres, where a
  * human figure is 1.88 m. */
 

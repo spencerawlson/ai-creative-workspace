@@ -1,0 +1,184 @@
+{
+  "species": "gorilla",
+  "type": "biped",
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "head": [0, -0.0763, -0.9521],
+      "tail": [0, -0.0763, -0.8921],
+      "radius": 0.019
+    },
+    {
+      "name": "pelvis",
+      "parent": "root",
+      "head": [-0.0, -0.0763, 0.1708],
+      "tail": [-0.0, -0.0763, 0.3611],
+      "radius": 0.1903
+    },
+    {
+      "name": "spine",
+      "parent": "pelvis",
+      "head": [-0.0, -0.0763, 0.3611],
+      "tail": [-0.0, -0.0763, 0.4182],
+      "radius": 0.2094
+    },
+    {
+      "name": "neck",
+      "parent": "spine",
+      "head": [-0.0, -0.0763, 0.4182],
+      "tail": [-0.0, -0.0763, 0.7206],
+      "radius": 0.1332
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "head": [-0.0, -0.0763, 0.7206],
+      "tail": [0.0011, -0.1509, 0.8348],
+      "radius": 0.1713
+    },
+    {
+      "name": "legL",
+      "parent": "pelvis",
+      "head": [0.2077, 0.035, 0.0947],
+      "tail": [0.2077, 0.035, -0.4497],
+      "radius": 0.1142
+    },
+    {
+      "name": "legLLower",
+      "parent": "legL",
+      "head": [0.2077, 0.035, -0.4497],
+      "tail": [0.2056, 0.0047, -0.8265],
+      "radius": 0.0421
+    },
+    {
+      "name": "footL",
+      "parent": "legLLower",
+      "head": [0.2056, 0.0047, -0.8265],
+      "tail": [0.2056, -0.0904, -0.9471],
+      "radius": 0.1049
+    },
+    {
+      "name": "armL",
+      "parent": "spine",
+      "head": [0.4653, 0.0494, 0.2205],
+      "tail": [0.6172, -0.1538, -0.3016],
+      "radius": 0.0609
+    },
+    {
+      "name": "armLLower",
+      "parent": "armL",
+      "head": [0.6172, -0.1538, -0.3016],
+      "tail": [0.6685, -0.1748, -0.4463],
+      "radius": 0.0495
+    },
+    {
+      "name": "handL",
+      "parent": "armLLower",
+      "head": [0.6685, -0.1748, -0.4463],
+      "tail": [0.6476, -0.2539, -0.4743],
+      "radius": 0.0419
+    },
+    {
+      "name": "legR",
+      "parent": "pelvis",
+      "head": [-0.2078, 0.0337, 0.0947],
+      "tail": [-0.2078, 0.0337, -0.4497],
+      "radius": 0.1142
+    },
+    {
+      "name": "legRLower",
+      "parent": "legR",
+      "head": [-0.2078, 0.0337, -0.4497],
+      "tail": [-0.2049, 0.0043, -0.8265],
+      "radius": 0.0416
+    },
+    {
+      "name": "footR",
+      "parent": "legRLower",
+      "head": [-0.2049, 0.0043, -0.8265],
+      "tail": [-0.2049, -0.0909, -0.9471],
+      "radius": 0.1044
+    },
+    {
+      "name": "armR",
+      "parent": "spine",
+      "head": [-0.4626, 0.0489, 0.2236],
+      "tail": [-0.6184, -0.1512, -0.2984],
+      "radius": 0.0609
+    },
+    {
+      "name": "armRLower",
+      "parent": "armR",
+      "head": [-0.6184, -0.1512, -0.2984],
+      "tail": [-0.6693, -0.174, -0.4469],
+      "radius": 0.0495
+    },
+    {
+      "name": "handR",
+      "parent": "armRLower",
+      "head": [-0.6693, -0.174, -0.4469],
+      "tail": [-0.6484, -0.2519, -0.4762],
+      "radius": 0.0419
+    }
+  ],
+  "analysis": {
+    "L": 0.6470387279987335,
+    "W": 1.459484338760376,
+    "H": 1.9033124446868896,
+    "z0": -0.9521389007568359,
+    "crotch": 0.09468294382095355,
+    "shoulder_z": 0.532444806098938,
+    "hip_z": 0.20888169050216693
+  },
+  "stretch": {
+    "legL": {
+      "max": 6.09,
+      "over2x": 187,
+      "over4x": 13,
+      "max_all": 14.55
+    },
+    "legLLower": {
+      "max": 3.39,
+      "over2x": 52,
+      "over4x": 0,
+      "max_all": 3.93
+    },
+    "armL": {
+      "max": 2.86,
+      "over2x": 5,
+      "over4x": 0,
+      "max_all": 2.86
+    },
+    "armLLower": {
+      "max": 1.79,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 4.66
+    },
+    "legR": {
+      "max": 5.46,
+      "over2x": 189,
+      "over4x": 13,
+      "max_all": 14.15
+    },
+    "legRLower": {
+      "max": 3.21,
+      "over2x": 43,
+      "over4x": 0,
+      "max_all": 4.33
+    },
+    "armR": {
+      "max": 2.3,
+      "over2x": 9,
+      "over4x": 0,
+      "max_all": 2.72
+    },
+    "armRLower": {
+      "max": 1.88,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 5.35
+    }
+  }
+}

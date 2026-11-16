@@ -1,0 +1,172 @@
+{
+  "species": "bird",
+  "type": "bird",
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "head": [0, -0.0, -0.5543],
+      "tail": [0, -0.0, -0.5043],
+      "radius": 0.0761
+    },
+    {
+      "name": "spine",
+      "parent": "root",
+      "head": [0, 0.3805, -0.0857],
+      "tail": [0, -0.0, -0.0857],
+      "radius": 0.1903
+    },
+    {
+      "name": "neck",
+      "parent": "spine",
+      "head": [0, -0.0, -0.0857],
+      "tail": [0, -0.6055, 0.2301],
+      "radius": 0.0951
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "head": [0, -0.6055, 0.2301],
+      "tail": [0, -0.9133, 0.2301],
+      "radius": 0.1142
+    },
+    {
+      "name": "tail1",
+      "parent": "spine",
+      "head": [0, 0.3805, -0.0857],
+      "tail": [0, 0.7341, -0.4324],
+      "radius": 0.0571
+    },
+    {
+      "name": "legL",
+      "parent": "spine",
+      "head": [0.2121, -0.1902, -0.3801],
+      "tail": [0.2121, -0.1902, -0.4695],
+      "radius": 0.0381
+    },
+    {
+      "name": "legLLower",
+      "parent": "legL",
+      "head": [0.2121, -0.1902, -0.4695],
+      "tail": [0.2121, -0.1902, -0.5389],
+      "radius": 0.0285
+    },
+    {
+      "name": "footL",
+      "parent": "legLLower",
+      "head": [0.2121, -0.1902, -0.5389],
+      "tail": [0.2121, -0.2663, -0.5513],
+      "radius": 0.0228
+    },
+    {
+      "name": "wingL",
+      "parent": "spine",
+      "head": [0.2871, -0.1903, -0.0657],
+      "tail": [0.2871, 0.2854, -0.0857],
+      "radius": 0.0571
+    },
+    {
+      "name": "wingLLower",
+      "parent": "wingL",
+      "head": [0.2871, 0.2854, -0.0857],
+      "tail": [0.2584, 0.723, -0.1157],
+      "radius": 0.0381
+    },
+    {
+      "name": "legR",
+      "parent": "spine",
+      "head": [-0.2113, -0.1909, -0.3801],
+      "tail": [-0.2113, -0.1909, -0.4695],
+      "radius": 0.0381
+    },
+    {
+      "name": "legRLower",
+      "parent": "legR",
+      "head": [-0.2113, -0.1909, -0.4695],
+      "tail": [-0.2113, -0.1909, -0.5389],
+      "radius": 0.0285
+    },
+    {
+      "name": "footR",
+      "parent": "legRLower",
+      "head": [-0.2113, -0.1909, -0.5389],
+      "tail": [-0.2113, -0.267, -0.5513],
+      "radius": 0.0228
+    },
+    {
+      "name": "wingR",
+      "parent": "spine",
+      "head": [-0.2871, -0.1903, -0.0657],
+      "tail": [-0.2871, 0.2854, -0.0857],
+      "radius": 0.0571
+    },
+    {
+      "name": "wingRLower",
+      "parent": "wingR",
+      "head": [-0.2871, 0.2854, -0.0857],
+      "tail": [-0.2584, 0.723, -0.1157],
+      "radius": 0.0381
+    }
+  ],
+  "analysis": {
+    "L": 1.9026150107383728,
+    "W": 0.7655567228794098,
+    "H": 1.1015194058418274,
+    "z0": -0.5543007850646973,
+    "belly": -0.4000880682468414,
+    "legH": 0.15421271681785587,
+    "z_spine": -0.08573162388715481,
+    "yF": -0.3805463373661041,
+    "yB": 0.380499666929245
+  },
+  "stretch": {
+    "legL": {
+      "max": 2.75,
+      "over2x": 53,
+      "over4x": 0,
+      "max_all": 19.42
+    },
+    "legLLower": {
+      "max": 2.15,
+      "over2x": 3,
+      "over4x": 0,
+      "max_all": 5.71
+    },
+    "wingL": {
+      "max": 3.43,
+      "over2x": 43,
+      "over4x": 0,
+      "max_all": 6.34
+    },
+    "wingLLower": {
+      "max": 1.0,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.0
+    },
+    "legR": {
+      "max": 2.97,
+      "over2x": 58,
+      "over4x": 0,
+      "max_all": 12.04
+    },
+    "legRLower": {
+      "max": 2.26,
+      "over2x": 6,
+      "over4x": 0,
+      "max_all": 8.7
+    },
+    "wingR": {
+      "max": 3.75,
+      "over2x": 43,
+      "over4x": 0,
+      "max_all": 5.44
+    },
+    "wingRLower": {
+      "max": 1.0,
+      "over2x": 0,
+      "over4x": 0,
+      "max_all": 1.0
+    }
+  }
+}

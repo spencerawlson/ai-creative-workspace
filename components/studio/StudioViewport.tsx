@@ -50,8 +50,10 @@ export interface ViewportHandle {
   cameraPlacement(): CameraPlacement | undefined;
   setCameraPlacement(p: CameraPlacement): void;
   /** Draw `scene` now, without waiting for React (animation playback).
-   * The next prop update draws the real scene again. */
-  preview(scene: SceneDoc): void;
+   * The next prop update draws the real scene again. `time` is the
+   * animation time the scene was evaluated at, when it was: a
+   * creature's walk clip is posed from it. */
+  preview(scene: SceneDoc, time?: number): void;
   /** Video recording: see StudioEngine.beginCapture. */
   beginCapture(width: number, height: number): HTMLCanvasElement | null;
   renderCapture(): void;
@@ -316,8 +318,8 @@ export function StudioViewport({
       }),
       cameraPlacement: () => engineRef.current?.getCameraPlacement(),
       setCameraPlacement: (p) => engineRef.current?.setCameraPlacement(p),
-      preview: (scene) =>
-        engineRef.current?.update(scene, latest.current.overrides),
+      preview: (scene, time) =>
+        engineRef.current?.update(scene, latest.current.overrides, time),
       beginCapture: (w, h) => engineRef.current?.beginCapture(w, h) ?? null,
       renderCapture: () => engineRef.current?.renderCapture(),
       endCapture: () => engineRef.current?.endCapture(),

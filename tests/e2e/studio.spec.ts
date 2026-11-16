@@ -1124,8 +1124,9 @@ test.describe("Lighting Studio — critical journeys", () => {
   }) => {
     // A creature list of one, the lion, served from the app's own
     // address as public/creatures/ would be. The lion GLB is the real
-    // served file: an unrigged model, so it must load as a static
-    // figure (no skeleton, no posing), not be rejected as a character.
+    // served file: a rigged model with a baked walk clip, so it must
+    // load as a creature (no human posing), not be rejected as a
+    // character.
     const serveCreatures = async (
       context: import("@playwright/test").BrowserContext,
     ) => {
@@ -1164,12 +1165,12 @@ test.describe("Lighting Studio — critical journeys", () => {
     await page.getByTestId("node-figure-fig-1").click();
     await showInspector(page);
     const lion = page.getByTestId("creature-creature-lion");
-    await expect(lion).toContainText("static");
+    await expect(lion).toContainText("walks");
     await lion.click();
     await expect(lion).toHaveAttribute("aria-pressed", "true");
     await expect.poll(() => shows(page), { timeout: 30_000 }).toBe("creature");
     await expect(page.getByTestId("character-status")).toContainText(
-      "it stands still",
+      "baked walk cycle",
     );
 
     // Another device: the link brings the lion, not the mannequin.
@@ -1188,6 +1189,102 @@ test.describe("Lighting Studio — critical journeys", () => {
     await openStudio(page2, url.pathname + url.search);
     await expect.poll(() => shows(page2), { timeout: 30_000 }).toBe("creature");
     await other.close();
+    expect(errors).toEqual([]);
+  });
+
+  test("a creature walks: the lion's legs move and it travels", async ({
+    page,
+  }) => {
+    // The lion, served as public/creatures/ would be (same routes as
+    // the creature test above).
+    await page.context().route("**/creatures/creatures.json", (r) =>
+      r.fulfill({
+        json: {
+          version: 1,
+          creatures: [
+            {
+              id: "creature-lion",
+              name: "Lion",
+              file: "lion.glb",
+              size: 383376,
+              heightMeters: 1.1,
+              credit: { tool: "Meshy", prompt: "a lion" },
+            },
+          ],
+        },
+      }),
+    );
+    await page
+      .context()
+      .route("**/creatures/lion.glb", (r) =>
+        r.fulfill({ path: "public/creatures/lion.glb" }),
+      );
+    const errors = await openStudio(page);
+    const shows = (p: import("@playwright/test").Page) =>
+      p.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: { figureShows(): string | null };
+          }
+        ).__studioEngine.figureShows(),
+      );
+    const swing = () =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __studioEngine: {
+              creatureLegSwing(): {
+                phase: number | null;
+                swingDeg: number;
+              } | null;
+            };
+          }
+        ).__studioEngine.creatureLegSwing(),
+      );
+    const place = () =>
+      page.evaluate(() => {
+        const d = (
+          window as unknown as {
+            __studioEngine: {
+              doc: { figures: { x: number; z: number }[] };
+            };
+          }
+        ).__studioEngine.doc;
+        return d.figures[0];
+      });
+    await showPanel(page, "scene");
+    await page.getByTestId("node-figure-fig-1").click();
+    await showInspector(page);
+    await page.getByTestId("creature-creature-lion").click();
+    await expect.poll(() => shows(page), { timeout: 30_000 }).toBe("creature");
+    // Only Walk is offered to a creature.
+    const box = page.getByTestId("motion-input");
+    await box.click();
+    await expect(page.getByTestId("motion-option-walk")).toBeAttached();
+    await expect(page.getByTestId("motion-option-wave")).toHaveCount(0);
+    // A long walk, so playback outlasts software rendering's slow frames.
+    await box.fill("walk for 10 seconds");
+    await expect(page.getByTestId("motion-option-walk")).toBeVisible();
+    await box.press("Enter");
+    await expect(page.getByTestId("motion-status")).toContainText(
+      "Walk: 10.0 s",
+    );
+    // Playing: the front leg swings through at least two positions and
+    // the figure travels.
+    const swings = new Set<number>();
+    const spots = new Set<string>();
+    await expect
+      .poll(
+        async () => {
+          const s = await swing();
+          if (s) swings.add(s.swingDeg);
+          const f = await place();
+          spots.add(`${f.x.toFixed(2)},${f.z.toFixed(2)}`);
+          return swings.size >= 2 && spots.size >= 2 ? 1 : 0;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(1);
     expect(errors).toEqual([]);
   });
 
