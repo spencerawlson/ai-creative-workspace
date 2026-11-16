@@ -813,6 +813,9 @@ function ExportDialog({
 }) {
   const [format, setFormat] = useState<"stl" | "glb">("stl");
   const [heightMm, setHeightMm] = useState(100);
+  /** GLB: texture maps this size ("0": paint as vertex colours). */
+  const [maps, setMaps] = useState<"0" | "1024" | "2048" | "4096">("2048");
+  const [stage, setStage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -831,14 +834,31 @@ function ExportDialog({
         const [w, d, h] = r.sizeMm.map((v) => Math.round(v));
         onDone(`Exported for 3D printing: ${w} × ${d} × ${h} mm.`);
       } else {
-        downloadBlob(await e.exportGlb(), `${slug(name)}.glb`);
-        onDone("Exported a GLB file.");
+        const size = Number(maps);
+        const blob = await e.exportGlb({
+          textureSize: size || undefined,
+          onStage: (st) =>
+            setStage(
+              st === "unwrap"
+                ? "Unfolding the surface…"
+                : st === "bake"
+                  ? "Baking the textures…"
+                  : "Writing the file…",
+            ),
+        });
+        downloadBlob(blob, `${slug(name)}.glb`);
+        onDone(
+          size
+            ? `Exported a GLB with ${size} × ${size} texture maps (${(blob.size / 1e6).toFixed(1)} MB).`
+            : "Exported a GLB file.",
+        );
       }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
     } finally {
       setBusy(false);
+      setStage(null);
     }
   }
 
@@ -861,7 +881,7 @@ function ExportDialog({
             data-testid="sculpt-export-confirm"
           >
             {busy
-              ? "Exporting…"
+              ? (stage ?? "Exporting…")
               : format === "stl"
                 ? "Export STL"
                 : "Export GLB"}
@@ -892,10 +912,25 @@ function ExportDialog({
           onChange={setHeightMm}
         />
       ) : (
-        <p className="mt-1 text-sm text-ink-200">
-          The sculpture with its material, for Blender, Unity, Unreal and most
-          3D tools.
-        </p>
+        <>
+          <Segmented
+            label="Texture maps"
+            value={maps}
+            testIdPrefix="sculpt-export-maps"
+            options={[
+              { value: "0", label: "None" },
+              { value: "1024", label: "1K" },
+              { value: "2048", label: "2K" },
+              { value: "4096", label: "4K" },
+            ]}
+            onChange={setMaps}
+          />
+          <p className="mt-1 text-2xs leading-relaxed text-ink-300">
+            {maps === "0"
+              ? "The sculpture with its material; paint as vertex colours (Blender shows them; many game engines don't)."
+              : "The surface is unfolded and its look (material, surface, paint) baked into a colour texture and a roughness/metal texture: what Unity, Unreal, Godot and Blender expect. Bigger is sharper but takes longer."}
+          </p>
+        </>
       )}
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">

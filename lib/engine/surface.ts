@@ -114,6 +114,20 @@ const METALNESS: Record<Exclude<Finish, "plain">, string> = {
   patina: `metalnessFactor *= 1.0 - 0.85 * ikoAmount;`,
 };
 
+/** A finish's GLSL, for shaders other than the standard material's
+ * (baking textures for export): the declarations (with the varying
+ * `vIkoPos`, the rest position), then code that changes `diffuseColor`,
+ * `roughnessFactor` and `metalnessFactor`, in that order. Null: plain. */
+export function surfaceGlsl(finish: Finish) {
+  if (finish === "plain") return null;
+  return {
+    pars: FRAGMENT_PARS,
+    color: COLOR[finish],
+    roughness: ROUGHNESS[finish],
+    metalness: METALNESS[finish],
+  };
+}
+
 function replace(src: string, find: string, by: string): string {
   if (!src.includes(find))
     throw new Error(`Surface finish: the shader has no ${find}`);

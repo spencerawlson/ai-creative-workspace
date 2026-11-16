@@ -250,16 +250,80 @@ test.describe("Sculpt: paint and mask", () => {
       "true",
     );
 
-    // The GLB carries the paint as vertex colours.
+    const fs = await import("node:fs");
+    const { NodeIO } = await import("@gltf-transform/core");
+
+    // Textured (the default, 1K here): unwrapped, the look baked into a
+    // colour map; sampled at each vertex's UV, the paint is there.
     await page.getByTestId("sculpt-export").click();
     await page.getByTestId("sculpt-export-format-glb").click();
+    await page.getByTestId("sculpt-export-maps-1024").click();
+    const texturedDownload = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByTestId("sculpt-export-confirm").click();
+    const texturedDoc = await new NodeIO().readBinary(
+      new Uint8Array(
+        await fs.promises.readFile(await (await texturedDownload).path()),
+      ),
+    );
+    const tPrim = texturedDoc.getRoot().listMeshes()[0].listPrimitives()[0];
+    const tMat = tPrim.getMaterial()!;
+    expect(tMat.getMetallicRoughnessTexture()?.getSize()).toEqual([1024, 1024]);
+    const map = tMat.getBaseColorTexture()!;
+    expect(map.getSize()).toEqual([1024, 1024]);
+    const uv = tPrim.getAttribute("TEXCOORD_0")!;
+    const at: number[] = [];
+    const p: number[] = [];
+    for (let i = 0; i < uv.getCount(); i++) {
+      uv.getElement(i, p);
+      at.push(p[0], p[1]);
+    }
+    // The PNG decoded by the browser, read at those UVs.
+    const samples = await page.evaluate(
+      async ({ png, at }) => {
+        const bin = Uint8Array.from(atob(png), (ch) => ch.charCodeAt(0));
+        const img = await createImageBitmap(
+          new Blob([bin], { type: "image/png" }),
+          { colorSpaceConversion: "none", premultiplyAlpha: "none" },
+        );
+        const c = new OffscreenCanvas(img.width, img.height);
+        const g = c.getContext("2d")!;
+        g.drawImage(img, 0, 0);
+        const d = g.getImageData(0, 0, img.width, img.height).data;
+        const out: number[][] = [];
+        for (let i = 0; i < at.length; i += 2) {
+          const x = Math.min(img.width - 1, Math.floor(at[i] * img.width));
+          const y = Math.min(
+            img.height - 1,
+            Math.floor(at[i + 1] * img.height),
+          );
+          const o = (y * img.width + x) * 4;
+          out.push([d[o], d[o + 1], d[o + 2]]);
+        }
+        return out;
+      },
+      { png: Buffer.from(map.getImage()!).toString("base64"), at },
+    );
+    let tRed = 0;
+    let tPlain = 0;
+    for (const [r, g, b] of samples) {
+      if (r - g > 50 && r - b > 50) tRed++;
+      else if (r > 200 && g > 200) tPlain++;
+    }
+    expect(tRed).toBeGreaterThan(10);
+    expect(tPlain).toBeGreaterThan(1000);
+    await expect(page.getByTestId("sculpt-status")).toHaveText(
+      /Exported a GLB with 1024 × 1024 texture maps/,
+    );
+
+    // Without maps, the GLB carries the paint as vertex colours.
+    await page.getByTestId("sculpt-export").click();
+    await page.getByTestId("sculpt-export-format-glb").click();
+    await page.getByTestId("sculpt-export-maps-0").click();
     const download = page.waitForEvent("download");
     await page.getByTestId("sculpt-export-confirm").click();
-    const fs = await import("node:fs");
     const bytes = new Uint8Array(
       await fs.promises.readFile(await (await download).path()),
     );
-    const { NodeIO } = await import("@gltf-transform/core");
     const doc = await new NodeIO().readBinary(bytes);
     const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
     const colors = prim.getAttribute("COLOR_0")!;

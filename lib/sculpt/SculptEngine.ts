@@ -345,8 +345,19 @@ export class SculptEngine {
     return this.clay ? faceCount(this.clay) : 0;
   }
 
-  /** The sculpture as a glTF binary (no skeleton, no studio parts). */
-  async exportGlb(): Promise<Blob> {
+  /** The sculpture as a glTF binary (no skeleton, no studio parts).
+   * With `textureSize`: unwrapped (UVs), its look (material, surface
+   * finish, paint) baked into a colour texture and a roughness/metalness
+   * texture that size, for game engines and 3D tools; without, paint as
+   * vertex colours. `onStage` hears which step a textured export is on. */
+  async exportGlb(
+    opts: {
+      textureSize?: number;
+      onStage?: (stage: "unwrap" | "bake" | "write") => void;
+    } = {},
+  ): Promise<Blob> {
+    if (opts.textureSize)
+      return this.exportTexturedGlb(opts.textureSize, opts.onStage);
     if (!this.object) throw new Error("There's nothing to export yet.");
     const g = new THREE.BufferGeometry();
     g.setAttribute(
@@ -383,6 +394,96 @@ export class SculptEngine {
     g.dispose();
     (out.material as THREE.Material).dispose();
     return new Blob([buffer], { type: "model/gltf-binary" });
+  }
+
+  private async exportTexturedGlb(
+    size: number,
+    onStage?: (stage: "unwrap" | "bake" | "write") => void,
+  ): Promise<Blob> {
+    const clay = this.clay;
+    if (!clay) throw new Error("There's nothing to export yet.");
+    onStage?.("unwrap");
+    const [{ unwrap }, { bakeGeometry, bakeTextures }] = await Promise.all([
+      import("./unwrap"),
+      import("./bake"),
+    ]);
+    // Let the stage show before the (short, synchronous) unwrap.
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const u = unwrap(clay.positions, clay.index, {
+      resolution: size,
+      padding: 4,
+    });
+    onStage?.("bake");
+    const bakeGeo = bakeGeometry(clay, u);
+    const baked = bakeTextures(
+      this.renderer,
+      bakeGeo,
+      {
+        color: this.material.color,
+        roughness: this.material.roughness,
+        metalness: this.material.metalness,
+        finish: this.finish,
+      },
+      size,
+    );
+    bakeGeo.dispose();
+    this.invalidate();
+
+    onStage?.("write");
+    const n = u.original.length;
+    const pos = new Float32Array(n * 3);
+    const nor = new Float32Array(n * 3);
+    u.original.forEach((v, i) => {
+      pos.set(clay.positions.subarray(v * 3, v * 3 + 3), i * 3);
+      nor.set(clay.normals.subarray(v * 3, v * 3 + 3), i * 3);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    g.setAttribute("uv", new THREE.BufferAttribute(u.uvs, 2));
+    g.setIndex(new THREE.BufferAttribute(u.index, 1));
+    const texture = (
+      img: { width: number; height: number; data: Uint8ClampedArray },
+      srgb: boolean,
+    ) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas
+        .getContext("2d")!
+        .putImageData(new ImageData(img.data, img.width, img.height), 0, 0);
+      const t = new THREE.CanvasTexture(canvas);
+      // The bake's rows are already in glTF's order (v = 0 at the top).
+      t.flipY = false;
+      t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      return t;
+    };
+    const map = texture(baked.color, true);
+    const orm = texture(baked.orm, false);
+    const out = new THREE.Mesh(
+      g,
+      new THREE.MeshStandardMaterial({
+        map,
+        roughnessMap: orm,
+        metalnessMap: orm,
+        roughness: 1,
+        metalness: 1,
+      }),
+    );
+    out.name = "Sculpture";
+    const scene = new THREE.Scene();
+    scene.add(out);
+    try {
+      const buffer = (await new GLTFExporter().parseAsync(scene, {
+        binary: true,
+      })) as ArrayBuffer;
+      return new Blob([buffer], { type: "model/gltf-binary" });
+    } finally {
+      g.dispose();
+      map.dispose();
+      orm.dispose();
+      (out.material as THREE.Material).dispose();
+    }
   }
 
   // ----------------------------------------------------------- strokes
