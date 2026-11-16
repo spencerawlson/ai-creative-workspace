@@ -53,6 +53,20 @@ async function withReport(job, args, timeoutMs) {
   }
 }
 
+/** What this machine's Blender can do, each tried for real
+ * (scripts/blender/probe.py): {version, gltf, fbx, usd, render}.
+ * @param {{ timeoutMs?: number }} [opts] */
+export async function probe({ timeoutMs = 120_000 } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "iko-probe-"));
+  try {
+    const report = join(dir, "report.json");
+    await runBlender("probe.py", { report }, { timeoutMs });
+    return JSON.parse(readFileSync(report, "utf8"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** A dense mesh as a clean quad mesh of about `faces` faces.
  * @param {string} input
  * @param {string} output
@@ -167,7 +181,7 @@ async function main() {
   );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href)
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   main().catch((e) => {
     console.error(e);
     process.exit(1);

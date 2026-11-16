@@ -815,8 +815,9 @@ function ExportDialog({
   const [heightMm, setHeightMm] = useState(100);
   /** GLB: texture maps this size ("0": paint as vertex colours). */
   const [maps, setMaps] = useState<"0" | "1024" | "2048" | "4096">("2048");
-  /** Jobs the server's Blender runs (offered only when it has one). */
-  const [blender, setBlender] = useState(false);
+  /** Jobs the server's Blender can do (none: no Blender option). */
+  const [blenderJobs, setBlenderJobs] = useState<Record<string, boolean>>({});
+  const blender = Object.values(blenderJobs).some(Boolean);
   const [job, setJob] = useState<"fbx" | "usd" | "quads" | "render">("fbx");
   const [faces, setFaces] = useState(8000);
   const [renderer, setRenderer] = useState<"eevee" | "cycles">("eevee");
@@ -829,8 +830,17 @@ function ExportDialog({
     let live = true;
     fetch("/api/blender")
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => live && setBlender(!!j?.available))
-      .catch(() => live && setBlender(false));
+      .then((j) => {
+        if (!live) return;
+        const jobs = (j?.available && j.jobs) || {};
+        setBlenderJobs(jobs);
+        // Start on a job this server can do.
+        const first = (["fbx", "usd", "quads", "render"] as const).find(
+          (k) => jobs[k],
+        );
+        if (first) setJob((cur) => (jobs[cur] ? cur : first));
+      })
+      .catch(() => live && setBlenderJobs({}));
     return () => {
       live = false;
     };
@@ -970,12 +980,14 @@ function ExportDialog({
             label="Blender"
             value={job}
             testIdPrefix="sculpt-export-job"
-            options={[
-              { value: "fbx", label: "FBX" },
-              { value: "usd", label: "USD" },
-              { value: "quads", label: "Clean quads" },
-              { value: "render", label: "Render" },
-            ]}
+            options={(
+              [
+                { value: "fbx", label: "FBX" },
+                { value: "usd", label: "USD" },
+                { value: "quads", label: "Clean quads" },
+                { value: "render", label: "Render" },
+              ] as const
+            ).filter((o) => blenderJobs[o.value])}
             onChange={setJob}
           />
           <p className="mt-1 text-2xs leading-relaxed text-ink-300">
