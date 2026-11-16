@@ -89,6 +89,18 @@ test.describe("Sculpt", () => {
 
     // STL: binary, every triangle, at the height asked for.
     await page.getByTestId("sculpt-export").click();
+    // This server doesn't offer Blender jobs (IKO_BLENDER unset): no
+    // Blender option, and the job endpoint refuses.
+    await expect(page.getByTestId("sculpt-export-format-glb")).toBeVisible();
+    await expect(page.getByTestId("sculpt-export-format-blender")).toHaveCount(
+      0,
+    );
+    const offered = await page.request.get("/api/blender");
+    expect(await offered.json()).toMatchObject({ available: false });
+    const job = await page.request.post("/api/blender/convert?format=fbx", {
+      data: Buffer.from("glTF0000"),
+    });
+    expect(job.status()).toBe(404);
     await page.getByTestId("sculpt-export-height").fill("80");
     const download = page.waitForEvent("download");
     await page.getByTestId("sculpt-export-confirm").click();
