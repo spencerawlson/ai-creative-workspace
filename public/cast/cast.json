@@ -5,7 +5,7 @@
       "id": "cast-real-man",
       "name": "Realistic man",
       "file": "real-man.glb",
-      "size": 1359736,
+      "size": 1324700,
       "credit": {
         "tool": "Meshy",
         "prompt": "Full-body realistic adult man, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
@@ -16,7 +16,7 @@
       "id": "cast-real-woman",
       "name": "Realistic woman",
       "file": "real-woman.glb",
-      "size": 1046728,
+      "size": 1022672,
       "credit": {
         "tool": "Meshy",
         "prompt": "Full-body realistic adult woman, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
@@ -27,7 +27,7 @@
       "id": "cast-toon-man",
       "name": "Cartoon man",
       "file": "toon-man.glb",
-      "size": 1407672,
+      "size": 1783492,
       "credit": {
         "tool": "Meshy",
         "prompt": "Full-body stylized cartoon adult man, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
@@ -38,7 +38,7 @@
       "id": "cast-toon-woman",
       "name": "Cartoon woman",
       "file": "toon-woman.glb",
-      "size": 1267704,
+      "size": 1465372,
       "credit": {
         "tool": "Meshy",
         "prompt": "Full-body stylized cartoon adult woman, standing straight in A-pose with arms out from the body, plain grey untextured surface, plain studio background",
@@ -49,7 +49,7 @@
       "id": "cast-infant",
       "name": "Baby girl",
       "file": "infant.glb",
-      "size": 1549124,
+      "size": 1553020,
       "heightMeters": 0.9,
       "credit": {
         "tool": "Meshy",
