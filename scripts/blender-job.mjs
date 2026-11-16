@@ -41,31 +41,41 @@ async function plainCopy(input, dir) {
   return out;
 }
 
-async function withReport(job, args) {
+async function withReport(job, args, timeoutMs) {
   const dir = mkdtempSync(join(tmpdir(), "iko-job-"));
   try {
     const report = join(dir, "report.json");
     const input = await plainCopy(args.input, dir);
-    await runBlender(job, { ...args, input, report });
+    await runBlender(job, { ...args, input, report }, { timeoutMs });
     return JSON.parse(readFileSync(report, "utf8"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** A dense mesh as a clean quad mesh of about `faces` faces. */
-export function retopo(input, output, { faces = 8000 } = {}) {
+/** A dense mesh as a clean quad mesh of about `faces` faces.
+ * @param {string} input
+ * @param {string} output
+ * @param {{ faces?: number, timeoutMs?: number }} [opts] */
+export function retopo(input, output, { faces = 8000, timeoutMs } = {}) {
   if (!Number.isInteger(faces) || faces < 100 || faces > 200_000)
     throw new Error("faces: a whole number from 100 to 200,000");
-  return withReport("retopo.py", {
-    input: resolve(input),
-    output: resolve(output),
-    faces,
-  });
+  return withReport(
+    "retopo.py",
+    {
+      input: resolve(input),
+      output: resolve(output),
+      faces,
+    },
+    timeoutMs,
+  );
 }
 
-/** A GLB as FBX or USD (format from the output's extension). */
-export function convert(input, output) {
+/** A GLB as FBX or USD (format from the output's extension).
+ * @param {string} input
+ * @param {string} output
+ * @param {{ timeoutMs?: number }} [opts] */
+export function convert(input, output, { timeoutMs } = {}) {
   const ext = extname(output).toLowerCase();
   const format =
     ext === ".fbx"
@@ -74,14 +84,21 @@ export function convert(input, output) {
         ? "usd"
         : null;
   if (!format) throw new Error("output: .fbx, .usd, .usdc or .usda");
-  return withReport("convert.py", {
-    input: resolve(input),
-    output: resolve(output),
-    format,
-  });
+  return withReport(
+    "convert.py",
+    {
+      input: resolve(input),
+      output: resolve(output),
+      format,
+    },
+    timeoutMs,
+  );
 }
 
-/** A still (.png) or a video (.mp4: a turntable, or the animation). */
+/** A still (.png) or a video (.mp4: a turntable, or the animation).
+ * @param {string} input
+ * @param {string} output
+ * @param {{ engine?: string, width?: number, height?: number, samples?: number, seconds?: number, fps?: number, animation?: boolean, timeoutMs?: number }} [opts] */
 export function render(
   input,
   output,
@@ -93,6 +110,7 @@ export function render(
     seconds = 4,
     fps = 24,
     animation = false,
+    timeoutMs,
   } = {},
 ) {
   const ext = extname(output).toLowerCase();
@@ -108,15 +126,19 @@ export function render(
   whole(samples, 1, 4096, "samples");
   whole(fps, 1, 120, "fps");
   if (!(seconds > 0 && seconds <= 600)) throw new Error("seconds: 0 to 600");
-  return withReport("render.py", {
-    input: resolve(input),
-    output: resolve(output),
-    engine,
-    width,
-    height,
-    samples,
-    video: ext === ".mp4" ? { seconds, fps, turntable: !animation } : null,
-  });
+  return withReport(
+    "render.py",
+    {
+      input: resolve(input),
+      output: resolve(output),
+      engine,
+      width,
+      height,
+      samples,
+      video: ext === ".mp4" ? { seconds, fps, turntable: !animation } : null,
+    },
+    timeoutMs,
+  );
 }
 
 async function main() {

@@ -811,13 +811,75 @@ function ExportDialog({
   name: string;
   onDone: (note: string) => void;
 }) {
-  const [format, setFormat] = useState<"stl" | "glb">("stl");
+  const [format, setFormat] = useState<"stl" | "glb" | "blender">("stl");
   const [heightMm, setHeightMm] = useState(100);
   /** GLB: texture maps this size ("0": paint as vertex colours). */
   const [maps, setMaps] = useState<"0" | "1024" | "2048" | "4096">("2048");
+  /** Jobs the server's Blender runs (offered only when it has one). */
+  const [blender, setBlender] = useState(false);
+  const [job, setJob] = useState<"fbx" | "usd" | "quads" | "render">("fbx");
+  const [faces, setFaces] = useState(8000);
+  const [renderer, setRenderer] = useState<"eevee" | "cycles">("eevee");
   const [stage, setStage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    fetch("/api/blender")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => live && setBlender(!!j?.available))
+      .catch(() => live && setBlender(false));
+    return () => {
+      live = false;
+    };
+  }, [open]);
+  const onStage = (st: "unwrap" | "bake" | "write") =>
+    setStage(
+      st === "unwrap"
+        ? "Unfolding the surface…"
+        : st === "bake"
+          ? "Baking the textures…"
+          : "Writing the file…",
+    );
+
+  async function runBlender(e: SculptEngine) {
+    // The GLB is built here as for a GLB export (clean quads drops the
+    // textures: the new surface has none), then Blender does the job.
+    const size = job === "quads" ? 0 : Number(maps);
+    const glb = await e.exportGlb({ textureSize: size || undefined, onStage });
+    setStage(
+      job === "render" ? "Rendering in Blender…" : "Blender is working…",
+    );
+    const path =
+      job === "fbx" || job === "usd"
+        ? `convert?format=${job}`
+        : job === "quads"
+          ? `retopo?faces=${faces}`
+          : `render?engine=${renderer}&size=1080p`;
+    const res = await fetch(`/api/blender/${path}`, {
+      method: "POST",
+      body: glb,
+      headers: { "Content-Type": "model/gltf-binary" },
+    });
+    if (!res.ok) {
+      const why = await res.json().catch(() => null);
+      throw new Error(why?.error ?? "Blender couldn't finish that job.");
+    }
+    const out = await res.blob();
+    const [ext, note] = {
+      fbx: [".fbx", "Exported an FBX file (Blender)."],
+      usd: [".usdc", "Exported a USD file (Blender)."],
+      quads: [
+        "-quads.glb",
+        `Exported a clean quad mesh, about ${faces.toLocaleString()} faces (Blender).`,
+      ],
+      render: [".png", "Rendered a 1920 × 1080 image (Blender)."],
+    }[job];
+    downloadBlob(out, `${slug(name)}${ext}`);
+    onDone(note);
+  }
 
   async function run() {
     const e = engine.current;
@@ -825,7 +887,9 @@ function ExportDialog({
     setBusy(true);
     setError(null);
     try {
-      if (format === "stl") {
+      if (format === "blender") {
+        await runBlender(e);
+      } else if (format === "stl") {
         const r = toStl(
           { positions: triangles(e.mesh), triangles: faceCount(e.mesh) },
           heightMm,
@@ -837,14 +901,7 @@ function ExportDialog({
         const size = Number(maps);
         const blob = await e.exportGlb({
           textureSize: size || undefined,
-          onStage: (st) =>
-            setStage(
-              st === "unwrap"
-                ? "Unfolding the surface…"
-                : st === "bake"
-                  ? "Baking the textures…"
-                  : "Writing the file…",
-            ),
+          onStage,
         });
         downloadBlob(blob, `${slug(name)}.glb`);
         onDone(
@@ -884,7 +941,14 @@ function ExportDialog({
               ? (stage ?? "Exporting…")
               : format === "stl"
                 ? "Export STL"
-                : "Export GLB"}
+                : format === "glb"
+                  ? "Export GLB"
+                  : {
+                      fbx: "Export FBX",
+                      usd: "Export USD",
+                      quads: "Export clean quads",
+                      render: "Render image",
+                    }[job]}
           </Button>
         </>
       }
@@ -896,10 +960,77 @@ function ExportDialog({
         options={[
           { value: "stl", label: "STL · 3D printing" },
           { value: "glb", label: "GLB · 3D tools" },
+          ...(blender ? [{ value: "blender" as const, label: "Blender" }] : []),
         ]}
         onChange={setFormat}
       />
-      {format === "stl" ? (
+      {format === "blender" && (
+        <>
+          <Segmented
+            label="Blender"
+            value={job}
+            testIdPrefix="sculpt-export-job"
+            options={[
+              { value: "fbx", label: "FBX" },
+              { value: "usd", label: "USD" },
+              { value: "quads", label: "Clean quads" },
+              { value: "render", label: "Render" },
+            ]}
+            onChange={setJob}
+          />
+          <p className="mt-1 text-2xs leading-relaxed text-ink-300">
+            {
+              {
+                fbx: "For Unity, Unreal and most 3D tools, with its texture maps.",
+                usd: "For film pipelines (Omniverse, Houdini, USD viewers), with its texture maps.",
+                quads:
+                  "The surface rebuilt as even quads: light and ready to rig. Paint and surface detail finer than the new faces are left out.",
+                render:
+                  "A 1920 × 1080 image in a studio setup: three-point lights, floor and backdrop.",
+              }[job]
+            }
+          </p>
+          {job === "quads" && (
+            <Slider
+              label="Faces"
+              value={faces}
+              min={1000}
+              max={50000}
+              step={1000}
+              testId="sculpt-export-faces"
+              hint="More faces keep more detail"
+              onChange={setFaces}
+            />
+          )}
+          {job === "render" && (
+            <Segmented
+              label="Renderer"
+              value={renderer}
+              testIdPrefix="sculpt-export-renderer"
+              options={[
+                { value: "eevee", label: "EEVEE · fast" },
+                { value: "cycles", label: "Cycles · realistic" },
+              ]}
+              onChange={setRenderer}
+            />
+          )}
+        </>
+      )}
+      {format === "blender" && job !== "quads" && (
+        <Segmented
+          label="Texture maps"
+          value={maps}
+          testIdPrefix="sculpt-export-maps"
+          options={[
+            { value: "0", label: "None" },
+            { value: "1024", label: "1K" },
+            { value: "2048", label: "2K" },
+            { value: "4096", label: "4K" },
+          ]}
+          onChange={setMaps}
+        />
+      )}
+      {format === "blender" ? null : format === "stl" ? (
         <Slider
           label="Height"
           value={heightMm}

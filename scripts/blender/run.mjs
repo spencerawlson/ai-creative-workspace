@@ -22,6 +22,17 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** Where the *.py jobs are: next to this file, or (when a bundler has
+ * moved this code, as Next does for the app's server) in
+ * scripts/blender under the working folder. */
+function jobPath(job) {
+  for (const dir of [HERE, join(process.cwd(), "scripts", "blender")]) {
+    const p = join(dir, job);
+    if (existsSync(p)) return p;
+  }
+  throw new Error(`Blender job ${job} not found.`);
+}
+
 /** Path to the Blender executable, or null. */
 export function findBlender() {
   if (process.env.BLENDER && existsSync(process.env.BLENDER))
@@ -82,7 +93,7 @@ export function runBlender(job, args, { timeoutMs = 30 * 60_000, log } = {}) {
         "--python-exit-code",
         "1",
         "--python",
-        join(HERE, job),
+        jobPath(job),
         "--",
         argFile,
       ],
