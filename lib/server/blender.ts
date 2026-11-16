@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { convert, render, retopo } from "@/scripts/blender-job.mjs";
+import { convert, probe, render, retopo } from "@/scripts/blender-job.mjs";
 import { findBlender } from "@/scripts/blender/run.mjs";
 
 /** Largest model accepted (a 4K-textured sculpture is ~30 MB). */
@@ -25,6 +25,46 @@ export function blenderOffered(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env.IKO_BLENDER === "1" && !!findBlender();
+}
+
+/** Which jobs this server's Blender can do (the app shows only these). */
+export interface BlenderJobs {
+  fbx: boolean;
+  usd: boolean;
+  quads: boolean;
+  render: boolean;
+}
+const NONE: BlenderJobs = {
+  fbx: false,
+  usd: false,
+  quads: false,
+  render: false,
+};
+
+/** Abilities to jobs: every job reads the model as glTF first. */
+export function jobsFrom(p: {
+  gltf?: boolean;
+  fbx?: boolean;
+  usd?: boolean;
+  render?: boolean;
+}): BlenderJobs {
+  const g = !!p.gltf;
+  return {
+    fbx: g && !!p.fbx,
+    usd: g && !!p.usd,
+    quads: g,
+    render: g && !!p.render,
+  };
+}
+
+let probed: Promise<BlenderJobs> | null = null;
+/** Probed once per server (a few seconds), then remembered. */
+export function blenderJobs(): Promise<BlenderJobs> {
+  if (!blenderOffered()) return Promise.resolve(NONE);
+  probed ??= probe()
+    .then(jobsFrom)
+    .catch(() => NONE);
+  return probed;
 }
 
 export const JobSettings = {

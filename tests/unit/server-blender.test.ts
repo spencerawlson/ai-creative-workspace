@@ -4,6 +4,7 @@ import {
   MAX_UPLOAD,
   blenderOffered,
   isJob,
+  jobsFrom,
   runJob,
 } from "@/lib/server/blender";
 
@@ -27,6 +28,35 @@ describe("the app server's Blender jobs", () => {
   it("are off unless the server opts in", () => {
     expect(blenderOffered({})).toBe(false);
     expect(blenderOffered({ IKO_BLENDER: "0" })).toBe(false);
+  });
+
+  it("offer only what this Blender can do (every job reads glTF first)", () => {
+    // Ubuntu's Blender 5.0: glTF (with numpy) and rendering, no FBX/USD.
+    expect(
+      jobsFrom({ gltf: true, fbx: false, usd: false, render: true }),
+    ).toEqual({
+      fbx: false,
+      usd: false,
+      quads: true,
+      render: true,
+    });
+    // Without a working glTF importer nothing works.
+    expect(
+      jobsFrom({ gltf: false, fbx: true, usd: true, render: true }),
+    ).toEqual({
+      fbx: false,
+      usd: false,
+      quads: false,
+      render: false,
+    });
+    expect(
+      jobsFrom({ gltf: true, fbx: true, usd: true, render: true }),
+    ).toEqual({
+      fbx: true,
+      usd: true,
+      quads: true,
+      render: true,
+    });
   });
 
   it("know only their own jobs", () => {

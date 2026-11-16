@@ -3,6 +3,7 @@
 import {
   JobError,
   MAX_UPLOAD,
+  blenderJobs,
   blenderOffered,
   isJob,
   runJob,
@@ -57,6 +58,15 @@ export async function POST(
   const body = await readCapped(req, MAX_UPLOAD);
   if (!body) return fail("That model is too large to send to Blender.", 413);
   const settings = Object.fromEntries(new URL(req.url).searchParams);
+  // Only what this server's Blender can do (probed once).
+  const can = await blenderJobs();
+  const need =
+    job === "convert" ? settings.format : job === "retopo" ? "quads" : "render";
+  if (
+    Object.prototype.hasOwnProperty.call(can, need) &&
+    !can[need as keyof typeof can]
+  )
+    return fail("This server's Blender can't do that job.", 501);
   try {
     const r = await runJob(job, body, settings);
     return new Response(Buffer.from(r.bytes), {
