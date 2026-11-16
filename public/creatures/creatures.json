@@ -17,7 +17,7 @@
       "id": "creature-elephant",
       "name": "Elephant",
       "file": "elephant.glb",
-      "size": 474832,
+      "size": 464768,
       "heightMeters": 2.5,
       "credit": {
         "tool": "Meshy",
@@ -29,7 +29,7 @@
       "id": "creature-hippo",
       "name": "Hippo",
       "file": "hippo.glb",
-      "size": 464964,
+      "size": 460108,
       "heightMeters": 1.4,
       "credit": {
         "tool": "Meshy",
@@ -41,7 +41,7 @@
       "id": "creature-rhino",
       "name": "Rhino",
       "file": "rhino.glb",
-      "size": 466960,
+      "size": 459272,
       "heightMeters": 1.6,
       "credit": {
         "tool": "Meshy",
@@ -53,7 +53,7 @@
       "id": "creature-tiger",
       "name": "Tiger",
       "file": "tiger.glb",
-      "size": 457512,
+      "size": 448284,
       "heightMeters": 1,
       "credit": {
         "tool": "Meshy",
@@ -65,7 +65,7 @@
       "id": "creature-gorilla",
       "name": "Gorilla",
       "file": "gorilla.glb",
-      "size": 456420,
+      "size": 449296,
       "heightMeters": 1.6,
       "credit": {
         "tool": "Meshy",
@@ -77,7 +77,7 @@
       "id": "creature-monkey",
       "name": "Monkey",
       "file": "monkey.glb",
-      "size": 449864,
+      "size": 439612,
       "heightMeters": 0.8,
       "credit": {
         "tool": "Meshy",
@@ -89,7 +89,7 @@
       "id": "creature-rat",
       "name": "Rat",
       "file": "rat.glb",
-      "size": 445232,
+      "size": 447652,
       "heightMeters": 0.25,
       "credit": {
         "tool": "Meshy",
@@ -101,7 +101,7 @@
       "id": "creature-bird",
       "name": "Bird",
       "file": "bird.glb",
-      "size": 428696,
+      "size": 434504,
       "heightMeters": 0.35,
       "credit": {
         "tool": "Meshy",
@@ -113,7 +113,7 @@
       "id": "creature-cat",
       "name": "Cat",
       "file": "cat.glb",
-      "size": 446576,
+      "size": 437800,
       "heightMeters": 0.4,
       "credit": {
         "tool": "Meshy",
@@ -125,7 +125,7 @@
       "id": "creature-dog-standing",
       "name": "Dog (standing)",
       "file": "dog-standing.glb",
-      "size": 446196,
+      "size": 437876,
       "heightMeters": 0.6,
       "credit": {
         "tool": "Meshy",
@@ -137,7 +137,7 @@
       "id": "creature-dog-side",
       "name": "Dog (side view)",
       "file": "dog-side.glb",
-      "size": 445680,
+      "size": 438248,
       "heightMeters": 0.6,
       "credit": {
         "tool": "Meshy",

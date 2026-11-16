@@ -54,7 +54,7 @@ function closestOnSegment(p, a, b) {
 /** Each joint's bone as a segment (world space): from the joint to its
  * child joints' middle, or for an end joint out to where the body ends
  * (crown, toes, fingertips). */
-function boneSegments(joints, world, positions, minY, maxY) {
+export function boneSegments(joints, world, positions, minY, maxY) {
   const at = joints.map((j) => world.get(j));
   const index = new Map(joints.map((j, i) => [j, i]));
   const H = maxY - minY;
@@ -431,6 +431,40 @@ async function main() {
       "meshopt.encoder": MeshoptEncoder,
     });
   const doc = await io.readBinary(new Uint8Array(readFileSync(input)));
+  await reskinDocument(doc, { label: input });
+  await doc.transform(
+    quantize(),
+    meshopt({ encoder: MeshoptEncoder, level: "medium" }),
+  );
+  writeFileSync(output, await io.writeBinary(doc));
+  console.log(`wrote ${output}`);
+}
+
+/** Where a skinned mesh's vertices are at rest, as a matrix (column-
+ * major): a joint's world matrix times its inverse bind matrix, the same
+ * for every joint at rest. Not the mesh node's own transform: glTF
+ * ignores that for skinned meshes, and quantising a skinned mesh folds
+ * its scale and offset into the inverse bind matrices instead. */
+export function bindMatrix(skin) {
+  const joint = skin.listJoints()[0];
+  const ibm = skin.getInverseBindMatrices();
+  const b = ibm
+    ? Array.from(ibm.getArray().slice(0, 16))
+    : [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  return new THREE.Matrix4()
+    .fromArray(joint.getWorldMatrix())
+    .multiply(new THREE.Matrix4().fromArray(b))
+    .toArray();
+}
+
+/** Replace the skin weights of `doc` (a gltf-transform Document with one
+ * skinned mesh) with bone heat, in place. `everyBone`: every joint takes
+ * part (a freshly fitted skeleton); otherwise only joints the current
+ * weights already use (keeps an animal rig's helper bones out). */
+export async function reskinDocument(
+  doc,
+  { everyBone = false, skinFrom = {}, label = "mesh", log = console.log } = {},
+) {
   await doc.transform(dequantize());
   const root = doc.getRoot();
   const skin = root.listSkins()[0];
@@ -439,7 +473,7 @@ async function main() {
   const node = root
     .listNodes()
     .find((n) => n.getMesh() && n.getSkin() === skin);
-  const m = node.getWorldMatrix();
+  const m = bindMatrix(skin);
   const prims = node.getMesh().listPrimitives();
   for (const prim of prims) {
     const pos = prim.getAttribute("POSITION");
@@ -466,6 +500,8 @@ async function main() {
       maxY = Math.max(maxY, P[i * 3 + 1]);
     }
     const segments = boneSegments(joints, world, P, minY, maxY);
+    for (const seg of segments)
+      if (skinFrom[seg.name]) seg.a = skinFrom[seg.name];
     // Only bones the rig already skins to take part: a helper bone (an
     // animal rig's root, on the floor) mustn't claim the belly.
     const used = new Float64Array(joints.length);
@@ -479,14 +515,14 @@ async function main() {
       for (let k = 0; k < 4; k++) used[jj[k]] += ww[k];
     }
     segments.forEach((s, j) => {
-      s.deforms = used[j] > 1e-3;
+      s.deforms = everyBone || used[j] > 1e-3;
     });
     const idx = prim.getIndices().getArray();
-    console.log(
-      `${input}: ${n} vertices, ${idx.length / 3} triangles, ${joints.length} bones`,
+    log(
+      `${label}: ${n} vertices, ${idx.length / 3} triangles, ${joints.length} bones`,
     );
     const t0 = Date.now();
-    const weights = boneHeat(P, N, idx, segments, console.log);
+    const weights = boneHeat(P, N, idx, segments, log);
     const J = new Uint16Array(n * 4);
     const W = new Float32Array(n * 4);
     weights.forEach((four, v) =>
@@ -497,14 +533,8 @@ async function main() {
     );
     prim.getAttribute("JOINTS_0").setArray(J).setNormalized(false);
     prim.getAttribute("WEIGHTS_0").setArray(W).setNormalized(false);
-    console.log(`  done in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    log(`  done in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   }
-  await doc.transform(
-    quantize(),
-    meshopt({ encoder: MeshoptEncoder, level: "medium" }),
-  );
-  writeFileSync(output, await io.writeBinary(doc));
-  console.log(`wrote ${output}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();
