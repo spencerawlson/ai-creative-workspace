@@ -1927,3 +1927,16 @@ test.describe("layout", () => {
     await expect.poll(engine).toEqual({ grid: true, snap: 0.5 });
   });
 });
+
+test("auto-rigging is off unless the server offers it", async ({ page }) => {
+  // CI's server doesn't opt in (IKO_AUTORIG / IKO_BLENDER unset): the
+  // service says so and refuses work, and no "Rig it" button appears.
+  const offered = await page.request.get("/api/rig");
+  expect(await offered.json()).toEqual({ available: false });
+  const job = await page.request.post("/api/rig", {
+    data: Buffer.from("glTF0000"),
+  });
+  expect(job.status()).toBe(404);
+  await openStudio(page);
+  await expect(page.getByTestId("character-autorig")).toHaveCount(0);
+});
