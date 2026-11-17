@@ -74,18 +74,44 @@ export async function rigCharacter(doc, glb, log = console.log) {
   symmetrise(world, "shoulderL", "shoulderR", log);
 
   const adj = adjacency(pos.length / 3, index);
-  for (const s of ["L", "R"]) {
-    const hand = findFingers(
-      pos,
-      adj,
-      world[`wrist${s}`],
-      tips[`wrist${s}`],
-      world[`elbow${s}`],
+  const hands = Object.fromEntries(
+    ["L", "R"].map((s) => [
+      s,
+      findFingers(
+        pos,
+        adj,
+        world[`wrist${s}`],
+        tips[`wrist${s}`],
+        world[`elbow${s}`],
+      ),
+    ]),
+  );
+  // Hands without separate fingers (fists, mittens, an ape's knuckles):
+  // no finger bones at all, and the hands stay whole. The app poses a
+  // skeleton without fingers; finger bones squeezed onto the wrist
+  // would break it.
+  const fingerless = !hands.L.thumb || !hands.R.thumb;
+  if (fingerless) {
+    log(
+      `  hands: no thumb and four fingers (L ${hands.L.found}, R ${hands.R.found} finger-like pieces): rigged without finger bones`,
     );
-    if (!hand.thumb)
-      throw new Error(
-        `the ${s} hand shows ${hand.found} finger-like pieces, not a thumb and four fingers`,
-      );
+    const finger = /^(thumb|index|middle|ring|pinky)[123][LR]$/;
+    for (const j of skin.listJoints())
+      if (finger.test(j.getName())) {
+        skin.removeJoint(j);
+        j.dispose();
+      }
+    // The old weights point at the removed bones' places: put every
+    // vertex on the first bone until the weights are worked out below.
+    const n = pos.length / 3;
+    const J = new Uint16Array(n * 4);
+    const W = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) W[i * 4] = 1;
+    prim.getAttribute("JOINTS_0").setArray(J);
+    prim.getAttribute("WEIGHTS_0").setArray(W);
+  }
+  for (const s of fingerless ? [] : ["L", "R"]) {
+    const hand = hands[s];
     log(
       `  ${s} hand: thumb + 4 fingers${hand.extra ? ` (+${hand.extra} extra, left to the nearest bones)` : ""}`,
     );
@@ -103,7 +129,7 @@ export async function rigCharacter(doc, glb, log = console.log) {
   // from its parent; its inverse bind matrix is translate(−joint).
   const parentOf = Object.fromEntries(BONES);
   const ibm = skin.getInverseBindMatrices();
-  const m = ibm.getArray();
+  const m = new Float32Array(skin.listJoints().length * 16);
   skin.listJoints().forEach((j, i) => {
     const name = j.getName();
     const w = world[name];
@@ -116,7 +142,7 @@ export async function rigCharacter(doc, glb, log = console.log) {
   // normal and the direction towards the thumb (index → little finger
   // knuckles, reversed), for tools that read it.
   const palm = {};
-  for (const s of ["L", "R"]) {
+  for (const s of fingerless ? [] : ["L", "R"]) {
     const sub = (a, b) => a.map((v, k) => v - b[k]);
     const norm = (a) => {
       const l = Math.hypot(...a) || 1;
@@ -134,7 +160,9 @@ export async function rigCharacter(doc, glb, log = console.log) {
       thumb,
     };
   }
-  node.setExtras({ rig: { ...extras.rig, tips, palm } });
+  node.setExtras({
+    rig: { ...extras.rig, tips, palm: fingerless ? null : palm },
+  });
 
   // Weights: Blender's automatic weights when Blender is installed
   // (they measured best: scripts/blender-weights.mjs), else bone heat.
