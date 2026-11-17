@@ -239,6 +239,7 @@ export const SHORTCUTS: Array<[string, string[]]> = [
   ["Switch mannequin", ["M"]],
   ["Pose the mannequin", ["P"]],
   ["Show/hide light handles", ["H"]],
+  ["Measure a distance (tap two points; Esc ends)", ["D"]],
   ["Play / pause animation", ["Space"]],
   ["Set keyframe at the current time", ["K"]],
   ["Previous / next keyframe", [",", "."]],
