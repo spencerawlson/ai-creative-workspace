@@ -656,6 +656,11 @@ export function LightingStudio() {
         onMeasuring={setMeasuring}
         measureCount={measureCount}
         onClearMeasures={() => viewport.current?.clearMeasurements()}
+        onView={changeView}
+        showHandles={showHandles}
+        onShowHandles={setShowHandles}
+        graphOpen={graphOpen}
+        onGraph={setGraphOpen}
         onPanel={(p) => {
           if (isDesktop) {
             setTool(p);
@@ -1026,6 +1031,11 @@ function Toolbar({
   onMeasuring,
   measureCount,
   onClearMeasures,
+  onView,
+  showHandles,
+  onShowHandles,
+  graphOpen,
+  onGraph,
   onPanel,
   panelOpen,
   onTogglePanel,
@@ -1044,6 +1054,11 @@ function Toolbar({
   onMeasuring: (on: boolean) => void;
   measureCount: number;
   onClearMeasures: () => void;
+  onView: (view: CameraView) => void;
+  showHandles: boolean;
+  onShowHandles: (on: boolean) => void;
+  graphOpen: boolean;
+  onGraph: (open: boolean) => void;
   /** Show a panel (desktop: the side panel; phones: the sheet tab). */
   onPanel: (panel: Tool) => void;
   panelOpen: boolean;
@@ -1078,7 +1093,12 @@ function Toolbar({
         },
         "separator",
         { label: "Copy share link", icon: Link2, onSelect: onShare },
-        { label: "Export…", icon: Download, onSelect: onExport },
+        {
+          label: "Export…",
+          icon: Download,
+          shortcut: "Ctrl+E",
+          onSelect: onExport,
+        },
       ],
     },
     {
@@ -1113,7 +1133,44 @@ function Toolbar({
       label: "View",
       items: [
         { label: "Scene", onSelect: () => onPanel("scene") },
-        { label: "Presets", onSelect: () => onPanel("presets") },
+        {
+          label: "Presets",
+          onSelect: () => onPanel("presets"),
+        },
+        "separator",
+        {
+          label: "Face close-up",
+          shortcut: "F",
+          onSelect: () => onView("face"),
+          testId: "view-camera-face",
+        },
+        {
+          label: "Full body",
+          shortcut: "B",
+          onSelect: () => onView("full"),
+          testId: "view-camera-full",
+        },
+        {
+          label: "Studio overview",
+          shortcut: "O",
+          onSelect: () => onView("studio"),
+          testId: "view-camera-studio",
+        },
+        "separator",
+        {
+          label: "Light handles",
+          shortcut: "H",
+          checked: showHandles,
+          onSelect: () => onShowHandles(!showHandles),
+          testId: "view-handles",
+        },
+        {
+          label: "Graph editor",
+          shortcut: "G",
+          checked: graphOpen,
+          onSelect: () => onGraph(!graphOpen),
+          testId: "view-graph",
+        },
         "separator",
         {
           label: "Floor grid",

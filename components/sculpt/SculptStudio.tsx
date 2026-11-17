@@ -10,6 +10,7 @@ import {
   Download,
   FolderOpen,
   Hand,
+  Keyboard,
   Layers,
   Maximize2,
   Minimize2,
@@ -49,6 +50,7 @@ import { openParam } from "@/lib/sculpt/fromFigure";
 import { MATERIAL_PRESETS } from "@/lib/studio/presets";
 import { packLayer, unpackLayer } from "@/lib/sculpt/paint";
 import { downloadBlob, slug } from "@/components/studio/useStudio";
+import { SCULPT_SHORTCUTS, ShortcutsDialog } from "@/components/studio/Dialogs";
 import {
   Button,
   Dialog,
@@ -134,7 +136,9 @@ export function SculptStudio() {
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [steps, setSteps] = useState(0);
   const [note, setNote] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"new" | "open" | "export" | null>(null);
+  const [dialog, setDialog] = useState<
+    "new" | "open" | "export" | "shortcuts" | null
+  >(null);
   const entryRef = useRef<SculptEntry | null>(null);
   const saveTimer = useRef<number>(0);
   /** A change not yet written: shown as "Saving…", written on leaving. */
@@ -314,12 +318,44 @@ export function SculptStudio() {
     engine.current?.setLook(m);
   }, [look, status]);
 
-  // Keys: undo/redo, [ and ] for the brush size.
+  // Keys (listed in Help > Keyboard shortcuts: SCULPT_SHORTCUTS).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (dialog || e.altKey) return; // a dialog has the keys
       const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setDialog("export");
+        return;
+      }
+      if (!mod) {
+        const k = e.key.toLowerCase();
+        const n = Number(e.key);
+        if (Number.isInteger(n) && n >= 1 && n <= BRUSHES.length) {
+          setTool((t) => ({ ...t, brush: BRUSHES[n - 1], turnView: false }));
+          return;
+        }
+        if (e.key === "{" || e.key === "}") {
+          setTool((t) => ({
+            ...t,
+            strength:
+              Math.round(
+                Math.min(
+                  1,
+                  Math.max(0.05, t.strength + (e.key === "}" ? 0.1 : -0.1)),
+                ) * 100,
+              ) / 100,
+          }));
+          return;
+        }
+        if (k === "i") return setTool((t) => ({ ...t, invert: !t.invert }));
+        if (k === "x") return setTool((t) => ({ ...t, symmetry: !t.symmetry }));
+        if (k === "v") return setTool((t) => ({ ...t, turnView: !t.turnView }));
+        if (k === "f") return engine.current?.frameView();
+        if (e.key === "?") return setDialog("shortcuts");
+      }
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) engine.current?.redo();
@@ -341,7 +377,7 @@ export function SculptStudio() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [scheduleSave]);
+  }, [scheduleSave, dialog]);
 
   const set = (patch: Partial<SculptTool>) =>
     setTool((t) => ({ ...t, ...patch }));
@@ -378,6 +414,7 @@ export function SculptStudio() {
                 {
                   label: "Export…",
                   icon: Download,
+                  shortcut: "Ctrl+E",
                   onSelect: () => setDialog("export"),
                 },
               ],
@@ -413,18 +450,34 @@ export function SculptStudio() {
                 {
                   label: "Frame the sculpture",
                   icon: Move3d,
+                  shortcut: "F",
                   onSelect: () => engine.current?.frameView(),
                 },
                 "separator",
                 {
                   label: "Turn view",
+                  shortcut: "V",
                   checked: !!tool.turnView,
                   onSelect: () => set({ turnView: !tool.turnView }),
                 },
                 {
                   label: "Symmetry",
+                  shortcut: "X",
                   checked: tool.symmetry,
                   onSelect: () => set({ symmetry: !tool.symmetry }),
+                },
+              ],
+            },
+            {
+              id: "help",
+              label: "Help",
+              items: [
+                {
+                  label: "Keyboard shortcuts",
+                  icon: Keyboard,
+                  shortcut: "?",
+                  onSelect: () => setDialog("shortcuts"),
+                  testId: "sculpt-shortcuts",
                 },
               ],
             },
@@ -510,7 +563,7 @@ export function SculptStudio() {
             <p className="pointer-events-none absolute bottom-2 left-3 right-3 text-2xs text-ink-400">
               {tool.turnView
                 ? "Turning the view: drag to orbit, pinch or scroll to zoom."
-                : "Drag on the clay to sculpt · drag off it, right-drag or use two fingers to turn the view · [ ] brush size"}
+                : "Drag on the clay to sculpt · drag off it, right-drag or use two fingers to turn the view · [ ] brush size · ? keys"}
             </p>
           )}
         </div>
@@ -525,14 +578,14 @@ export function SculptStudio() {
               role="group"
               aria-label="Brushes"
             >
-              {BRUSHES.map((b) => {
+              {BRUSHES.map((b, i) => {
                 const Icon = BRUSH_ICONS[b];
                 return (
                   <button
                     key={b}
                     type="button"
                     aria-pressed={tool.brush === b}
-                    title={BRUSH_INFO[b].note}
+                    title={`${BRUSH_INFO[b].note} (${i + 1})`}
                     onClick={() => set({ brush: b, turnView: false })}
                     data-testid={`brush-${b}`}
                     className={cx(
@@ -742,6 +795,11 @@ export function SculptStudio() {
         </aside>
       </div>
 
+      <ShortcutsDialog
+        open={dialog === "shortcuts"}
+        onClose={() => setDialog(null)}
+        list={SCULPT_SHORTCUTS}
+      />
       <NewDialog
         open={dialog === "new"}
         onClose={() => setDialog(null)}

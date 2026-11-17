@@ -367,3 +367,54 @@ test.describe("Sculpt: paint and mask", () => {
     expect(plain).toBeGreaterThan(1000);
   });
 });
+
+test("sculpt keys: brushes, size and strength, symmetry, subtract, and the list", async ({
+  page,
+}) => {
+  await openSculpt(page);
+  await page.getByTestId("sculpt-view").click({ position: { x: 5, y: 5 } });
+  // 1 … 9 pick the brushes in their order.
+  await page.keyboard.press("2");
+  await expect(page.getByTestId("brush-clay")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("9");
+  await expect(page.getByTestId("brush-mask")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("1");
+  // Shift+] / Shift+[ change the strength by 10.
+  const strength = page.getByTestId("sculpt-strength");
+  const before = Number(await strength.inputValue());
+  await page.keyboard.press("Shift+BracketRight");
+  await expect(strength).toHaveValue(String(before + 10));
+  await page.keyboard.press("Shift+BracketLeft");
+  await expect(strength).toHaveValue(String(before));
+  // X: symmetry; I: subtract.
+  const symmetry = page.getByTestId("sculpt-symmetry");
+  const sym = await symmetry.isChecked();
+  await page.keyboard.press("x");
+  await expect(symmetry).toBeChecked({ checked: !sym });
+  const subtract = page.getByTestId("sculpt-subtract");
+  const sub = await subtract.isChecked();
+  await page.keyboard.press("i");
+  await expect(subtract).toBeChecked({ checked: !sub });
+  // ? lists them; so does Help > Keyboard shortcuts.
+  await page.keyboard.press("Shift+Slash");
+  const list = page.getByTestId("shortcuts-dialog");
+  await expect(list).toBeVisible();
+  await expect(list).toContainText("Symmetry");
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  // A key in the dialog's place does nothing while it's open.
+  await page.locator("[data-testid=menu-help], [data-testid=menu-all]").click();
+  await page.getByTestId("sculpt-shortcuts").click();
+  await expect(list).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(page.getByTestId("brush-inflate")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+});
