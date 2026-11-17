@@ -33,7 +33,13 @@ async function io() {
 export async function blenderWeights(
   doc,
   glb,
-  { everyBone = false, skinFrom = {}, log = console.log } = {},
+  {
+    everyBone = false,
+    skinFrom = {},
+    segmentsFor = null,
+    exclude = [],
+    log = console.log,
+  } = {},
 ) {
   await doc.transform(dequantize());
   const root = doc.getRoot();
@@ -74,6 +80,12 @@ export async function blenderWeights(
   // shows, not from its knuckle inside the palm).
   for (const seg of segments)
     if (skinFrom[seg.name]) seg.a = skinFrom[seg.name];
+  // A freshly fitted skeleton knows each bone's line exactly (an
+  // animal's chest has a neck and two legs below it, so "towards its
+  // main child" can't say which): use those lines.
+  if (segmentsFor)
+    for (const seg of segments)
+      if (segmentsFor[seg.name]) [seg.a, seg.b] = segmentsFor[seg.name];
   // Only bones the current weights use deform (an animal rig's root, on
   // the floor, mustn't claim the belly).
   const used = new Float64Array(joints.length);
@@ -88,7 +100,9 @@ export async function blenderWeights(
   }
   const bones = Object.fromEntries(
     segments
-      .filter((s, j) => everyBone || used[j] > 1e-3)
+      .filter(
+        (s, j) => !exclude.includes(s.name) && (everyBone || used[j] > 1e-3),
+      )
       .map((s) => [s.name, [s.a, s.b]]),
   );
 
