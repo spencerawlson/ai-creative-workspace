@@ -381,6 +381,9 @@ export class StudioEngine {
   private postFailed = false;
   private postSize = "";
   private readonly handlesRoot = new THREE.Group();
+  /** View guides that stay up when the handles are hidden (the floor
+   * grid); still never in an image, a video or an export. */
+  private readonly guidesRoot = new THREE.Group();
   private readonly skeletonRoot = new THREE.Group();
   private readonly material = this.finishable(
     Object.assign(new THREE.MeshStandardMaterial(), { name: "Mannequin" }),
@@ -436,7 +439,7 @@ export class StudioEngine {
   private activeFigure: string | null = null;
   private statusKey = "";
   /** Video capture in progress: the canvas is at the video's size. */
-  private capture: { handles: boolean } | null = null;
+  private capture: { handles: boolean; guides: boolean } | null = null;
   private view: CameraView = "full";
 
   private doc: SceneDoc | null = null;
@@ -449,7 +452,7 @@ export class StudioEngine {
   private disposed = false;
   private interacting = false;
   private dragging: { id: string; pointerId: number } | null = null;
-  /** The floor grid, when shown (in handlesRoot). */
+  /** The floor grid, when shown (in guidesRoot). */
   private grid: THREE.Group | null = null;
   /** Snap step for dragged figures, metres; null: free. */
   private snapStep: number | null = null;
@@ -565,7 +568,7 @@ export class StudioEngine {
     // Low ambient so Low-key stays dark and High-key is carried by fill.
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
     this.scene.add(this.figure);
-    this.scene.add(this.handlesRoot, this.skeletonRoot);
+    this.scene.add(this.handlesRoot, this.guidesRoot, this.skeletonRoot);
 
     this.catcher = new THREE.Mesh(
       new THREE.CircleGeometry(6, 48),
@@ -659,18 +662,18 @@ export class StudioEngine {
     this.invalidate();
   }
 
-  /** The floor grid (a viewport helper, with the handles: never in an
-   * export): lines every `step` metres, stronger every metre and 10 m,
+  /** The floor grid (a viewport guide: it stays when the handles are
+   * hidden, and is never in an export): lines every `step` metres, stronger every metre and 10 m,
    * and the two axes, out to the horizon (buildFloorGrid). */
   setGrid(visible: boolean, step: number): void {
     if (this.grid) {
-      this.handlesRoot.remove(this.grid);
+      this.guidesRoot.remove(this.grid);
       disposeHelper(this.grid);
       this.grid = null;
     }
     if (visible) {
       this.grid = buildFloorGrid(step);
-      this.handlesRoot.add(this.grid);
+      this.guidesRoot.add(this.grid);
     }
     this.invalidate();
   }
@@ -2904,11 +2907,13 @@ export class StudioEngine {
       ratio: this.pixelRatio,
       background: this.scene.background,
       handles: this.handlesRoot.visible,
+      guides: this.guidesRoot.visible,
       cyc: this.cyc.visible,
       catcher: this.catcher.visible,
     };
     const transparent = opts.transparent && opts.format === "image/png";
     this.handlesRoot.visible = false;
+    this.guidesRoot.visible = false;
     this.layoutDots(false);
     if (transparent) {
       this.scene.background = null;
@@ -2935,6 +2940,7 @@ export class StudioEngine {
     );
     this.scene.background = prev.background;
     this.handlesRoot.visible = prev.handles;
+    this.guidesRoot.visible = prev.guides;
     this.cyc.visible = prev.cyc;
     this.catcher.visible = prev.catcher;
     this.renderer.setClearColor(0x000000, 0);
@@ -2952,8 +2958,13 @@ export class StudioEngine {
    * and the joint overlay hidden, adaptive resolution and resizing
    * paused. Draw frames with renderCapture(); always endCapture(). */
   beginCapture(width: number, height: number): HTMLCanvasElement {
-    if (!this.capture) this.capture = { handles: this.handlesRoot.visible };
+    if (!this.capture)
+      this.capture = {
+        handles: this.handlesRoot.visible,
+        guides: this.guidesRoot.visible,
+      };
     this.handlesRoot.visible = false;
+    this.guidesRoot.visible = false;
     this.layoutDots(false);
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(width, height, false);
@@ -2973,6 +2984,7 @@ export class StudioEngine {
   endCapture(): void {
     if (!this.capture) return;
     this.handlesRoot.visible = this.capture.handles;
+    this.guidesRoot.visible = this.capture.guides;
     this.capture = null;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.resize();
