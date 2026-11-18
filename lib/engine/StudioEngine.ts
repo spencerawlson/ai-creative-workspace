@@ -660,22 +660,16 @@ export class StudioEngine {
   }
 
   /** The floor grid (a viewport helper, with the handles: never in an
-   * export): lines every `step` metres, stronger every metre, and the
-   * two axes through the middle, over the floor figures can stand on. */
+   * export): lines every `step` metres, stronger every metre and 10 m,
+   * and the two axes, out to the horizon (buildFloorGrid). */
   setGrid(visible: boolean, step: number): void {
     if (this.grid) {
       this.handlesRoot.remove(this.grid);
-      this.grid.traverse((o) => {
-        const l = o as THREE.LineSegments;
-        if (l.isLineSegments) {
-          l.geometry.dispose();
-          (l.material as THREE.Material).dispose();
-        }
-      });
+      disposeHelper(this.grid);
       this.grid = null;
     }
     if (visible) {
-      this.grid = buildFloorGrid(LIMITS.figureX[1], step);
+      this.grid = buildFloorGrid(step);
       this.handlesRoot.add(this.grid);
     }
     this.invalidate();
@@ -3184,45 +3178,86 @@ export function dragOnSphere(
   };
 }
 
-/** A floor grid from -half to half metres: minor lines every `step`,
- * major every metre, and the x (red) and z (blue) axes, just above the
- * floor. It ignores clicks (they go to the figure or the floor). */
-export function buildFloorGrid(half: number, step: number): THREE.Group {
-  const minor: number[] = [];
-  const major: number[] = [];
-  const n = Math.round(half / step);
-  for (let i = -n; i <= n; i++) {
-    const v = Math.round(i * step * 1e6) / 1e6;
-    if (v === 0) continue; // the axes are drawn on their own
-    const onMetre = Math.abs(v - Math.round(v)) < 1e-6;
-    const into = onMetre ? major : minor;
-    into.push(v, 0, -half, v, 0, half, -half, 0, v, half, 0, v);
-  }
-  const lines = (points: number[], color: number, opacity: number) => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-    const l = new THREE.LineSegments(
-      g,
-      new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity,
-        depthWrite: false,
-      }),
-    );
-    l.raycast = () => {};
-    l.renderOrder = -1;
-    return l;
-  };
+/** How far the floor grid reaches (metres from the centre): the
+ * camera's far plane is 100 m, and the lines have faded out well before. */
+export const GRID_REACH = 90;
+
+/** The floor grid, as in a 3D package's viewport: drawn by a shader on
+ * one large plane, so it runs to the horizon. Minor lines every `step`
+ * metres, stronger ones every metre and every 10 m, the x axis red and
+ * the z axis green. Each set of lines fades where it would be too dense
+ * to read (so the distance doesn't shimmer), and the whole grid fades
+ * with distance from the camera. It ignores clicks (they go to the
+ * figure or the floor). */
+export function buildFloorGrid(step: number): THREE.Group {
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uStep: { value: step },
+      uMinor: { value: new THREE.Color(0x8a8f9c) },
+      uMajor: { value: new THREE.Color(0xaab0bd) },
+      uAxisX: { value: new THREE.Color(0xd0584b) },
+      uAxisZ: { value: new THREE.Color(0x6aa84f) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorld;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uStep;
+      uniform vec3 uMinor;
+      uniform vec3 uMajor;
+      uniform vec3 uAxisX;
+      uniform vec3 uAxisZ;
+      varying vec3 vWorld;
+      // Lines every s metres, about a pixel wide; faded out where cells
+      // shrink below a few pixels.
+      float lines(vec2 p, float s) {
+        vec2 c = p / s;
+        vec2 d = fwidth(c);
+        vec2 g = abs(fract(c - 0.5) - 0.5) / max(d, vec2(1e-6));
+        float on = 1.0 - min(min(g.x, g.y), 1.0);
+        float px = max(d.x, d.y);
+        return on * (1.0 - smoothstep(0.12, 0.4, px));
+      }
+      float axis(float v) {
+        float d = fwidth(v);
+        return 1.0 - min(abs(v) / max(d * 1.5, 1e-6), 1.0);
+      }
+      void main() {
+        vec2 p = vWorld.xz;
+        float minor = lines(p, uStep) * 0.2;
+        float metre = lines(p, 1.0) * 0.4;
+        float ten = lines(p, 10.0) * 0.55;
+        float ax = axis(p.y); // the x axis: z = 0
+        float az = axis(p.x); // the z axis: x = 0
+        vec3 col = uMinor;
+        float a = minor;
+        if (metre > a) { col = uMajor; a = metre; }
+        if (ten > a) { col = uMajor; a = ten; }
+        if (ax * 0.85 > a) { col = uAxisX; a = ax * 0.85; }
+        if (az * 0.85 > a) { col = uAxisZ; a = az * 0.85; }
+        float dist = distance(cameraPosition.xz, p);
+        a *= 1.0 - smoothstep(12.0, 70.0, dist);
+        if (a < 0.003) discard;
+        gl_FragColor = vec4(col, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+  });
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(GRID_REACH * 2, GRID_REACH * 2),
+    material,
+  );
+  plane.rotation.x = -Math.PI / 2;
+  plane.raycast = () => {};
+  plane.renderOrder = -1;
   const group = new THREE.Group();
   group.name = "floor-grid";
   group.position.y = 0.002;
-  group.add(
-    lines(minor, 0x8a8f9c, 0.18),
-    lines(major, 0xaab0bd, 0.38),
-    lines([-half, 0, 0, half, 0, 0], 0xd0584b, 0.75),
-    lines([0, 0, -half, 0, 0, half], 0x4b7fd0, 0.75),
-  );
+  group.add(plane);
   return group;
 }
 

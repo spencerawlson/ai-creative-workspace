@@ -1891,6 +1891,20 @@ test.describe("layout", () => {
     await view("view-step-0.5");
     await view("view-snap");
     expect(await engine()).toEqual({ grid: true, snap: 0.5 });
+    // The grid runs out towards the horizon, well past the stage.
+    const reach = await page.evaluate(() => {
+      const e = (
+        window as unknown as {
+          __studioEngine: {
+            grid: {
+              children: Array<{ geometry: { parameters: { width: number } } }>;
+            };
+          };
+        }
+      ).__studioEngine;
+      return e.grid.children[0].geometry.parameters.width / 2;
+    });
+    expect(reach).toBeGreaterThanOrEqual(50);
 
     // A dragged figure lands on the grid.
     await showPanel(page, "scene");
