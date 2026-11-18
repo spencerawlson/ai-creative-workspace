@@ -150,7 +150,7 @@ export function ExportDialog({
                 value={id}
                 checked={sizeId === id}
                 onChange={() => setSizeId(id)}
-                className="accent-[#f2b35a]"
+                className="accent-accent"
               />
               {label}
             </label>
@@ -449,7 +449,7 @@ export function VideoExportDialog({
                 value={id}
                 checked={sizeId === id}
                 onChange={() => setSizeId(id)}
-                className="accent-[#f2b35a]"
+                className="accent-accent"
                 data-testid={`video-size-${id}`}
               />
               {VIDEO_SIZES[id].label}

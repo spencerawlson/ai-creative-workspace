@@ -43,7 +43,7 @@ export function LightingScene({
   );
   const overrides = useMemo(() => ({ fov, exposure }), [fov, exposure]);
   return (
-    <div className="h-full w-full overflow-hidden rounded-xl bg-[#111118]">
+    <div className="h-full w-full overflow-hidden rounded-xl bg-ink-900">
       <StudioViewport
         scene={scene}
         overrides={overrides}
