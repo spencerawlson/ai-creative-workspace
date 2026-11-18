@@ -174,7 +174,10 @@ export function DirectBeats({
                     </span>
                   )}
                   {needs && (
-                    <span className="text-accent-strong"> · pick its sound</span>
+                    <span className="text-accent-strong">
+                      {" "}
+                      · pick its sound
+                    </span>
                   )}
                 </span>
                 {l.ok &&
