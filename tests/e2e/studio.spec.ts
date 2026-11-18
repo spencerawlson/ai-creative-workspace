@@ -1905,6 +1905,28 @@ test.describe("layout", () => {
       return e.grid.children[0].geometry.parameters.width / 2;
     });
     expect(reach).toBeGreaterThanOrEqual(50);
+    // Hiding the light handles (the eye) leaves the grid showing.
+    const gridShows = () =>
+      page.evaluate(() => {
+        let o = (
+          window as unknown as {
+            __studioEngine: {
+              grid: { visible: boolean; parent: unknown } | null;
+            };
+          }
+        ).__studioEngine.grid as {
+          visible: boolean;
+          parent: unknown;
+        } | null;
+        while (o) {
+          if (!o.visible) return false;
+          o = o.parent as typeof o;
+        }
+        return true;
+      });
+    await view("view-handles");
+    expect(await gridShows()).toBe(true);
+    await view("view-handles");
 
     // A dragged figure lands on the grid.
     await showPanel(page, "scene");
