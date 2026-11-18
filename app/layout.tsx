@@ -51,7 +51,7 @@ export const viewport: Viewport = {
   // viewport-fit=cover is what makes safe-area-inset-* non-zero on
   // notched iPhones; without it the insets below are all 0.
   viewportFit: "cover",
-  themeColor: "#09090c",
+  themeColor: "#161617",
   colorScheme: "dark",
 };
 

@@ -385,7 +385,7 @@ export function Timeline({
                 "absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border transition-colors",
                 current
                   ? "border-white bg-accent"
-                  : "border-ink-950 bg-amber-300 hover:bg-accent",
+                  : "border-ink-950 bg-accent-strong hover:bg-accent",
               )}
               onPointerDown={(e) => {
                 e.currentTarget.setPointerCapture(e.pointerId);

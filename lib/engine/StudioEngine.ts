@@ -3193,8 +3193,8 @@ export function buildFloorGrid(step: number): THREE.Group {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uStep: { value: step },
-      uMinor: { value: new THREE.Color(0x8a8f9c) },
-      uMajor: { value: new THREE.Color(0xaab0bd) },
+      uMinor: { value: new THREE.Color(0x8f8f94) },
+      uMajor: { value: new THREE.Color(0xb2b2b6) },
       uAxisX: { value: new THREE.Color(0xd0584b) },
       uAxisZ: { value: new THREE.Color(0x6aa84f) },
     },

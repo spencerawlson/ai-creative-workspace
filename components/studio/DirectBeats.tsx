@@ -174,7 +174,7 @@ export function DirectBeats({
                     </span>
                   )}
                   {needs && (
-                    <span className="text-amber-300"> · pick its sound</span>
+                    <span className="text-accent-strong"> · pick its sound</span>
                   )}
                 </span>
                 {l.ok &&
@@ -202,7 +202,7 @@ export function DirectBeats({
                           : `A sound for line ${i + 1}`
                       }
                       disabled={reading !== null}
-                      className={needs ? "text-amber-300" : undefined}
+                      className={needs ? "text-accent-strong" : undefined}
                       onClick={() => {
                         picking.current = l.beat.text;
                         input.current?.click();

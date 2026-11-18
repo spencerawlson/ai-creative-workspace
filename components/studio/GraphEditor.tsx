@@ -431,9 +431,9 @@ export function GraphEditor({
                     x2={x(t)}
                     y1={PAD.t}
                     y2={PAD.t + H}
-                    stroke="#262a33"
+                    stroke="#3b3b3e"
                   />
-                  <text x={x(t)} y={sh - 6} textAnchor="middle" fill="#6b7280">
+                  <text x={x(t)} y={sh - 6} textAnchor="middle" fill="#8a8a8f">
                     {t}s
                   </text>
                 </g>
@@ -445,13 +445,13 @@ export function GraphEditor({
                     x2={PAD.l + W}
                     y1={y(v)}
                     y2={y(v)}
-                    stroke="#1f232b"
+                    stroke="#2f2f32"
                   />
                   <text
                     x={PAD.l - 4}
                     y={y(v) + 3}
                     textAnchor="end"
-                    fill="#6b7280"
+                    fill="#8a8a8f"
                   >
                     {Math.abs(hi - lo) < 10 ? v.toFixed(2) : Math.round(v)}
                   </text>
@@ -482,7 +482,7 @@ export function GraphEditor({
                 x2={x(time)}
                 y1={PAD.t}
                 y2={PAD.t + H}
-                stroke="#f59e0b"
+                stroke="#f5821f"
                 strokeWidth={1}
                 pointerEvents="none"
               />
@@ -501,7 +501,7 @@ export function GraphEditor({
                       cy={y(v)}
                       r={active ? 6 : 4.5}
                       fill={active ? "#ffffff" : colour(c.channel)}
-                      stroke="#0b0c10"
+                      stroke="#1d1d1f"
                       strokeWidth={1.5}
                       className="cursor-grab"
                       data-testid={`graph-key-${channelId(c.channel)}@${k.t.toFixed(2)}`}
@@ -590,7 +590,7 @@ export function GraphEditor({
                       y={sy - 4}
                       width={8}
                       height={8}
-                      fill="#0b0c10"
+                      fill="#1d1d1f"
                       stroke={colour(c.channel)}
                       strokeWidth={1.5}
                       className="cursor-grab"
