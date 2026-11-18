@@ -31,7 +31,11 @@ function readStl(buffer: ArrayBuffer) {
       ),
     );
   }
-  return { count, tris, header: new TextDecoder().decode(buffer.slice(0, 32)) };
+  // The 80-byte header: its text, up to the zero padding.
+  const head = new Uint8Array(buffer, 0, 80);
+  const end = head.indexOf(0);
+  const header = new TextDecoder().decode(head.slice(0, end < 0 ? 80 : end));
+  return { count, tris, header };
 }
 
 describe("statues: plinths and statue materials", () => {
