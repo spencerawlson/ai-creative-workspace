@@ -1132,12 +1132,17 @@ function Toolbar({
       id: "view",
       label: "View",
       items: [
+        { heading: "Panels" },
         { label: "Scene", onSelect: () => onPanel("scene") },
+        { label: "Presets", onSelect: () => onPanel("presets") },
         {
-          label: "Presets",
-          onSelect: () => onPanel("presets"),
+          label: "Graph editor",
+          shortcut: "G",
+          checked: graphOpen,
+          onSelect: () => onGraph(!graphOpen),
+          testId: "view-graph",
         },
-        "separator",
+        { heading: "Camera" },
         {
           label: "Face close-up",
           shortcut: "F",
@@ -1156,7 +1161,7 @@ function Toolbar({
           onSelect: () => onView("studio"),
           testId: "view-camera-studio",
         },
-        "separator",
+        { heading: "Display" },
         {
           label: "Light handles",
           shortcut: "H",
@@ -1165,20 +1170,13 @@ function Toolbar({
           testId: "view-handles",
         },
         {
-          label: "Graph editor",
-          shortcut: "G",
-          checked: graphOpen,
-          onSelect: () => onGraph(!graphOpen),
-          testId: "view-graph",
-        },
-        "separator",
-        {
           label: "Floor grid",
           icon: Grid3x3,
           checked: precision.grid,
           onSelect: () => onPrecision({ grid: !precision.grid }),
           testId: "view-grid",
         },
+        { heading: "Precision" },
         {
           label: "Measure a distance",
           icon: Ruler,
@@ -1193,25 +1191,32 @@ function Toolbar({
           onSelect: () => onPrecision({ snap: !precision.snap }),
           testId: "view-snap",
         },
-        ...SNAP_STEPS.map((step) => ({
-          label: `Grid every ${formatLength(step, precision.units)}`,
-          checked: precision.step === step,
-          onSelect: () => onPrecision({ step }),
-          testId: `view-step-${step}`,
-        })),
-        "separator",
-        ...(
-          [
-            ["m", "Metres"],
-            ["cm", "Centimetres"],
-            ["ft", "Feet and inches"],
-          ] as const
-        ).map(([units, label]) => ({
-          label,
-          checked: precision.units === units,
-          onSelect: () => onPrecision({ units }),
-          testId: `view-units-${units}`,
-        })),
+        {
+          label: "Grid spacing",
+          testId: "view-spacing",
+          submenu: SNAP_STEPS.map((step) => ({
+            label: formatLength(step, precision.units),
+            checked: precision.step === step,
+            onSelect: () => onPrecision({ step }),
+            testId: `view-step-${step}`,
+          })),
+        },
+        {
+          label: "Units",
+          testId: "view-units",
+          submenu: (
+            [
+              ["m", "Metres"],
+              ["cm", "Centimetres"],
+              ["ft", "Feet and inches"],
+            ] as const
+          ).map(([units, label]) => ({
+            label,
+            checked: precision.units === units,
+            onSelect: () => onPrecision({ units }),
+            testId: `view-units-${units}`,
+          })),
+        },
         ...(onTogglePanel
           ? ([
               "separator",

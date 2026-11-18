@@ -229,3 +229,22 @@ export async function poseValue(
     { joint, dof },
   );
 }
+
+/** Submenus that hold menu items, by the items' test-id prefix. Phones
+ * show these items inline, under a heading, so there's nothing to open. */
+const SUBMENUS: Array<[prefix: string, parent: string]> = [
+  ["view-step-", "view-spacing"],
+  ["view-units-", "view-units"],
+];
+
+/** Choose a menu item: open its menu (or the phone's one Menu), and its
+ * submenu when it's in one. */
+export async function pickMenu(page: Page, menu: string, item: string) {
+  await page
+    .locator(`[data-testid=menu-${menu}], [data-testid=menu-all]`)
+    .click();
+  const parent = SUBMENUS.find(([p]) => item.startsWith(p))?.[1];
+  if (parent && (await page.getByTestId(parent).count()))
+    await page.getByTestId(parent).click();
+  await page.getByTestId(item).click();
+}
