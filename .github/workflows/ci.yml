@@ -29,7 +29,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm audit --audit-level=high
+      # What ships: dev-only tools (vitest, vite, eslint) are left out, as
+      # picomatch's ReDoS advisory (GHSA-fc5q-39xc-vjpf) has no fixed version.
+      - run: npm audit --omit=dev --audit-level=high
 
   e2e:
     # One job per viewport: WebGL runs in software on CI runners, so the
