@@ -254,12 +254,33 @@ export const SHORTCUTS: Array<[string, string[]]> = [
   ["This list", ["?"]],
 ];
 
+/** Sculpt's keys (components/sculpt/SculptStudio.tsx). */
+export const SCULPT_SHORTCUTS: Array<[string, string[]]> = [
+  ["Undo", ["Ctrl", "Z"]],
+  ["Redo", ["Ctrl", "Shift", "Z"]],
+  [
+    "Brush: Draw, Clay, Inflate, Smooth, Flatten, Pinch, Grab, Paint, Mask",
+    ["1 … 9"],
+  ],
+  ["Smaller / bigger brush", ["[", "]"]],
+  ["Weaker / stronger brush", ["Shift+[", "Shift+]"]],
+  ["Subtract (dig in, shrink, erase)", ["I"]],
+  ["Symmetry", ["X"]],
+  ["Turn view (drag orbits instead of sculpting)", ["V"]],
+  ["Frame the sculpture", ["F"]],
+  ["Export", ["Ctrl", "E"]],
+  ["This list", ["?"]],
+];
+
 export function ShortcutsDialog({
   open,
   onClose,
+  list = SHORTCUTS,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Which keys to list (the Studio's by default). */
+  list?: Array<[string, string[]]>;
 }) {
   return (
     <Dialog
@@ -269,7 +290,7 @@ export function ShortcutsDialog({
       testId="shortcuts-dialog"
     >
       <dl className="divide-y divide-ink-750">
-        {SHORTCUTS.map(([what, keys]) => (
+        {list.map(([what, keys]) => (
           <div
             key={what}
             className="flex items-center justify-between gap-4 py-2"

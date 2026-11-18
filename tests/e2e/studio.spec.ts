@@ -2015,3 +2015,32 @@ test("measure a distance on the floor: snapped, in the chosen units, cleared", a
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("measure-hint")).toHaveCount(0);
 });
+
+test("View menu items show their keys and do what the keys do", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const view = () =>
+    page.locator("[data-testid=menu-view], [data-testid=menu-all]").click();
+  await view();
+  await expect(page.getByTestId("view-camera-face")).toContainText("F");
+  await expect(page.getByTestId("view-handles")).toContainText("H");
+  await expect(page.getByTestId("view-handles")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.getByTestId("view-handles").click();
+  await view();
+  await expect(page.getByTestId("view-handles")).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await page.keyboard.press("Escape");
+  // The key and the menu are the same switch.
+  await page.keyboard.press("h");
+  await view();
+  await expect(page.getByTestId("view-handles")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
