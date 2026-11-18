@@ -12,33 +12,33 @@ const inter = Inter({
 });
 
 const description =
-  "IKO 3D: light, pose and animate 3D mannequins in the browser. Studio lights and presets, typed poses and moves, keyframes, share links, image and video export.";
+  "Zaka 3D: light, pose and animate 3D mannequins in the browser. Studio lights and presets, typed poses and moves, keyframes, share links, image and video export.";
 
 export const metadata: Metadata = {
   // Placeholder until the real Vercel URL is known (R-15); set via
   // NEXT_PUBLIC_SITE_URL. Never a guessed URL.
   metadataBase: new URL(siteUrl),
-  title: "IKO 3D",
+  title: "Zaka 3D",
   description,
   openGraph: {
-    title: "IKO 3D — Light, pose and animate 3D characters",
+    title: "Zaka 3D — Light, pose and animate 3D characters",
     description:
       "Light, pose and animate 3D characters — right in your browser.",
     url: siteUrl,
-    siteName: "IKO 3D",
+    siteName: "Zaka 3D",
     type: "website",
     images: [
       {
         url: "/og.jpg",
         width: 1200,
         height: 630,
-        alt: "IKO 3D — light, pose and animate 3D characters in your browser",
+        alt: "Zaka 3D — light, pose and animate 3D characters in your browser",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "IKO 3D — Light, pose and animate 3D characters",
+    title: "Zaka 3D — Light, pose and animate 3D characters",
     description:
       "Light, pose and animate 3D characters — right in your browser.",
     images: ["/og.jpg"],

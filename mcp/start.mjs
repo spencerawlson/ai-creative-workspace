@@ -1,4 +1,4 @@
-// Starts the IKO 3D MCP server (mcp/server.ts) from any folder: MCP
+// Starts the Zaka 3D MCP server (mcp/server.ts) from any folder: MCP
 // clients launch it with `node <repo>/mcp/start.mjs`. tsx runs the
 // TypeScript directly, with the repo's tsconfig for its "@/" imports.
 // The repo isn't "type": "module", so tsx loads .ts files as CommonJS:

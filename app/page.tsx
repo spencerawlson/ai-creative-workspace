@@ -7,11 +7,11 @@ import { ProcessVideo } from "@/components/landing/ProcessVideo";
 import { studioRedirectTarget } from "@/lib/studio/landing-redirect";
 
 export const metadata: Metadata = {
-  title: "IKO 3D — Light, pose and animate 3D characters",
+  title: "Zaka 3D — Light, pose and animate 3D characters",
   description:
     "A studio for lighting, posing and animating 3D figures. Real Three.js light, presets a photographer would recognise, and share links that reproduce the whole scene. No accounts, no uploads, nothing to install.",
   openGraph: {
-    title: "IKO 3D — Light, pose and animate 3D characters",
+    title: "Zaka 3D — Light, pose and animate 3D characters",
     description:
       "Light, pose and animate 3D characters — right in your browser.",
     images: [
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
         url: "/og.jpg",
         width: 1200,
         height: 630,
-        alt: "IKO 3D — light, pose and animate 3D characters in your browser",
+        alt: "Zaka 3D — light, pose and animate 3D characters in your browser",
       },
     ],
   },
@@ -71,13 +71,13 @@ export default async function LandingPage({
         <header className="flex items-center gap-2 py-4">
           {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static logo */}
           <img
-            src="/brand/iko-logo-128.png"
+            src="/brand/zaka-logo-128.png"
             alt=""
             width={28}
             height={28}
             className="h-7 w-7 shrink-0"
           />
-          <span className="text-sm font-semibold">IKO 3D</span>
+          <span className="text-sm font-semibold">Zaka 3D</span>
           <nav aria-label="Sections" className="ml-auto flex gap-4 text-sm">
             <Link
               href="/sculpt"
@@ -99,7 +99,7 @@ export default async function LandingPage({
           className="grid items-center gap-8 py-8 sm:py-12 lg:grid-cols-2"
         >
           <div>
-            <p className="text-sm font-medium text-accent">IKO 3D</p>
+            <p className="text-sm font-medium text-accent">Zaka 3D</p>
             <h1
               id="landing-hero"
               className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl"
@@ -224,7 +224,7 @@ export default async function LandingPage({
 
         <footer className="border-t border-ink-800 py-8 text-sm text-ink-400">
           <p>
-            IKO 3D — no accounts, no backend, free. The pose finder runs
+            Zaka 3D — no accounts, no backend, free. The pose finder runs
             entirely in your browser.
           </p>
           <p className="mt-2">

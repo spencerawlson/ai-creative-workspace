@@ -63,21 +63,21 @@ export function BrandLink() {
   return (
     <Link
       href="/"
-      aria-label="IKO 3D home"
+      aria-label="Zaka 3D home"
       title="Home"
       className="flex shrink-0 items-center gap-2 rounded-md p-0.5 hover:bg-ink-800"
       data-testid="nav-home"
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- a 28 px static logo */}
       <img
-        src="/brand/iko-logo-128.png"
+        src="/brand/zaka-logo-128.png"
         alt=""
         width={28}
         height={28}
         className="h-7 w-7"
       />
       <span className="hidden text-sm font-semibold tracking-tight text-ink-100 lg:inline">
-        IKO 3D
+        Zaka 3D
       </span>
     </Link>
   );
