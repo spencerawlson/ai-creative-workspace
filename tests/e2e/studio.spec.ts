@@ -10,6 +10,7 @@ import {
   onCanvas,
   overlayPixels,
   openStudio,
+  pickMenu,
   sParam,
   showPanel,
   poseValue,
@@ -1874,12 +1875,7 @@ test.describe("layout", () => {
     page,
   }, info) => {
     await openStudio(page);
-    const view = async (item: string) => {
-      await page
-        .locator("[data-testid=menu-view], [data-testid=menu-all]")
-        .click();
-      await page.getByTestId(item).click();
-    };
+    const view = (item: string) => pickMenu(page, "view", item);
     const engine = () =>
       page.evaluate(() => {
         const e = (
@@ -1945,12 +1941,8 @@ test("measure a distance on the floor: snapped, in the chosen units, cleared", a
   page,
 }) => {
   await openStudio(page);
-  const menu = async (name: "view" | "edit", item: string) => {
-    await page
-      .locator(`[data-testid=menu-${name}], [data-testid=menu-all]`)
-      .click();
-    await page.getByTestId(item).click();
-  };
+  const menu = (name: "view" | "edit", item: string) =>
+    pickMenu(page, name, item);
   await menu("view", "view-grid");
   await menu("view", "view-step-0.5");
   await menu("view", "view-snap");
@@ -2043,4 +2035,58 @@ test("View menu items show their keys and do what the keys do", async ({
     "aria-checked",
     "true",
   );
+});
+
+test("menus: sections, sliding across the bar, submenus, tear-off panels", async ({
+  page,
+}, info) => {
+  test.skip(isMobile(info), "phones have one Menu (submenus inline)");
+  await openStudio(page);
+  // Labelled sections.
+  await page.getByTestId("menu-view").click();
+  const list = page.getByTestId("menu-view-list");
+  await expect(list.getByRole("separator", { name: "Camera" })).toBeVisible();
+  // With a menu open, pointing at another opens it.
+  await page.getByTestId("menu-edit").hover();
+  await expect(page.getByTestId("menu-edit-list")).toBeVisible();
+  await expect(list).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  // Submenus: Right opens, Left closes, a choice closes the menu.
+  await page.getByTestId("menu-view").click();
+  await page.getByTestId("view-units").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("view-units-list")).toBeVisible();
+  await expect(page.getByTestId("view-units-m")).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByTestId("view-units-list")).toBeHidden();
+  await expect(page.getByTestId("view-units")).toBeFocused();
+  await page.getByTestId("view-units").click();
+  await page.getByTestId("view-units-cm").click();
+  await expect(list).toBeHidden();
+  await pickMenu(page, "view", "view-units-m");
+
+  // Tear-off: the menu stays open as a panel; its toggles work in place.
+  await page.getByTestId("menu-view").click();
+  await page.getByTestId("menu-view-tearoff").click();
+  const torn = page.getByTestId("torn-view");
+  await expect(torn).toBeVisible();
+  const handles = torn.getByTestId("view-handles");
+  await expect(handles).toHaveAttribute("aria-checked", "true");
+  await handles.click();
+  await expect(handles).toHaveAttribute("aria-checked", "false");
+  await expect(torn).toBeVisible();
+  // Dragged by its title.
+  const before = (await torn.boundingBox())!;
+  const title = torn.getByText("View", { exact: true });
+  const t = (await title.boundingBox())!;
+  await page.mouse.move(t.x + 5, t.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(t.x + 105, t.y + 65, { steps: 5 });
+  await page.mouse.up();
+  const after = (await torn.boundingBox())!;
+  expect(Math.round(after.x - before.x)).toBe(100);
+  expect(Math.round(after.y - before.y)).toBe(60);
+  await page.getByTestId("torn-view-close").click();
+  await expect(torn).toHaveCount(0);
 });
