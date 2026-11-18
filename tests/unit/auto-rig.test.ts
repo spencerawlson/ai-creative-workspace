@@ -41,7 +41,6 @@ const RIGS: Array<[string, "human" | "quadruped" | "biped"]> = [
   ["public/cast/real-woman.glb", "human"],
   ["public/cast/toon-man.glb", "human"],
   ["public/cast/toon-woman.glb", "human"],
-  ["public/cast/infant.glb", "human"],
   ["public/models/mannequin-male.glb", "human"],
   ["public/models/mannequin-female.glb", "human"],
   // Upright too, but their arms reach far lower: the animal rig.
