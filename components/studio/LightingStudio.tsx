@@ -1244,7 +1244,7 @@ function Toolbar({
   ];
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
-      <h1 className="sr-only">IKO 3D Studio</h1>
+      <h1 className="sr-only">Zaka 3D Studio</h1>
       <div className="flex shrink-0 items-center gap-2">
         <BrandLink />
         {/* With no sidebar (phones), the workspaces are a menu here. */}

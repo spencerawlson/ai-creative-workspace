@@ -387,7 +387,7 @@ export function SculptStudio() {
   return (
     <main className="flex h-dvh flex-col bg-ink-950 text-ink-100">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-2 sm:gap-2 sm:px-3">
-        <h1 className="sr-only">IKO 3D Sculpt</h1>
+        <h1 className="sr-only">Zaka 3D Sculpt</h1>
         <BrandLink />
         {/* Phones have no sidebar: the workspaces are a menu here. */}
         <WorkspaceMenu current="sculpt" className="md:hidden" />

@@ -1,14 +1,14 @@
-# IKO 3D — Landing page implementation plan
+# Zaka 3D — Landing page implementation plan
 
 Status: plan only, NOT built, no go given yet.
 Date: 2026-11-06. App state this plan is written against: main `e2ea833`
-(PR #20 pose-from-photo; app named IKO 3D since 2026-11-06).
+(PR #20 pose-from-photo; app named Zaka 3D since 2026-11-06).
 
 ## The gap
 
 Today `/` drops every visitor straight into the studio
 (`app/page.tsx` renders `<LightingStudio />`). There is no front door:
-nothing that says what IKO 3D is, shows the art, or gives a first-time
+nothing that says what Zaka 3D is, shows the art, or gives a first-time
 visitor a reason to stay. `/photography` is the only other route.
 
 ## The art (already in hand)
@@ -42,7 +42,7 @@ Both files are Spencer's own art. No licensed or third-party imagery.
 
 ## Sections (draft — copy to be written/approved by Spencer)
 
-1. **Hero** — portrait, "IKO 3D", one line on what it is ("Light,
+1. **Hero** — portrait, "Zaka 3D", one line on what it is ("Light,
    pose and animate 3D characters in the browser"), CTA "Open the
    studio" (+ secondary "Learn the camera" → `/photography`).
 2. **What you can do** — one row per real feature, nothing invented:
@@ -62,8 +62,8 @@ Both files are Spencer's own art. No licensed or third-party imagery.
   light marketing theme. The black-and-white portrait sits on dark.
 - Mobile-first, same as the studio: single column, no horizontal
   scroll, thumb-friendly CTA. Reuse the studio's Inter font and the
-  IKO logo from `public/brand/`.
-- Metadata: title "IKO 3D", description from the hero line, OG
+  Zaka logo from `public/brand/`.
+- Metadata: title "Zaka 3D", description from the hero line, OG
   image = the portrait.
 
 ## Asset prep
@@ -109,5 +109,5 @@ Both files are Spencer's own art. No licensed or third-party imagery.
   step and still pending — the landing page must not claim the pilot
   passed. It describes what the app does today.
 - The design-bible placeholder replacement (Anima) is a different
-  repo and a different job; this portrait is IKO 3D art, not Anima
+  repo and a different job; this portrait is Zaka 3D art, not Anima
   art.

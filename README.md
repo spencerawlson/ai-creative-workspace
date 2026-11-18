@@ -1,4 +1,4 @@
-# IKO 3D
+# Zaka 3D
 
 (The repository is still called ai-creative-workspace.)
 

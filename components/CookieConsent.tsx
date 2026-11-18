@@ -94,7 +94,7 @@ export default function CookieConsent() {
               Cookie preferences
             </p>
             <p className="mt-1 text-sm leading-relaxed text-ink-300">
-              IKO 3D sets no cookies itself. The only optional tracker is
+              Zaka 3D sets no cookies itself. The only optional tracker is
               Plausible analytics — cookieless, no cross-site tracking — and it
               loads only if you switch it on below.
             </p>
@@ -129,7 +129,7 @@ export default function CookieConsent() {
         ) : (
           <>
             <p className="text-sm leading-relaxed text-ink-100">
-              IKO 3D sets no cookies itself. We use Plausible — cookieless
+              Zaka 3D sets no cookies itself. We use Plausible — cookieless
               analytics with no cross-site tracking — only if you accept.{" "}
               <a href="/privacy" className="text-accent underline">
                 Privacy policy

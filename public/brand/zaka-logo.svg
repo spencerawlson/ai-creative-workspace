@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
-  <title id="t">IKO 3D</title>
+  <title id="t">Zaka 3D</title>
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#1c1d30"/>
@@ -48,12 +48,12 @@
     <path d="M134 226 L 110 236" stroke="url(#body)" stroke-width="8" stroke-linecap="round"/>
   </g>
 
-  <!-- IKO -->
-  <g stroke="#ffffff" stroke-width="34" fill="none" stroke-linecap="square" stroke-linejoin="miter">
-    <path d="M140 292 V 372"/>
-    <path d="M196 292 V 372"/>
-    <path d="M266 292 L 214 332 L 268 372"/>
-    <ellipse cx="350" cy="332" rx="40" ry="40"/>
+  <!-- ZAKA -->
+  <g fill="#ffffff" fill-rule="evenodd">
+    <path d="M104 292 H162 V310 L128 354 H162 V372 H104 V354 L138 310 H104 Z"/>
+    <path d="M174 372 L202 292 H216 L244 372 H224 L219.1 358 H198.9 L194 372 Z M209 329.1 L214.9 346 H203.1 Z"/>
+    <path d="M256 292 H276 V322 L300 292 H324 L292 332 L324 372 H300 L276 342 V372 H256 Z"/>
+    <path d="M336 372 L364 292 H378 L406 372 H386 L381.1 358 H360.9 L356 372 Z M371 329.1 L376.9 346 H365.1 Z"/>
   </g>
 
   <!-- 3D -->

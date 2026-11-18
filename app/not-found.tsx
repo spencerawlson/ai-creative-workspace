@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <main className="min-h-dvh bg-ink-950 text-ink-100">
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-        <p className="text-sm font-medium text-accent">IKO 3D</p>
+        <p className="text-sm font-medium text-accent">Zaka 3D</p>
         <h1 className="mt-2 text-3xl font-semibold">Page not found</h1>
         <p className="mt-4 text-base leading-relaxed text-ink-300">
           That page doesn&apos;t exist — it may have moved, or the link may have

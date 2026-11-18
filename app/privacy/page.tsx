@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy policy — IKO 3D",
+  title: "Privacy policy — Zaka 3D",
   description:
-    "How IKO 3D handles your data: everything stays on your device, no accounts, no uploads, and analytics only with your consent.",
+    "How Zaka 3D handles your data: everything stays on your device, no accounts, no uploads, and analytics only with your consent.",
 };
 
 export default function PrivacyPage() {
   return (
     <main className="min-h-dvh bg-ink-950 text-ink-100">
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-        <p className="text-sm font-medium text-accent">IKO 3D</p>
+        <p className="text-sm font-medium text-accent">Zaka 3D</p>
         <h1 className="mt-2 text-3xl font-semibold">Privacy policy</h1>
         <p className="mt-2 text-sm text-ink-400">
           Last updated: 16 November 2026
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
 
         <section className="mt-8 space-y-4 text-base leading-relaxed text-ink-300">
           <p>
-            IKO 3D is a creative tool that runs entirely in your browser. There
+            Zaka 3D is a creative tool that runs entirely in your browser. There
             are no accounts, no sign-in, no backend, and nothing you make is
             uploaded to a server.
           </p>
@@ -58,7 +58,7 @@ export default function PrivacyPage() {
 
           <h2 className="pt-4 text-xl font-semibold text-ink-100">Cookies</h2>
           <p>
-            IKO 3D sets no cookies itself. Your cookie-consent choice is
+            Zaka 3D sets no cookies itself. Your cookie-consent choice is
             remembered in your browser&apos;s local storage, not in a cookie.
           </p>
 
@@ -79,7 +79,7 @@ export default function PrivacyPage() {
           </Link>
           {" · "}
           <Link href="/" className="hover:text-ink-100 hover:underline">
-            Back to IKO 3D
+            Back to Zaka 3D
           </Link>
         </p>
       </div>
