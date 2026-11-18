@@ -440,7 +440,7 @@ function MenuList({
                 data-sub={i}
                 disabled={e.disabled}
                 data-testid={e.testId}
-                onClick={() => setSub(opened ? null : i)}
+                onClick={() => setSub(i)} // open (a hover may have already)
                 onPointerEnter={(p) => {
                   if (p.pointerType === "mouse") setSub(i);
                 }}
