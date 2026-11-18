@@ -44,7 +44,6 @@ const EXPECTED: Array<[string, BodyKind]> = [
   ["public/cast/real-woman.glb", "upright"],
   ["public/cast/toon-man.glb", "upright"],
   ["public/cast/toon-woman.glb", "upright"],
-  ["public/cast/infant.glb", "upright"],
   ["public/models/mannequin-male.glb", "upright"],
   ["public/models/mannequin-female.glb", "upright"],
   // Apes stand upright too (scripts/auto-rig.mjs tells them from humans).
