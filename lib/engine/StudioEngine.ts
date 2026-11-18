@@ -22,6 +22,10 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import {
+  CSS2DObject,
+  CSS2DRenderer,
+} from "three/examples/jsm/renderers/CSS2DRenderer.js";
+import {
   GLTFLoader,
   type GLTF,
 } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -87,7 +91,7 @@ import {
   vrmHumanoid,
   type Retarget,
 } from "./humanoid";
-import { snapTo } from "@/lib/studio/precision";
+import { formatLength, snapTo, type Units } from "@/lib/studio/precision";
 import {
   LIMITS,
   PLINTH_SIZE,
@@ -180,6 +184,8 @@ export interface EngineCallbacks {
   /** A figure is being dragged across the floor (metres). */
   onFigureMove?: (figure: string, at: { x: number; z: number }) => void;
   onFigureMoveEnd?: () => void;
+  /** The number of measurements changed (measuring, View menu). */
+  onMeasure?: (count: number) => void;
   /** The user finished orbiting or zooming the camera. */
   onCameraEnd?: () => void;
   onStatus?: (status: EngineStatus) => void;
@@ -447,6 +453,20 @@ export class StudioEngine {
   private grid: THREE.Group | null = null;
   /** Snap step for dragged figures, metres; null: free. */
   private snapStep: number | null = null;
+  /** Measuring: taps drop points; two make a dimension line. */
+  private measureMode = false;
+  private measurePending: { point: THREE.Vector3; marker: THREE.Mesh } | null =
+    null;
+  private measures: Array<{
+    a: THREE.Vector3;
+    b: THREE.Vector3;
+    group: THREE.Group;
+    label: CSS2DObject;
+  }> = [];
+  /** Units for measurement labels (the device's preference). */
+  private units: Units = "m";
+  /** HTML labels over the canvas (measurements). */
+  private readonly labels: CSS2DRenderer;
   /** A body part held in pose mode. `moved` stays false for a tap. */
   private poseDrag: {
     pointerId: number;
@@ -507,6 +527,15 @@ export class StudioEngine {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.domElement.setAttribute("data-engine", "studio");
     container.appendChild(this.renderer.domElement);
+    // Measurement labels: crisp HTML over the canvas, moved with the view.
+    this.labels = new CSS2DRenderer();
+    this.labels.setSize(width, height);
+    Object.assign(this.labels.domElement.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+    });
+    container.appendChild(this.labels.domElement);
     RectAreaLightUniformsLib.init();
 
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
@@ -658,6 +687,123 @@ export class StudioEngine {
     this.snapStep = step;
   }
 
+  /** Measuring: while on, a tap drops a point (on a figure or the
+   * floor; floor points snap to the grid when snapping is on) and every
+   * second point closes a dimension line with its length. A view
+   * helper, like the grid: never exported, not in the scene. */
+  setMeasureMode(on: boolean): void {
+    this.measureMode = on;
+    if (!on && this.measurePending) {
+      this.handlesRoot.remove(this.measurePending.marker);
+      disposeHelper(this.measurePending.marker);
+      this.measurePending = null;
+    }
+    this.renderer.domElement.style.cursor = on ? "crosshair" : "";
+    this.invalidate();
+  }
+
+  /** Units for measurement labels. */
+  setUnits(units: Units): void {
+    this.units = units;
+    for (const m of this.measures)
+      m.label.element.textContent = formatLength(m.a.distanceTo(m.b), units);
+    this.invalidate();
+  }
+
+  clearMeasurements(): void {
+    for (const m of this.measures) {
+      m.label.element.remove();
+      this.handlesRoot.remove(m.group);
+      disposeHelper(m.group);
+    }
+    this.measures = [];
+    this.setMeasureMode(this.measureMode); // drops a half-made one
+    this.callbacks.onMeasure?.(0);
+  }
+
+  /** The dimension lines (metres), for the app and its tests. */
+  measurements(): Array<{
+    a: number[];
+    b: number[];
+    distance: number;
+    label: string;
+  }> {
+    return this.measures.map((m) => ({
+      a: m.a.toArray(),
+      b: m.b.toArray(),
+      distance: m.a.distanceTo(m.b),
+      label: m.label.element.textContent ?? "",
+    }));
+  }
+
+  private addMeasurePoint(): void {
+    const hit = this.raycaster
+      .intersectObjects([this.figure, this.cyc, this.catcher], true)
+      .find((h) => h.object.name !== "pose-dot");
+    if (!hit) return;
+    const p = hit.point.clone();
+    // On the floor: onto the grid when snapping.
+    if (hit.object === this.catcher || Math.abs(p.y) < 1e-3) {
+      p.y = 0;
+      if (this.snapStep) {
+        p.x = snapTo(p.x, this.snapStep);
+        p.z = snapTo(p.z, this.snapStep);
+      }
+    }
+    const dot = () => {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 12, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffd166, depthTest: false }),
+      );
+      m.renderOrder = 10;
+      m.raycast = () => {};
+      return m;
+    };
+    if (!this.measurePending) {
+      const marker = dot();
+      marker.position.copy(p);
+      this.handlesRoot.add(marker);
+      this.measurePending = { point: p, marker };
+      this.invalidate();
+      return;
+    }
+    const a = this.measurePending.point;
+    this.handlesRoot.remove(this.measurePending.marker);
+    disposeHelper(this.measurePending.marker);
+    this.measurePending = null;
+    const group = new THREE.Group();
+    group.name = "measurement";
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([a, p]),
+      new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }),
+    );
+    line.renderOrder = 10;
+    line.raycast = () => {};
+    const da = dot();
+    da.position.copy(a);
+    const db = dot();
+    db.position.copy(p);
+    const el = document.createElement("div");
+    el.dataset.testid = "measure-label";
+    el.textContent = formatLength(a.distanceTo(p), this.units);
+    Object.assign(el.style, {
+      background: "rgba(15,16,20,0.88)",
+      color: "#ffd166",
+      font: "600 11px system-ui, sans-serif",
+      padding: "2px 6px",
+      borderRadius: "4px",
+      border: "1px solid rgba(255,209,102,0.5)",
+      whiteSpace: "nowrap",
+    });
+    const label = new CSS2DObject(el);
+    label.position.copy(a).add(p).multiplyScalar(0.5);
+    group.add(line, da, db, label);
+    this.handlesRoot.add(group);
+    this.measures.push({ a, b: p, group, label });
+    this.callbacks.onMeasure?.(this.measures.length);
+    this.invalidate();
+  }
+
   /** Aim the camera for a view. `fovDeg`: the vertical angle of view
    * about to be used (Photography sets the lens and the framing
    * together), else the camera's own. */
@@ -790,6 +936,9 @@ export class StudioEngine {
     const t0 = performance.now();
     this.draw();
     this.lastCpuMs = performance.now() - t0;
+    // Measurement labels show with the handles (never in an export).
+    for (const m of this.measures) m.label.visible = this.showHandles;
+    this.labels.render(this.scene, this.camera);
   }
 
   /** The device's render quality (a preference, not part of the scene). */
@@ -893,6 +1042,7 @@ export class StudioEngine {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.labels.setSize(w, h);
     this.invalidate();
   }
 
@@ -2499,6 +2649,8 @@ export class StudioEngine {
       return;
     }
     this.downAt = { x: e.clientX, y: e.clientY };
+    // Measuring: a tap drops a point (on release); a drag still orbits.
+    if (this.measureMode) return;
     const id = this.pickLight(e);
     if (id) {
       this.dragging = { id, pointerId: e.pointerId };
@@ -2629,6 +2781,10 @@ export class StudioEngine {
     this.downAt = null;
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
     this.pointerRay(e);
+    if (this.measureMode) {
+      this.addMeasurePoint();
+      return;
+    }
     // Joint dots only exist while posing.
     const hit = this.raycaster
       .intersectObjects([this.figure, this.cyc], true)
@@ -2897,6 +3053,7 @@ export class StudioEngine {
     cancelAnimationFrame(this.raf);
     this.resizeObserver.disconnect();
     this.post?.dispose();
+    this.labels.domElement.remove();
     const el = this.renderer.domElement;
     el.removeEventListener("pointerdown", this.onPointerDown, {
       capture: true,
@@ -2948,6 +3105,17 @@ function disposeModel(model: CachedModel, keep: THREE.Material): void {
   (model.rig.lines.material as THREE.Material).dispose();
   model.rig.dotMaterial.dispose();
   model.rig.activeDotMaterial.dispose();
+}
+
+/** Free a view helper's geometries and materials (measurements). */
+function disposeHelper(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.geometry) m.geometry.dispose();
+    const mat = m.material;
+    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+    else if (mat) mat.dispose();
+  });
 }
 
 function disposeObject(root: THREE.Object3D, keep: THREE.Material): void {

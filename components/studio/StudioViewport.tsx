@@ -12,6 +12,7 @@ import {
   type KeyboardEvent,
   type Ref,
 } from "react";
+import type { Units } from "@/lib/studio/precision";
 import type {
   BenchmarkResult,
   CameraView,
@@ -49,6 +50,8 @@ export interface ViewportHandle {
   viewportSize(): { width: number; height: number };
   cameraPlacement(): CameraPlacement | undefined;
   setCameraPlacement(p: CameraPlacement): void;
+  /** Remove every measurement (View > Measure). */
+  clearMeasurements(): void;
   /** Draw `scene` now, without waiting for React (animation playback).
    * The next prop update draws the real scene again. `time` is the
    * animation time the scene was evaluated at, when it was: a
@@ -79,6 +82,9 @@ export function StudioViewport({
   showHandles = true,
   grid = null,
   snap = null,
+  measure = false,
+  units = "m",
+  onMeasure,
   quality = "fast",
   onSelect,
   onLightDrag,
@@ -109,6 +115,12 @@ export function StudioViewport({
   grid?: number | null;
   /** Snap step for dragged figures, metres; null: free. */
   snap?: number | null;
+  /** Measuring: taps drop points that make dimension lines. */
+  measure?: boolean;
+  /** Units for measurement labels. */
+  units?: Units;
+  /** The number of measurements changed. */
+  onMeasure?: (count: number) => void;
   /** This device's render quality (lib/engine/post.ts). */
   quality?: RenderQuality;
   onSelect?: (s: Selection, figure?: string) => void;
@@ -155,6 +167,9 @@ export function StudioViewport({
     showHandles,
     grid,
     snap,
+    measure,
+    units,
+    onMeasure,
     quality,
     onSelect,
     onLightDrag,
@@ -181,6 +196,9 @@ export function StudioViewport({
     showHandles,
     grid,
     snap,
+    measure,
+    units,
+    onMeasure,
     quality,
     onSelect,
     onLightDrag,
@@ -216,6 +234,7 @@ export function StudioViewport({
             onPoseDragEnd: () => latest.current.onPoseDragEnd?.(),
             onFigureMove: (f, at) => latest.current.onFigureMove?.(f, at),
             onFigureMoveEnd: () => latest.current.onFigureMoveEnd?.(),
+            onMeasure: (n) => latest.current.onMeasure?.(n),
             onCameraEnd: () => latest.current.onCameraEnd?.(),
             onStatus: (s) => {
               setStatus(s.model);
@@ -237,6 +256,8 @@ export function StudioViewport({
         engine.setShowHandles(p.showHandles);
         engine.setGrid(p.grid != null, p.grid ?? 0.25);
         engine.setSnap(p.snap);
+        engine.setMeasureMode(p.measure);
+        engine.setUnits(p.units);
         engine.setQuality(p.quality);
         engine.setSelection(p.selection);
         engine.setActiveFigure(p.activeFigure);
@@ -284,6 +305,14 @@ export function StudioViewport({
   }, [snap]);
 
   useEffect(() => {
+    engineRef.current?.setMeasureMode(measure);
+  }, [measure]);
+
+  useEffect(() => {
+    engineRef.current?.setUnits(units);
+  }, [units]);
+
+  useEffect(() => {
     engineRef.current?.setQuality(quality);
   }, [quality]);
 
@@ -303,6 +332,7 @@ export function StudioViewport({
   useImperativeHandle(
     ref,
     () => ({
+      clearMeasurements: () => engineRef.current?.clearMeasurements(),
       exportImage: (opts) => {
         const e = engineRef.current;
         return e

@@ -14,6 +14,7 @@ import {
   EyeOff,
   FolderOpen,
   Grid3x3,
+  Ruler,
   History as HistoryIcon,
   Keyboard,
   Layers,
@@ -166,6 +167,9 @@ export function LightingStudio() {
   const [view, setView] = useState<CameraView>("full");
   const [viewNonce, setViewNonce] = useState(0);
   const [showHandles, setShowHandles] = useState(true);
+  // Measuring (View > Measure): a view helper, not part of the scene.
+  const [measuring, setMeasuring] = useState(false);
+  const [measureCount, setMeasureCount] = useState(0);
   const [quality, setQuality] = useRenderQuality();
   // Grid, snapping and units: this device's, kept in the browser.
   const [precision, setPrecisionState] = useState<Precision>(DEFAULT_PRECISION);
@@ -428,6 +432,10 @@ export function LightingStudio() {
         case "H":
           setShowHandles((v) => !v);
           break;
+        case "d":
+        case "D":
+          setMeasuring((v) => !v);
+          break;
         case "m":
         case "M":
           dispatch({
@@ -471,7 +479,9 @@ export function LightingStudio() {
           setShortcutsOpen(true);
           break;
         case "Escape":
-          setSelection(null);
+          // Esc ends measuring first, then clears the selection.
+          if (measuring) setMeasuring(false);
+          else setSelection(null);
           break;
         case "Delete":
         case "Backspace":
@@ -500,6 +510,7 @@ export function LightingStudio() {
     changeView,
     panelOpen,
     previewing,
+    measuring,
     time,
     keyCamera,
     seek,
@@ -641,6 +652,10 @@ export function LightingStudio() {
         onShortcuts={() => setShortcutsOpen(true)}
         precision={precision}
         onPrecision={setPrecision}
+        measuring={measuring}
+        onMeasuring={setMeasuring}
+        measureCount={measureCount}
+        onClearMeasures={() => viewport.current?.clearMeasurements()}
         onPanel={(p) => {
           if (isDesktop) {
             setTool(p);
@@ -766,6 +781,9 @@ export function LightingStudio() {
               showHandles={showHandles && !previewing}
               grid={precision.grid && !previewing ? precision.step : null}
               snap={precision.snap ? precision.step : null}
+              measure={measuring && !previewing}
+              units={precision.units}
+              onMeasure={setMeasureCount}
               quality={quality}
               onSelect={select}
               onLightDrag={onLightDrag}
@@ -783,6 +801,17 @@ export function LightingStudio() {
               onCharacterProblem={characters.reportProblem}
               onCharacterFace={characters.reportFace}
             />
+            {measuring && !previewing && (
+              <div
+                role="status"
+                data-testid="measure-hint"
+                className="pointer-events-none absolute bottom-10 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-xs text-ink-100 backdrop-blur"
+              >
+                Measuring: tap two points
+                {measureCount > 0 ? ` · ${measureCount} so far` : ""} · Esc to
+                finish
+              </div>
+            )}
             {previewing ? (
               <div className="pointer-events-none absolute inset-x-2 top-2 flex items-center justify-between">
                 <span className="rounded-md bg-ink-900/80 px-2 py-1 text-xs font-medium text-ink-200 backdrop-blur">
@@ -993,6 +1022,10 @@ function Toolbar({
   onShortcuts,
   precision,
   onPrecision,
+  measuring,
+  onMeasuring,
+  measureCount,
+  onClearMeasures,
   onPanel,
   panelOpen,
   onTogglePanel,
@@ -1007,6 +1040,10 @@ function Toolbar({
   onShortcuts: () => void;
   precision: Precision;
   onPrecision: (patch: Partial<Precision>) => void;
+  measuring: boolean;
+  onMeasuring: (on: boolean) => void;
+  measureCount: number;
+  onClearMeasures: () => void;
   /** Show a panel (desktop: the side panel; phones: the sheet tab). */
   onPanel: (panel: Tool) => void;
   panelOpen: boolean;
@@ -1060,6 +1097,13 @@ function Toolbar({
           disabled: !canRedo,
           onSelect: redo,
         },
+        {
+          label: "Clear measurements",
+          icon: Ruler,
+          disabled: measureCount === 0,
+          onSelect: onClearMeasures,
+          testId: "edit-clear-measures",
+        },
         "separator",
         { label: "History", onSelect: () => onPanel("history") },
       ],
@@ -1077,6 +1121,14 @@ function Toolbar({
           checked: precision.grid,
           onSelect: () => onPrecision({ grid: !precision.grid }),
           testId: "view-grid",
+        },
+        {
+          label: "Measure a distance",
+          icon: Ruler,
+          shortcut: "D",
+          checked: measuring,
+          onSelect: () => onMeasuring(!measuring),
+          testId: "view-measure",
         },
         {
           label: "Snap to grid (Alt: free)",

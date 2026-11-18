@@ -1940,3 +1940,78 @@ test("auto-rigging is off unless the server offers it", async ({ page }) => {
   await openStudio(page);
   await expect(page.getByTestId("character-autorig")).toHaveCount(0);
 });
+
+test("measure a distance on the floor: snapped, in the chosen units, cleared", async ({
+  page,
+}) => {
+  await openStudio(page);
+  const menu = async (name: "view" | "edit", item: string) => {
+    await page
+      .locator(`[data-testid=menu-${name}], [data-testid=menu-all]`)
+      .click();
+    await page.getByTestId(item).click();
+  };
+  await menu("view", "view-grid");
+  await menu("view", "view-step-0.5");
+  await menu("view", "view-snap");
+  await menu("view", "view-measure");
+  await expect(page.getByTestId("measure-hint")).toBeVisible();
+
+  // Where floor points (metres) are on the page.
+  const onPage = (x: number, z: number) =>
+    page.evaluate(
+      ([x, z]) => {
+        const e = (
+          window as unknown as {
+            __studioEngine: {
+              camera: {
+                position: {
+                  constructor: new (...a: number[]) => {
+                    project(c: unknown): { x: number; y: number };
+                  };
+                };
+              };
+              renderer: { domElement: HTMLCanvasElement };
+            };
+          }
+        ).__studioEngine;
+        const v = new e.camera.position.constructor(x, 0, z).project(e.camera);
+        const r = e.renderer.domElement.getBoundingClientRect();
+        return {
+          x: r.left + ((v.x + 1) / 2) * r.width,
+          y: r.top + ((1 - v.y) / 2) * r.height,
+        };
+      },
+      [x, z],
+    );
+  // In front of the figure; snapping puts them on the 50 cm grid.
+  for (const x of [-0.3, 0.3]) {
+    const p = await onPage(x, 0.45);
+    await page.mouse.click(p.x, p.y);
+  }
+  const measures = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __studioEngine: {
+            measurements(): Array<{ distance: number; label: string }>;
+          };
+        }
+      ).__studioEngine.measurements(),
+    );
+  await expect.poll(async () => (await measures()).length).toBe(1);
+  const [m] = await measures();
+  expect(m.distance).toBeCloseTo(1, 6);
+  await expect(page.getByTestId("measure-label")).toHaveText("1.00 m");
+
+  // The label follows the units.
+  await menu("view", "view-units-cm");
+  await expect(page.getByTestId("measure-label")).toHaveText("100 cm");
+
+  // Edit > Clear measurements; Esc ends measuring.
+  await menu("edit", "edit-clear-measures");
+  await expect.poll(async () => (await measures()).length).toBe(0);
+  await expect(page.getByTestId("measure-label")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("measure-hint")).toHaveCount(0);
+});
